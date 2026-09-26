@@ -34,6 +34,47 @@ jobs:
             chore
             revert
 
+  commit-messages:
+    name: Commit Messages (Conventional Commits)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fetch full PR history so we can validate every commit in the range.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install conventional-pre-commit
+        run: pip install "conventional-pre-commit==4.1.0"
+
+      - name: Check each commit message
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          types="feat fix docs style refactor perf test build ci chore revert"
+          status=0
+          # Validate every commit introduced by the PR (excludes merge commits).
+          for sha in $(git rev-list --no-merges "$BASE_SHA".."$HEAD_SHA"); do
+            msg_file="$(mktemp)"
+            git log -1 --format=%B "$sha" > "$msg_file"
+            echo "::group::$(git log -1 --format='%h %s' "$sha")"
+            if conventional-pre-commit $types "$msg_file"; then
+              echo "OK"
+            else
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $status
+
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
