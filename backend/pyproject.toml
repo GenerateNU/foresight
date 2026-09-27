@@ -21,10 +21,20 @@ dev = [
     "pytest-asyncio>=0.25",
     "httpx>=0.28",
 ]
+ml = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+    "statsmodels>=0.15.0",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+]
 
 [tool.ruff]
 target-version = "py312"
-src = ["src"]
+src = ["src", "scripts"]
 exclude = ["src/database/migrations"]
 line-length = 88
 
@@ -47,3 +57,4 @@ known-first-party = ["foresight"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["src", "scripts"]
