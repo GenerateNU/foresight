@@ -36,3 +36,9 @@ htmlcov/
 
 # uv
 .uv/
+
+# Ruff
+.ruff_cache/
+
+# Tooling / assistants
+.claude/

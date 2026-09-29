@@ -1,6 +1,31 @@
+# Keep the build context minimal — only what's needed to build/run the image.
+
+# Python caches and virtualenvs
 .venv/
 __pycache__/
 *.pyc
-.git/
-.ruff_cache/
+*.pyo
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Version control and editor state
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Never bake env files (or their secrets) into the image
+.env
+.env.*
+!.env.example
+
+# Docs and Docker plumbing don't belong inside the image
+*.md
+Dockerfile
+.dockerignore
+
+# Tests are executed on the host / in CI, not inside the running container
+tests/

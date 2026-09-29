@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from config import settings
-from routes import health
+from foresight.config import settings
+from foresight.routes import health
 
 app = FastAPI(
     title=settings.app_name,
