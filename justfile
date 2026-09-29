@@ -14,6 +14,10 @@ install:
 build:
     docker compose build
 
+# Build the production backend image (no dev deps, no --reload)
+build-prod:
+    docker build --target prod -t foresight-backend:prod backend/
+
 # Start all services (db + backend with hot reload)
 dev:
     docker compose up -d
@@ -55,6 +59,12 @@ migrate-create name:
 migrate-down:
     cd backend && uv run alembic downgrade -1
 
+# --- Testing ---
+
+# Run the test suite
+test:
+    cd backend && uv run pytest -q
+
 # --- Quality ---
 
 # Run ruff linter
@@ -75,3 +85,7 @@ fix:
 # Install pre-commit hooks
 hooks:
     cd backend && uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
+
+# Run pre-commit against all tracked files
+pre-commit:
+    cd backend && uv run pre-commit run --all-files

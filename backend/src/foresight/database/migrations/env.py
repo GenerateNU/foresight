@@ -5,8 +5,8 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from config import settings
-from database.models import Base
+from foresight.config import settings
+from foresight.database.models import Base
 
 config = context.config
 

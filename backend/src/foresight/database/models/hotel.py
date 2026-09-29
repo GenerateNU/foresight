@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import Date, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from database.base import Base
+from foresight.database.base import Base
 
 
 class Hotel(Base):
