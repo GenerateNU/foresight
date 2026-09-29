@@ -36,3 +36,6 @@ htmlcov/
 
 # uv
 .uv/
+
+# Generated data
+backend/data/
