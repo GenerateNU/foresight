@@ -91,8 +91,7 @@ class HotelDataParser:
 
         # Set up logging for parser runs
         logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(levelname)s - %(message)s"
+            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
         )
 
         self.logger = logging.getLogger(__name__)
@@ -155,16 +154,20 @@ class HotelDataParser:
         self.cleaned_data = self.cleaned_data.drop_duplicates()
 
         # Remove extra spaces from text values
-        string_columns = self.cleaned_data.select_dtypes(
-            include="object"
-        ).columns
+        string_columns = self.cleaned_data.select_dtypes(include="object").columns
 
         for column in string_columns:
             self.cleaned_data[column] = self.cleaned_data[column].str.strip()
 
         # Client export has no $ or % symbols today
         numeric_columns = [
-            "Avail", "Total", "Occ", "Accomm", "InStock", "ARR", "APR",
+            "Avail",
+            "Total",
+            "Occ",
+            "Accomm",
+            "InStock",
+            "ARR",
+            "APR",
         ]
         for column in numeric_columns:
             if column in self.cleaned_data.columns:
@@ -337,10 +340,7 @@ class HotelDataParser:
                     )
 
             self.transformed_data.to_sql(
-                name=table_name,
-                con=engine,
-                if_exists="append",
-                index=False
+                name=table_name, con=engine, if_exists="append", index=False
             )
 
             self.logger.info(
