@@ -29,6 +29,9 @@ Thumbs.db
 # Docker
 postgres_data/
 
+# Client data
+backend/data/
+
 # Testing
 .pytest_cache/
 .coverage
