@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "foresight"
 version = "0.1.0"
@@ -11,11 +15,16 @@ dependencies = [
     "asyncpg>=0.30",
     "pydantic-settings>=2.9",
     "python-dotenv>=1.1",
+    "pandas>=2.2",
+    "psycopg2-binary>=2.9",
 ]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.11",
+    # Pinned to match .pre-commit-config.yaml so local, pre-commit, and CI all
+    # run the identical ruff version. Bump both together (e.g. via
+    # `just pre-commit-update`) to avoid rule drift.
+    "ruff==0.16.9",
     "pre-commit>=4.2",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
@@ -32,10 +41,13 @@ ml = [
     "pandas>=3.0.6",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/foresight"]
+
 [tool.ruff]
 target-version = "py312"
-src = ["src", "scripts"]
-exclude = ["src/database/migrations"]
+src = ["src"]
+exclude = ["src/foresight/database/migrations"]
 line-length = 88
 
 [tool.ruff.lint]

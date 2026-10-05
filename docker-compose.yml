@@ -16,10 +16,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot service that applies Alembic migrations, then exits. Runs before
+  # `backend` on every `up` so the database schema is always current in dev.
+  # Reuses the dev image (buildkit shares the layer cache with `backend`).
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/alembic.ini:/app/alembic.ini
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["uv", "run", "alembic", "upgrade", "head"]
+    restart: "no"
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: dev
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -27,14 +47,17 @@ services:
       - .env
     environment:
       DATABASE_URL: "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
-      PYTHONPATH: "/app/src"
     volumes:
-      # Mount source code for hot reload
+      # Mount source code for hot reload. The `foresight` package is installed
+      # editable in the image, so edits under ./backend/src/foresight are
+      # picked up live by uvicorn --reload.
       - ./backend/src:/app/src
       - ./backend/alembic.ini:/app/alembic.ini
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

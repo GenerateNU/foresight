@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import Date, DateTime, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from database.base import Base
+from foresight.database.base import Base
 
 
 class Weather(Base):

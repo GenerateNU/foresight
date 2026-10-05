@@ -10,9 +10,27 @@ permissions:
   contents: read
   pull-requests: read
 
+# Shared conventional-commit type list. Referenced by both pr-lint and
+# commit-lint so the allowed types stay in sync in one place.
+# Note: .pre-commit-config.yaml keeps its own copy (different config format);
+# keep the two in sync when adding or removing a type.
+env:
+  COMMIT_TYPES: |-
+    feat
+    fix
+    docs
+    style
+    refactor
+    perf
+    test
+    build
+    ci
+    chore
+    revert
+
 jobs:
-  commitlint:
-    name: PR Title (Conventional Commits)
+  pr-lint:
+    name: PR Title Lint
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
@@ -21,21 +39,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          types: |
-            feat
-            fix
-            docs
-            style
-            refactor
-            perf
-            test
-            build
-            ci
-            chore
-            revert
+          types: ${{ env.COMMIT_TYPES }}
 
-  commit-messages:
-    name: Commit Messages (Conventional Commits)
+  commit-lint:
+    name: Commit Message Lint
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
@@ -48,7 +55,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version-file: backend/.python-version
 
       - name: Install conventional-pre-commit
         run: pip install "conventional-pre-commit==4.1.0"
@@ -59,14 +66,15 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          types="feat fix docs style refactor perf test build ci chore revert"
           status=0
           # Validate every commit introduced by the PR (excludes merge commits).
+          # $COMMIT_TYPES is newline-separated at the workflow level; unquoted
+          # expansion here word-splits it into individual args for the tool.
           for sha in $(git rev-list --no-merges "$BASE_SHA".."$HEAD_SHA"); do
             msg_file="$(mktemp)"
             git log -1 --format=%B "$sha" > "$msg_file"
             echo "::group::$(git log -1 --format='%h %s' "$sha")"
-            if conventional-pre-commit $types "$msg_file"; then
+            if conventional-pre-commit $COMMIT_TYPES "$msg_file"; then
               echo "OK"
             else
               status=1
@@ -75,7 +83,7 @@ jobs:
           done
           exit $status
 
-  lint:
+  format:
     name: Lint & Format
     runs-on: ubuntu-latest
     defaults:
@@ -88,9 +96,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: backend/uv.lock
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install
 
       - name: Install dependencies
         run: uv sync --dev
@@ -130,9 +139,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: backend/uv.lock
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install
 
       - name: Install dependencies
         run: uv sync --dev --group ml
@@ -141,9 +151,4 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: Pytest
-        # exit code 5 = no tests collected; treat as success until tests exist
-        run: |
-          code=0
-          uv run pytest -q || code=$?
-          if [ "$code" -eq 5 ]; then echo "No tests collected yet."; exit 0; fi
-          exit $code
+        run: uv run pytest -q

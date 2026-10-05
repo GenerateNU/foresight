@@ -76,15 +76,19 @@ Commit messages must follow [Conventional Commits](https://www.conventionalcommi
 foresight/
 ├── backend/
 │   ├── src/
-│   │   ├── main.py              # FastAPI app entrypoint
-│   │   ├── config.py            # Settings (pydantic-settings)
-│   │   ├── routes/              # API route handlers
-│   │   ├── database/            # SQLAlchemy + Alembic
-│   │   │   ├── base.py          # Declarative base
-│   │   │   ├── session.py       # Async session factory
-│   │   │   ├── models/          # SQLAlchemy models
-│   │   │   └── migrations/      # Alembic migrations
-│   │   └── service/             # Business logic
+│   │   └── foresight/           # Installable package (see pyproject.toml)
+│   │       ├── main.py          # FastAPI app entrypoint (foresight.main:app)
+│   │       ├── config.py        # Settings (pydantic-settings)
+│   │       ├── routes/          # API route handlers
+│   │       ├── schemas/         # Pydantic request/response models
+│   │       ├── services/        # Business logic
+│   │       ├── repository/      # Data-access layer
+│   │       └── database/        # SQLAlchemy + Alembic
+│   │           ├── base.py      # Declarative base
+│   │           ├── session.py   # Async session factory
+│   │           ├── models/      # SQLAlchemy models
+│   │           └── migrations/  # Alembic migrations
+│   ├── tests/                   # Pytest suite
 │   ├── alembic.ini
 │   ├── pyproject.toml
 │   └── Dockerfile

@@ -29,6 +29,9 @@ Thumbs.db
 # Docker
 postgres_data/
 
+# Client data
+backend/data/
+
 # Testing
 .pytest_cache/
 .coverage
@@ -39,3 +42,11 @@ htmlcov/
 
 # Generated data
 backend/data/
+# Ruff
+.ruff_cache/
+
+# Tooling / assistants
+.claude/
+
+# Personal developer journal (private, not for team repo)
+.journal-entries/
