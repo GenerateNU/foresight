@@ -145,7 +145,7 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --group ml
 
       - name: Run migrations
         run: uv run alembic upgrade head
