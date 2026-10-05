@@ -1,0 +1,122 @@
+[
+  {
+    "article_url": "https://rte.example/forbidden-fruit-2027",
+    "eng_title": "Forbidden Fruit announces 2027 return to Kilmainham",
+    "summary": "Organisers have confirmed the festival will return to the Royal Hospital Kilmainham in Dublin on June 5-7, 2027. Tickets go on sale Friday at 9am.",
+    "key_points": ["Three-day festival", "Tickets on sale Friday"],
+    "pub_date": "2026-10-05T08:15:00+00:00",
+    "entities": {"Event": ["Forbidden Fruit"], "Location": ["Dublin", "Ireland"], "Organization": ["Royal Hospital Kilmainham"]},
+    "country": "IE",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Entertainment"]
+  },
+  {
+    "article_url": "https://publico.example/web-summit-2026",
+    "eng_title": "Web Summit returns to Lisbon in November",
+    "summary": "Web Summit will be held at the Altice Arena in Lisbon from November 10-13, 2026, with organisers expecting another sell-out edition.",
+    "key_points": ["Altice Arena", "Four-day conference"],
+    "pub_date": "2026-10-04T11:00:00+00:00",
+    "entities": {"Event": ["Web Summit"], "Location": ["Lisbon", "Portugal"]},
+    "country": "PT",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Technology"]
+  },
+  {
+    "article_url": "https://scotsman.example/hogmanay-2026",
+    "eng_title": "Edinburgh Hogmanay street party lineup revealed",
+    "summary": "Edinburgh's Hogmanay celebrations will run December 30, 2026 - January 1, 2027, with the street party returning to Princes Street.",
+    "key_points": ["Princes Street party", "Three nights"],
+    "pub_date": "2026-10-03T16:40:00+00:00",
+    "entities": {"Event": ["Edinburgh Hogmanay"], "Location": ["Edinburgh", "Scotland"]},
+    "country": "GB",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://guardian.example/glastonbury-2027",
+    "eng_title": "Glastonbury confirms 2027 dates",
+    "summary": "Glastonbury Festival will take over Worthy Farm in Somerset on June 23-27, 2027, organisers announced.",
+    "key_points": ["Worthy Farm"],
+    "pub_date": "2026-10-05T07:00:00+00:00",
+    "entities": {"Event": ["Glastonbury Festival"], "Location": ["Somerset", "England"]},
+    "country": "GB",
+    "page_rank": 1,
+    "language": "en",
+    "classification": ["Entertainment"]
+  },
+  {
+    "article_url": "https://irishtimes.example/theatre-festival-plans",
+    "eng_title": "Dublin Theatre Festival plans expanded programme",
+    "summary": "The Dublin Theatre Festival will expand its programme next edition, though organisers say dates have not yet been confirmed.",
+    "key_points": ["Dates to be confirmed"],
+    "pub_date": "2026-10-02T09:20:00+00:00",
+    "entities": {"Event": ["Dublin Theatre Festival"], "Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://observador.example/lisbon-marathon-recap",
+    "eng_title": "Lisbon half marathon draws record field",
+    "summary": "The Lisbon half marathon took place on Sunday and drew a record crowd of runners across the Vasco da Gama bridge.",
+    "key_points": ["Record field"],
+    "pub_date": "2026-10-05T18:30:00+00:00",
+    "entities": {"Event": ["Lisbon Half Marathon"], "Location": ["Lisbon"]},
+    "country": "PT",
+    "page_rank": 4,
+    "language": "en",
+    "classification": ["Sports"]
+  },
+  {
+    "article_url": "https://siliconrepublic.example/dublin-tech-summit",
+    "eng_title": "Dublin Tech Summit eyes spring slot",
+    "summary": "Dublin Tech Summit is scheduled for spring 2027 at the Convention Centre Dublin, organisers confirmed, with exact dates to follow.",
+    "key_points": ["Convention Centre Dublin"],
+    "pub_date": "2026-10-01T13:05:00+00:00",
+    "entities": {"Event": ["Dublin Tech Summit"], "Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 5,
+    "language": "en",
+    "classification": ["Technology"]
+  },
+  {
+    "article_url": "",
+    "eng_title": "Untitled wire item",
+    "summary": "Dublin concert announced for November 20, 2026.",
+    "key_points": [],
+    "pub_date": "2026-10-05T12:00:00+00:00",
+    "entities": {"Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 9,
+    "language": "en",
+    "classification": ["Entertainment"]
+  },
+  {
+    "article_url": "https://hotpress.example/stadium-2031",
+    "eng_title": "Dublin stadium pencils in 2031 showcase",
+    "summary": "A showcase concert at the Aviva Stadium in Dublin is scheduled for August 28, 2031 under the venue's long-range plan.",
+    "key_points": ["Long-range plan"],
+    "pub_date": "2026-10-04T10:00:00+00:00",
+    "entities": {"Event": ["Aviva Showcase"], "Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 7,
+    "language": "en",
+    "classification": ["Entertainment"]
+  },
+  {
+    "article_url": "https://heraldscotland.example/edinburgh-fringe-2027",
+    "eng_title": "Edinburgh Festival Fringe sets August window",
+    "summary": "The Edinburgh Festival Fringe will run through August 2027, with the full programme due in the new year.",
+    "key_points": ["Programme due in the new year"],
+    "pub_date": "2026-10-02T15:00:00+00:00",
+    "entities": {"Event": ["Edinburgh Festival Fringe"], "Location": ["Edinburgh"]},
+    "country": "GB",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Culture"]
+  }
+]

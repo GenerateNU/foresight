@@ -1,7 +1,7 @@
 """example widget reference slice
 
 Revision ID: a1b2c3d4e5f6
-Revises: 72e850f4fa7b
+Revises: c3e9a1f4b6d8
 Create Date: 2026-10-06 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'a1b2c3d4e5f6'
-down_revision: Union[str, None] = '72e850f4fa7b'
+down_revision: Union[str, None] = 'c3e9a1f4b6d8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

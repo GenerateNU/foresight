@@ -1,0 +1,110 @@
+[
+  {
+    "article_url": "https://rte.example/forbidden-fruit-2027",
+    "eng_title": "Forbidden Fruit moves 2027 edition back a week",
+    "summary": "Organisers have revised the dates: the festival will now return to the Royal Hospital Kilmainham in Dublin on June 11-13, 2027. Existing tickets remain valid.",
+    "key_points": ["Dates moved back a week", "Tickets remain valid"],
+    "pub_date": "2026-10-06T14:20:00+00:00",
+    "entities": {"Event": ["Forbidden Fruit"], "Location": ["Dublin", "Ireland"], "Organization": ["Royal Hospital Kilmainham"]},
+    "country": "IE",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Entertainment"]
+  },
+  {
+    "article_url": "https://publico.example/web-summit-2026",
+    "eng_title": "Web Summit returns to Lisbon in November",
+    "summary": "Web Summit will be held at the Altice Arena in Lisbon from November 10-13, 2026, with organisers expecting another sell-out edition.",
+    "key_points": ["Altice Arena", "Four-day conference"],
+    "pub_date": "2026-10-04T11:00:00+00:00",
+    "entities": {"Event": ["Web Summit"], "Location": ["Lisbon", "Portugal"]},
+    "country": "PT",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Technology"]
+  },
+  {
+    "article_url": "https://independent.example/dublin-marathon-2026",
+    "eng_title": "Dublin Marathon route confirmed for October",
+    "summary": "The Dublin Marathon is scheduled for October 25, 2026, with organisers confirming a revised route through the city centre.",
+    "key_points": ["Revised city centre route"],
+    "pub_date": "2026-10-06T07:30:00+00:00",
+    "entities": {"Event": ["Dublin Marathon"], "Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Sports"]
+  },
+  {
+    "article_url": "https://rte.example/tradfest-2027",
+    "eng_title": "TradFest announces January dates for Temple Bar",
+    "summary": "TradFest will run January 20-24, 2027 across venues in Temple Bar, Dublin, organisers confirmed.",
+    "key_points": ["Temple Bar venues"],
+    "pub_date": "2026-10-06T11:00:00+00:00",
+    "entities": {"Event": ["TradFest"], "Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 4,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://irishtimes.example/tradfest-temple-bar",
+    "eng_title": "Temple Bar winter music festival confirms programme",
+    "summary": "The festival is scheduled for January 20-24, 2027 in Dublin, with more than 100 performances announced.",
+    "key_points": ["100 performances"],
+    "pub_date": "2026-10-06T12:30:00+00:00",
+    "entities": {"Event": ["TradFest"], "Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://publico.example/porto-sao-joao",
+    "eng_title": "Porto sets Sao Joao festival date",
+    "summary": "Porto's Sao Joao festival will take over the city on June 23, 2027, with fireworks over the Douro.",
+    "key_points": ["Fireworks over the Douro"],
+    "pub_date": "2026-10-06T13:00:00+00:00",
+    "entities": {"Event": ["Sao Joao"], "Location": ["Porto", "Portugal"]},
+    "country": "PT",
+    "page_rank": 4,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://heraldscotland.example/edinburgh-summit-q2",
+    "eng_title": "Edinburgh to host energy summit",
+    "summary": "An international energy summit is scheduled for Q2 2027 in Edinburgh, the organisers said, with the venue still to be confirmed.",
+    "key_points": ["Venue to be confirmed"],
+    "pub_date": "2026-10-06T15:45:00+00:00",
+    "entities": {"Event": ["International Energy Summit"], "Location": ["Edinburgh"]},
+    "country": "GB",
+    "page_rank": 5,
+    "language": "en",
+    "classification": ["Business"]
+  },
+  {
+    "article_url": "https://thejournal.example/weekend-listings",
+    "eng_title": "What's on in Dublin this weekend",
+    "summary": "A roundup of gigs and markets happening in Dublin this weekend, including a craft fair and two late-night sessions.",
+    "key_points": ["Craft fair", "Late-night sessions"],
+    "pub_date": "2026-10-06T16:00:00+00:00",
+    "entities": {"Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 8,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://observador.example/lisbon-council-budget",
+    "eng_title": "Lisbon council approves 2027 budget",
+    "summary": "Lisbon's council approved its 2027 budget on Tuesday, allocating funds across transport and housing.",
+    "key_points": ["Transport and housing"],
+    "pub_date": "2026-10-06T17:10:00+00:00",
+    "entities": {"Location": ["Lisbon"], "Organization": ["Lisbon City Council"]},
+    "country": "PT",
+    "page_rank": 4,
+    "language": "en",
+    "classification": ["Politics"]
+  }
+]
