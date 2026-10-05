@@ -1,0 +1,110 @@
+[
+  {
+    "article_url": "https://rte.example/forbidden-fruit-2027",
+    "eng_title": "Forbidden Fruit announces 2027 return to Kilmainham",
+    "summary": "Organisers have confirmed the festival will return to the Royal Hospital Kilmainham in Dublin on June 5-7, 2027. Tickets go on sale Friday at 9am.",
+    "key_points": ["Three-day festival", "Tickets on sale Friday"],
+    "pub_date": "2026-10-05T08:15:00+00:00",
+    "entities": {"Event": ["Forbidden Fruit"], "Location": ["Dublin", "Ireland"], "Organization": ["Royal Hospital Kilmainham"]},
+    "country": "IE",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Entertainment"]
+  },
+  {
+    "article_url": "https://publico.example/web-summit-2026",
+    "eng_title": "Web Summit returns to Lisbon in November",
+    "summary": "Web Summit will be held at the Altice Arena in Lisbon from November 10-13, 2026, with organisers expecting another sell-out edition.",
+    "key_points": ["Altice Arena", "Four-day conference"],
+    "pub_date": "2026-10-04T11:00:00+00:00",
+    "entities": {"Event": ["Web Summit"], "Location": ["Lisbon", "Portugal"]},
+    "country": "PT",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Technology"]
+  },
+  {
+    "article_url": "https://techcrunch.example/web-summit-lisbon-preview",
+    "eng_title": "What to expect from this year's Lisbon tech gathering",
+    "summary": "Running November 10-13, 2026 in Lisbon, the conference will host more than 70,000 attendees at the Altice Arena.",
+    "key_points": ["70,000 attendees expected"],
+    "pub_date": "2026-10-06T06:45:00+00:00",
+    "entities": {"Event": ["Web Summit"], "Location": ["Lisbon"]},
+    "country": "PT",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Technology"]
+  },
+  {
+    "article_url": "https://scotsman.example/hogmanay-2026",
+    "eng_title": "Edinburgh Hogmanay street party lineup revealed",
+    "summary": "Edinburgh's Hogmanay celebrations will run December 30, 2026 - January 1, 2027, with the street party returning to Princes Street.",
+    "key_points": ["Princes Street party", "Three nights"],
+    "pub_date": "2026-10-03T16:40:00+00:00",
+    "entities": {"Event": ["Edinburgh Hogmanay"], "Location": ["Edinburgh", "Scotland"]},
+    "country": "GB",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://independent.example/dublin-marathon-2026",
+    "eng_title": "Dublin Marathon route confirmed for October",
+    "summary": "The Dublin Marathon is scheduled for October 25, 2026, with organisers confirming a revised route through the city centre.",
+    "key_points": ["Revised city centre route"],
+    "pub_date": "2026-10-06T07:30:00+00:00",
+    "entities": {"Event": ["Dublin Marathon"], "Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Sports"]
+  },
+  {
+    "article_url": "https://timeout.example/lisbon-christmas-market",
+    "eng_title": "Lisbon Christmas market dates set",
+    "summary": "The Lisbon Christmas market will open December 1, 2026 and run through January 4, 2027 in Praca do Comercio.",
+    "key_points": ["Praca do Comercio"],
+    "pub_date": "2026-10-06T09:10:00+00:00",
+    "entities": {"Event": ["Lisbon Christmas Market"], "Location": ["Lisbon"]},
+    "country": "PT",
+    "page_rank": 5,
+    "language": "en",
+    "classification": ["Culture"]
+  },
+  {
+    "article_url": "https://bbc.example/manchester-gig",
+    "eng_title": "Arena tour adds Manchester night",
+    "summary": "The tour will add a Manchester date on March 14, 2027 at the Co-op Live arena.",
+    "key_points": [],
+    "pub_date": "2026-10-06T08:00:00+00:00",
+    "entities": {"Event": ["Arena Tour"], "Location": ["Manchester"]},
+    "country": "GB",
+    "page_rank": 2,
+    "language": "en",
+    "classification": ["Entertainment"]
+  },
+  {
+    "article_url": "https://thejournal.example/dublin-protest",
+    "eng_title": "Dublin city centre march planned",
+    "summary": "A march through Dublin city centre is being organised, with a date expected to be announced in the coming weeks.",
+    "key_points": ["Date expected soon"],
+    "pub_date": "2026-10-06T10:00:00+00:00",
+    "entities": {"Location": ["Dublin"]},
+    "country": "IE",
+    "page_rank": 6,
+    "language": "en",
+    "classification": ["Politics"]
+  },
+  {
+    "article_url": "https://scotsman.example/fringe-recap-2026",
+    "eng_title": "Edinburgh Fringe 2026 in numbers",
+    "summary": "This summer's Edinburgh Fringe concluded with record attendance. The festival was held across 26 days in August.",
+    "key_points": ["Record attendance"],
+    "pub_date": "2026-09-30T12:00:00+00:00",
+    "entities": {"Event": ["Edinburgh Festival Fringe"], "Location": ["Edinburgh"]},
+    "country": "GB",
+    "page_rank": 3,
+    "language": "en",
+    "classification": ["Culture"]
+  }
+]
