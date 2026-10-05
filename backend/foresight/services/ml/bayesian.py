@@ -3,7 +3,7 @@ from sklearn.linear_model import BayesianRidge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from services.ml.base import Model
+from foresight.services.ml.base import Model
 
 
 class BayesianModel(Model):

@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from services.ml.base import Model
-from services.ml.bayesian import BayesianModel
-from services.ml.neural_net import NNModel
-from services.ml.regression import GBMModel
-from services.ml.timeseries import TimeSeriesModel
+from foresight.services.ml.base import Model
+from foresight.services.ml.bayesian import BayesianModel
+from foresight.services.ml.neural_net import NNModel
+from foresight.services.ml.regression import GBMModel
+from foresight.services.ml.timeseries import TimeSeriesModel
 
 MODELS = [BayesianModel, NNModel, GBMModel, TimeSeriesModel]
 
@@ -64,6 +64,7 @@ def test_nn_has_no_interval(price_split):
     with pytest.raises(NotImplementedError):
         model.predict_interval(x_test)
     assert model.evaluate(x_test, y_test)["coverage"] is None
+
 
 class FixedModel(Model):
     """Returns preset predictions and a +/-5 band, recording the alpha asked for."""

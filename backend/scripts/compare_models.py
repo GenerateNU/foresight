@@ -3,19 +3,14 @@
 Run from backend/: uv run python scripts/compare_models.py
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
-
 from generate_mock_data import write_csv
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from services.ml.bayesian import BayesianModel
-from services.ml.neural_net import NNModel
-from services.ml.regression import GBMModel
-from services.ml.timeseries import TimeSeriesModel
+from foresight.services.ml.bayesian import BayesianModel
+from foresight.services.ml.neural_net import NNModel
+from foresight.services.ml.regression import GBMModel
+from foresight.services.ml.timeseries import TimeSeriesModel
 
 # Known only after the night, so never used to predict price.
 POST_STAY_COLUMNS = ["rooms_sold", "occupancy", "room_revenue"]

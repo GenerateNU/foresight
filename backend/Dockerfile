@@ -30,7 +30,7 @@ EXPOSE 8000
 
 # ---- dev -------------------------------------------------------------------
 # Adds dev dependencies (pytest, ruff, ...) and runs uvicorn with --reload.
-# docker-compose.yml bind-mounts ./backend/src over /app/src so edits are
+# docker-compose.yml bind-mounts ./backend/foresight over /app/foresight so edits are
 # picked up live. Selected via `build.target: dev` in docker-compose.yml.
 FROM base AS dev
 

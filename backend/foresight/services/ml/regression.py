@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from services.ml.base import Model
+from foresight.services.ml.base import Model
 
 
 class GBMModel(Model):

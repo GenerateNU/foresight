@@ -2,7 +2,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from services.ml.base import Model
+from foresight.services.ml.base import Model
 
 DEFAULTS = {
     "hidden_layer_sizes": (32, 16),
