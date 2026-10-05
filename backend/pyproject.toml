@@ -42,12 +42,12 @@ ml = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/foresight"]
+packages = ["foresight"]
 
 [tool.ruff]
 target-version = "py312"
-src = ["src"]
-exclude = ["src/foresight/database/migrations"]
+src = ["."]
+exclude = ["foresight/database/migrations"]
 line-length = 88
 
 [tool.ruff.lint]
@@ -69,4 +69,4 @@ known-first-party = ["foresight"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src", "scripts"]
+pythonpath = ["scripts"]

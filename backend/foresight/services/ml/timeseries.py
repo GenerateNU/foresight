@@ -1,6 +1,6 @@
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-from services.ml.base import Model
+from foresight.services.ml.base import Model
 
 
 class TimeSeriesModel(Model):

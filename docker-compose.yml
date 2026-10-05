@@ -27,7 +27,7 @@ services:
     environment:
       DATABASE_URL: "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
     volumes:
-      - ./backend/src:/app/src
+      - ./backend/foresight:/app/foresight
       - ./backend/alembic.ini:/app/alembic.ini
     depends_on:
       db:
@@ -49,9 +49,9 @@ services:
       DATABASE_URL: "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
     volumes:
       # Mount source code for hot reload. The `foresight` package is installed
-      # editable in the image, so edits under ./backend/src/foresight are
+      # editable in the image, so edits under ./backend/foresight are
       # picked up live by uvicorn --reload.
-      - ./backend/src:/app/src
+      - ./backend/foresight:/app/foresight
       - ./backend/alembic.ini:/app/alembic.ini
     depends_on:
       db:
