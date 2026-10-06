@@ -14,6 +14,7 @@ dependencies = [
     "alembic>=1.15",
     "asyncpg>=0.30",
     "pydantic-settings>=2.9",
+    "scalar-fastapi>=1.4",
     "python-dotenv>=1.1",
     "pandas>=2.2",
     "psycopg2-binary>=2.9",
