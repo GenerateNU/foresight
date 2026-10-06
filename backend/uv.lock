@@ -336,6 +336,7 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
+    { name = "scikit-learn" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -367,6 +368,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.9" },
     { name = "python-dotenv", specifier = ">=1.1" },
+    { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
