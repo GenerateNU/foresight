@@ -225,7 +225,7 @@ class NormalizedEvent:
             title=self.title, city=self.city, start_local_date=self.start_local_date
         )
 
-    def mas_row(self) -> dict[str, Any]:
+    def as_row(self) -> dict[str, Any]:
         """Column values for the canonical `events` row."""
         return {
             "dedupe_key": self.dedupe_key,
