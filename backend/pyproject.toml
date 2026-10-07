@@ -18,6 +18,7 @@ dependencies = [
     "pandas>=2.2",
     "psycopg2-binary>=2.9",
     "httpx>=0.28",
+    "scikit-learn>=1.9.1",
 ]
 
 [dependency-groups]
