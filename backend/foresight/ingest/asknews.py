@@ -116,10 +116,6 @@ class CityTarget:
     aliases: tuple[str, ...] = ()
 
     @property
-    def slug(self) -> str:
-        return slugify_city(self.name)
-
-    @property
     def search_terms(self) -> tuple[str, ...]:
         return (self.name, *self.aliases)
 
@@ -132,17 +128,12 @@ class SearchPlan:
     countries: tuple[str, ...] = ()
 
 
-def plan_searches(
-    cities: Sequence[CityTarget], queries: Sequence[str] | None = None
-) -> tuple[SearchPlan, ...]:
-    """One scoped search per city, unless explicit queries are supplied.
+def plan_searches(cities: Sequence[CityTarget]) -> tuple[SearchPlan, ...]:
+    """One scoped search per city.
 
     Scoping at the query is what makes the spend worthwhile -- AskNews bills
-    per search, so a global query that we then discard on city is paid-for
-    noise.
+    per search, so a global query we then discard on city is paid-for noise.
     """
-    if queries is not None:
-        return tuple(SearchPlan(query) for query in queries)
     return tuple(
         SearchPlan(
             f"{city.name} {EVENT_TERMS}",
@@ -345,11 +336,7 @@ def _published_on(article: dict[str, Any]) -> datetime | None:
 
 
 def extract_event(
-    article: dict[str, Any],
-    cities: Sequence[CityTarget],
-    *,
-    today: date,
-    horizon_days: int = MAX_LOOKAHEAD_DAYS,
+    article: dict[str, Any], cities: Sequence[CityTarget], *, today: date
 ) -> NormalizedEvent | RejectReason:
     """One article to one event, or the reason it did not make it."""
     url = str(article.get("article_url") or "").strip()
@@ -379,7 +366,7 @@ def extract_event(
     # An event running across today still prices tonight, so test the end.
     if resolved.end < today:
         return RejectReason.EVENT_ALREADY_PAST
-    if (resolved.start - today).days > horizon_days:
+    if (resolved.start - today).days > MAX_LOOKAHEAD_DAYS:
         return RejectReason.BEYOND_HORIZON
 
     entity_titles = _entity_list(article, "Event")
@@ -419,7 +406,6 @@ def extract_batch(
     cities: Sequence[CityTarget],
     *,
     today: date,
-    horizon_days: int = MAX_LOOKAHEAD_DAYS,
     report: IngestReport | None = None,
 ) -> tuple[list[NormalizedEvent], IngestReport]:
     """Extract, then collapse same-event sightings down to the best one.
@@ -432,7 +418,7 @@ def extract_batch(
 
     for article in articles:
         report.articles_seen += 1
-        outcome = extract_event(article, cities, today=today, horizon_days=horizon_days)
+        outcome = extract_event(article, cities, today=today)
         if isinstance(outcome, RejectReason):
             report.rejected[outcome.value] += 1
             continue
@@ -458,20 +444,18 @@ async def collect_events(
     cities: Sequence[CityTarget],
     *,
     today: date,
-    queries: Sequence[str] | None = None,
     articles_per_query: int = 50,
     hours_back: int = 24,
-    horizon_days: int = MAX_LOOKAHEAD_DAYS,
 ) -> tuple[list[NormalizedEvent], IngestReport]:
     """Run one scoped search per city and extract a single clean batch.
 
     This is the whole call a scheduled worker makes. `hours_back` is the
     scheduling knob: an hourly job overlaps with 24, a catch-up run after an
-    outage uses more. Pass `queries` to override the per-city plan.
+    outage uses more.
     """
     report = IngestReport()
     collected: list[dict[str, Any]] = []
-    for plan in plan_searches(cities, queries):
+    for plan in plan_searches(cities):
         report.queries_run += 1
         params: dict[str, Any] = {
             "query": plan.query,
@@ -483,6 +467,4 @@ async def collect_events(
         if plan.countries:
             params["countries"] = list(plan.countries)
         collected.extend(await client.search_news(**params))
-    return extract_batch(
-        collected, cities, today=today, horizon_days=horizon_days, report=report
-    )
+    return extract_batch(collected, cities, today=today, report=report)

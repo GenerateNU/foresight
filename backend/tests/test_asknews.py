@@ -13,7 +13,6 @@ from foresight.ingest.asknews import (
     AskNewsClient,
     CityTarget,
     RejectReason,
-    SearchPlan,
     collect_events,
     extract_batch,
     extract_event,
@@ -400,14 +399,12 @@ async def test_collect_events_is_one_call_a_scheduled_worker_can_make() -> None:
         return httpx.Response(200, json={"as_dicts": [article()]})
 
     client, calls = build_client(handler)
-    events, report = await collect_events(
-        client, CITIES, today=TODAY, queries=("a", "b"), hours_back=6
-    )
+    events, report = await collect_events(client, CITIES, today=TODAY, hours_back=6)
 
-    assert calls["search"] == 2
-    assert queries_seen == ["a", "b"]
+    assert calls["search"] == len(CITIES)
+    assert [q.split()[0] for q in queries_seen] == ["Dublin", "Lisbon"]
     assert hours_seen == ["6", "6"]
-    assert report.queries_run == 2
+    assert report.queries_run == len(CITIES)
     assert report.articles_seen == 2
     # The same article from both queries is one event, not two.
     assert len(events) == 1
@@ -420,12 +417,6 @@ def test_each_city_gets_its_own_scoped_search() -> None:
     assert [p.countries for p in plans] == [("IE",), ("PT",)]
     assert all(p.query.startswith(c.name) for p, c in zip(plans, CITIES, strict=True))
     assert all("festival" in p.query for p in plans)
-
-
-def test_explicit_queries_override_the_per_city_plan() -> None:
-    plans = plan_searches(CITIES, ["anything"])
-
-    assert plans == (SearchPlan("anything"),)
 
 
 def test_a_city_without_a_country_is_not_country_filtered() -> None:
