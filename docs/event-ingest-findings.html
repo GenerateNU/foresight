@@ -262,8 +262,7 @@ longitude -71.0623119</pre></div>
   <section aria-labelledby="repro">
     <h2 id="repro">Reproduce</h2>
     <p>From <code>backend/</code>, with <code>PREDICTHQ_TOKEN</code> set in <code>.env</code> and the database running:</p>
-<pre class="cmd">uv run alembic upgrade head
-uv run python -m foresight.ingest.run --source predicthq --since 90d --lat 53.3498 --lon -6.2603 --city Dublin --report
+<pre class="cmd">uv run python -m foresight.ingest.run --source predicthq --since 90d --lat 53.3498 --lon -6.2603 --city Dublin --report
 uv run python -m foresight.ingest.run --source predicthq --since 90d --lat 42.3601 --lon -71.0589 --city Boston --report
 uv run python scripts/forecast_events.py --city Dublin --days 21
 uv run pytest</pre>
