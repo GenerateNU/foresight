@@ -13,8 +13,6 @@ flowchart LR
     NE --> R[ingest/repository.py<br/>upsert_event]
     R --> EV[(events)]
     R --> OB[(event_observations)]
-    EV --> F[services/features/events.py]
-    F --> M[pricing models]
 ```
 
 ## The contract
@@ -81,14 +79,14 @@ parser bug be fixed and replayed.
 
 ## Reaching the model
 
-`services/features/events.py` turns stored events into the per-night
-`expected_attendance` feature. An event counts only if it is day-precise, not
-withdrawn, and carries an attendance estimate; multi-day events spread evenly
-across their nights, weighted by confidence.
+Nothing reads `events` yet. The feature layer that turned stored events into a
+per-night `expected_attendance` input was removed in `69d4ec9`, so ingestion
+currently ends at the table.
 
-So **AskNews events currently contribute nothing to pricing** — they never
-carry attendance. They are stored and deduped against PredictHQ, waiting to be
-corroborated.
+Worth knowing for whoever rebuilds it: AskNews never sets
+`expected_attendance`, so text-extracted events carry no crowd size of their
+own. They are useful as early signal and as something for PredictHQ to
+corroborate, not as a demand number.
 
 ## Three runs
 
@@ -162,12 +160,10 @@ Under `backend/`.
 | `foresight/ingest/textdates.py` | Prose dates to a span plus the precision achieved. |
 | `foresight/ingest/repository.py` | `upsert_event` — merge onto `events`, append to `event_observations`. |
 | `foresight/ingest/run.py` | Ingest CLI (`python -m foresight.ingest.run`). PredictHQ today. |
-| `foresight/services/features/events.py` | Stored events to the per-night attendance feature. |
 | `scripts/run_asknews.py` | AskNews runner with the cleaning report. |
-| `scripts/forecast_events.py` | Prices nights using real stored events. |
-| `database/migrations/versions/b7d41e0c9a52…` | Creates `events` + `event_observations`. |
-| `database/migrations/versions/c3e9a1f4b6d8…` | Adds `status` to observations. |
-| `tests/` | `test_normalize`, `test_predicthq`, `test_asknews`, `test_textdates`, `test_repository`, `test_event_features`, `test_ingest_run`. |
+| `foresight/database/migrations/…b7d41e0c9a52…` | Creates `events` + `event_observations`. |
+| `foresight/database/migrations/…c3e9a1f4b6d8…` | Adds `status` to observations. |
+| `tests/` | `test_normalize`, `test_predicthq`, `test_asknews`, `test_textdates`, `test_repository`, `test_ingest_run`. |
 | `tests/fixtures/asknews/run_{1,2,3}.json` | The three batches above. Hand-built to the documented AskNews schema, not recorded responses. |
 
 ## How to test it
@@ -181,9 +177,9 @@ cd backend && uv run python scripts/run_asknews.py --dry-run
 Prints the cleaning report and every extracted event, writes nothing. Use this
 while changing extraction. Drop `--dry-run` to persist (needs Postgres).
 
-**Tests:** `just test` — 132 passing. `test_repository.py` and
-`test_event_features.py` need Postgres via `just db-up`; without it they error
-rather than skip, which looks alarming and is not.
+**Tests:** `just test` — 122 passing. `test_repository.py` needs Postgres via
+`just db-up`; without it those tests error rather than skip, which looks
+alarming and is not.
 
 **Live AskNews** needs `ASKNEWS_CLIENT_ID` / `ASKNEWS_CLIENT_SECRET` in the
 repo-root `.env` (OAuth2 client credentials, not an API key):
@@ -225,10 +221,10 @@ Re-running an ingest must not grow `event_observations`.
   includes historical events and film titles. City matching accepts a bare
   mention in the body, which misfiles touring events.
 - **`confidence` measures extraction certainty, not event-ness.** A live run
-  scored "midterms" at 0.95. Not safe as a quality filter — and
-  `nightly_attendance` multiplies by it, so this must be fixed before AskNews
-  events ever carry attendance.
+  scored "midterms" at 0.95. Not safe as a quality filter. The removed feature
+  layer weighted attendance by it, so fix this before anything reads it again.
 - Two entry points: `run.py` (PredictHQ) and `scripts/run_asknews.py`. Both
   support `--dry-run`; folding AskNews in as `--source asknews` would collapse
   them.
 - Rejected articles are counted, not persisted. No quarantine table.
+- Nothing consumes `events` since `69d4ec9`.
