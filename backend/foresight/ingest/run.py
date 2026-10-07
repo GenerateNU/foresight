@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from foresight.ingest.normalize import NormalizedEvent
     from foresight.ingest.predicthq import Rejected
 
 log = logging.getLogger("foresight.ingest")
@@ -61,11 +62,18 @@ class RunReport:
     rejected: list[Rejected] = field(default_factory=list)
     events_by_status: dict[str, int] = field(default_factory=dict)
     observations_by_source: dict[str, int] = field(default_factory=dict)
+    events: list[NormalizedEvent] = field(default_factory=list)
+    dry_run: bool = False
 
     def count(self, outcome: Outcome) -> int:
         return self.outcomes.get(outcome, 0)
 
     def summary(self) -> str:
+        if self.dry_run:
+            return (
+                f"fetched={self.fetched} rejected={len(self.rejected)} "
+                "(dry run, nothing written)"
+            )
         return (
             f"fetched={self.fetched} new={self.count(Outcome.NEW)} "
             f"updated={self.count(Outcome.UPDATED)} "
@@ -86,12 +94,22 @@ class RunReport:
             *(f"  {outcome.value:<11}{self.count(outcome):>4}" for outcome in Outcome),
             f"  {'rejected':<11}{len(self.rejected):>4}",
             "",
-            f"  {slugify_city(m.city)} now holds "
-            f"{sum(self.events_by_status.values())} events "
-            f"({_breakdown(self.events_by_status)})",
-            f"  backed by {sum(self.observations_by_source.values())} observations "
-            f"({_breakdown(self.observations_by_source)})",
         ]
+        if self.dry_run:
+            lines.append("  nothing written (dry run); fetched events:")
+            lines += [
+                f"    {e.start_local_date} .. {e.end_local_date}  "
+                f"{e.city_slug:<12} {e.title}"
+                for e in self.events
+            ]
+        else:
+            lines += [
+                f"  {slugify_city(m.city)} now holds "
+                f"{sum(self.events_by_status.values())} events "
+                f"({_breakdown(self.events_by_status)})",
+                f"  backed by {sum(self.observations_by_source.values())} "
+                f"observations ({_breakdown(self.observations_by_source)})",
+            ]
         if self.rejected:
             lines += ["", "  rejected records:"]
             lines += [f"    {r.source_ref:<22} {r.reason}" for r in self.rejected]
@@ -133,6 +151,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--city", help="market city (no --hotel-id)")
     parser.add_argument("--radius", default="10km", help="e.g. 10km, 5mi")
     parser.add_argument("--report", action="store_true", help="print a full run report")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="fetch and print, without touching the database",
+    )
     return parser
 
 
@@ -177,6 +200,7 @@ async def run(args: argparse.Namespace) -> RunReport:
             market=market,
             radius=args.radius,
             since=args.since,
+            dry_run=args.dry_run,
         )
 
         result = await predicthq.fetch_events(
@@ -189,6 +213,9 @@ async def run(args: argparse.Namespace) -> RunReport:
         )
         report.fetched = result.fetched
         report.rejected = result.rejected
+        report.events = result.events
+        if args.dry_run:
+            return report
 
         for event in result.events:
             outcome = await upsert_event(session, event)
@@ -229,7 +256,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("PREDICTHQ_TOKEN is not set; add it to .env")
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-    _migrate()
+    if not (args.dry_run and args.hotel_id is None):
+        _migrate()
     # DEBUG=true turns on SQL echo, which would bury the report.
     engine.echo = False
     asyncio.run(_main(args))

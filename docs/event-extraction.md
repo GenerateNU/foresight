@@ -242,8 +242,12 @@ Needs `PREDICTHQ_TOKEN`.
 ```bash
 cd backend && uv run python -m foresight.ingest.run \
     --source predicthq --since 7d --city Dublin \
-    --lat 53.3498 --lon -6.2603 --report
+    --lat 53.3498 --lon -6.2603 --report --dry-run
 ```
+
+`--dry-run` fetches and prints without writing. With `--lat/--lon/--city` it
+needs no database at all, and skips the automatic migration too. Drop the flag
+to persist. (`--hotel-id` still needs the database, to look the hotel up.)
 
 ### Checking what landed
 
