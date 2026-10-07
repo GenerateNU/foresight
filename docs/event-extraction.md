@@ -77,17 +77,6 @@ PredictHQ does, not to outvote it once it arrives.
 source's raw sighting verbatim, which makes re-runs idempotent and lets a
 parser bug be fixed and replayed.
 
-## Reaching the model
-
-Nothing reads `events` yet. The feature layer that turned stored events into a
-per-night `expected_attendance` input was removed in `69d4ec9`, so ingestion
-currently ends at the table.
-
-Worth knowing for whoever rebuilds it: AskNews never sets
-`expected_attendance`, so text-extracted events carry no crowd size of their
-own. They are useful as early signal and as something for PredictHQ to
-corroborate, not as a demand number.
-
 ## Three runs
 
 Three recorded article batches replayed through the real upsert against a local
@@ -107,18 +96,6 @@ Postgres. Each batch is a later poll of an overlapping window.
 | **rows written** | 5 new | 2 new, 3 unchanged | 2 new, 1 updated, 2 unchanged |
 
 28 articles in, **13 rejected**, 9 distinct events out.
-
-Each run shows one thing:
-
-- **Run 1** — every reject reason firing at once on a cold table.
-- **Run 2** — an overlapping re-poll. Three known events report `unchanged`,
-  and a wire-copy duplicate collapses inside the batch.
-- **Run 3** — a festival moved its dates. Because `dedupe_key` contains the
-  start date, that lands as `updated` on the existing row rather than a second
-  row: Forbidden Fruit went 2027-06-05 → 2027-06-11.
-
-Running all three again produces **0 new** and leaves the table at 9 events and
-9 observations. That is the idempotency check.
 
 ```
 2026-10-25  dublin     DAY      0.95  PROVISIONAL  Dublin Marathon
@@ -180,35 +157,23 @@ extracted (nothing written)
     2027-08-01 .. 2027-08-31  edinburgh  month    conf 0.80  Edinburgh Festival Fringe
 ```
 
-Without `--dry-run` the last block is replaced by the upsert outcome
-(`new 5 / updated 0 / unchanged 0`), and the run ends with the stored table.
-
-PredictHQ, `python -m foresight.ingest.run --source predicthq --report`:
+PredictHQ, `python -m foresight.ingest.run --source predicthq --since 7d
+--city Dublin --lat 53.3498 --lon -6.2603 --report` — a real run:
 
 ```
 predicthq ingest | Dublin | 10km around 53.3498, -6.2603
-revised upstream since 2026-09-29 12:00 UTC
+revised upstream since 2026-09-30 22:54 UTC
 
-  fetched      42
+  fetched     662
   ---------------
-  new          31
-  updated       6
-  unchanged     3
-  rejected      2
+  new         636
+  updated      19
+  unchanged     7
+  rejected      0
 
-  dublin now holds 40 events (38 active, 2 deleted)
-  backed by 43 observations (3 asknews, 40 predicthq)
-
-  rejected records:
-    phq-aa11               missing field 'start'
-    phq-bb22               end precedes start
+  dublin now holds 640 events (619 active, 14 deleted, 7 provisional)
+  backed by 666 observations (4 asknews, 662 predicthq)
 ```
-
-Counts here are illustrative — nobody has run this against a live PredictHQ
-token yet, so the shape is real but the numbers are not. Note the two reports
-differ on purpose: AskNews tallies rejects *by reason*, because inference fails
-in categories; PredictHQ lists them *individually*, because a structured feed
-should only ever reject the odd malformed record.
 
 ## New files
 
