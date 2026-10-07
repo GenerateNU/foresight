@@ -13,8 +13,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with the app's database URL
-# Convert async URL to sync for Alembic
+# Override sqlalchemy.url with the app's database URL. Online mode uses an
+# async engine, so the +asyncpg driver is kept as-is here; offline mode strips
+# it below since it renders SQL without a live async connection.
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 target_metadata = Base.metadata
@@ -22,7 +23,8 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
+    # Offline mode emits SQL without connecting, so drop the async driver.
+    url = config.get_main_option("sqlalchemy.url").replace("+asyncpg", "")
     context.configure(
         url=url,
         target_metadata=target_metadata,

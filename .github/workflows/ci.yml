@@ -104,6 +104,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      - name: Import smoke test
+        # Fails loudly on SyntaxError / import-time breakage (e.g. a bad
+        # config.py) without needing a database, before lint/format run.
+        run: uv run python -c "import foresight.config"
+
       - name: Ruff lint
         run: uv run ruff check foresight/
 
