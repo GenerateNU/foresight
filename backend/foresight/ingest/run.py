@@ -14,8 +14,11 @@ import re
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import func, select
 
 from foresight.config import settings
@@ -35,6 +38,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("foresight.ingest")
 
+_MIGRATIONS = Path(__file__).resolve().parents[1] / "database" / "migrations"
 _SPAN = re.compile(r"^(\d+)([hdw])$")
 _UNITS = {"h": "hours", "d": "days", "w": "weeks"}
 
@@ -197,6 +201,17 @@ async def run(args: argparse.Namespace) -> RunReport:
     return report
 
 
+def _migrate() -> None:
+    """Bring the schema up to date, so a fresh pull needs no manual step.
+
+    A no-op when already at head. No ini file is passed, so Alembic leaves this
+    process's logging alone.
+    """
+    config = Config()
+    config.set_main_option("script_location", str(_MIGRATIONS))
+    command.upgrade(config, "head")
+
+
 async def _main(args: argparse.Namespace) -> None:
     try:
         report = await run(args)
@@ -214,6 +229,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("PREDICTHQ_TOKEN is not set; add it to .env")
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+    _migrate()
     # DEBUG=true turns on SQL echo, which would bury the report.
     engine.echo = False
     asyncio.run(_main(args))
