@@ -18,6 +18,7 @@ dependencies = [
     "pandas>=2.2",
     "psycopg2-binary>=2.9",
     "scikit-learn>=1.9.1",
+    "httpx>=0.28",
 ]
 
 [dependency-groups]
@@ -29,7 +30,6 @@ dev = [
     "pre-commit>=4.2",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
-    "httpx>=0.28",
 ]
 ml = [
     "matplotlib>=3.11.2",
