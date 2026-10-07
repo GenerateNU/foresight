@@ -1,3 +1,5 @@
+set windows-shell := ["C:\\Program Files\\Git\\bin\\sh.exe", "-c"]
+
 # Default recipe
 default:
     @just --list
@@ -26,9 +28,9 @@ dev:
 destroy:
     docker compose down
 
-# Start only the database
+# Start only the database, with migrations applied
 db-up:
-    docker compose up -d db
+    docker compose up -d db migrate
 
 # Stop only the database
 db-down:

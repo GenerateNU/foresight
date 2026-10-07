@@ -142,6 +142,10 @@ class EventObservation(Base):
     source: Mapped[Source] = mapped_column(SAEnum(Source, native_enum=False, length=40))
     source_ref: Mapped[str] = mapped_column(String(600))
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # What this sighting reported; null only for rows predating the column.
+    status: Mapped[EventStatus | None] = mapped_column(
+        SAEnum(EventStatus, native_enum=False, length=20)
+    )
 
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
 
