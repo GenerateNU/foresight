@@ -100,11 +100,29 @@ async def run_live(
         )
 
 
+def describe(event: NormalizedEvent | Event) -> str:
+    """Same fields on the extracted object and the stored row."""
+    return (
+        f"    {event.start_local_date} .. {event.end_local_date}  "
+        f"{event.city_slug:<10} {event.date_precision:<8} "
+        f"conf {event.confidence:.2f}  {event.title}"
+    )
+
+
 def print_run(
-    label: str, source: str, report: IngestReport, counts: Counter[Outcome]
+    label: str,
+    source: str,
+    report: IngestReport,
+    events: Sequence[NormalizedEvent],
+    counts: Counter[Outcome] | None,
 ) -> None:
     print(f"\n{'=' * 68}\n{label}  --  {source}\n{'=' * 68}")
     print(report.render())
+    if counts is None:
+        print("extracted (nothing written)")
+        for event in events:
+            print(describe(event))
+        return
     print("written to the events table")
     for outcome in Outcome:
         print(f"    {outcome.value:<22} {counts[outcome]}")
@@ -116,6 +134,11 @@ async def main() -> int:
         "--live", action="store_true", help="call AskNews instead of replaying"
     )
     parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print what was extracted instead of writing to the database",
+    )
     parser.add_argument("--hours-back", type=int, default=24)
     parser.add_argument("--articles-per-query", type=int, default=50)
     parser.add_argument(
@@ -143,7 +166,8 @@ async def main() -> int:
             report.queries_run = 1
             source = f"replay {path.name}"
 
-        print_run(f"RUN {index}", source, report, await persist(events))
+        counts = None if args.dry_run else await persist(events)
+        print_run(f"RUN {index}", source, report, events, counts)
 
         totals.articles_seen += report.articles_seen
         totals.events_kept += report.events_kept
@@ -154,15 +178,14 @@ async def main() -> int:
     print(f"articles rejected  {totals.articles_rejected}")
     for reason, count in totals.rejected.most_common():
         print(f"    {reason:<22} {count}")
+    if args.dry_run:
+        return 0
+
     rows, observations = await stored_events()
     print(f"rows in events     {len(rows)}")
     print(f"rows in observations {observations}")
     for event in rows:
-        print(
-            f"    {event.start_local_date} .. {event.end_local_date}  "
-            f"{event.city_slug:<10} {event.date_precision:<8} "
-            f"conf {event.confidence:.2f}  {event.title}"
-        )
+        print(describe(event))
     await engine.dispose()
     return 0
 
