@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
+        # Root .env is the one docker-compose reads; backend/.env overrides it.
         env_file=("../.env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
@@ -18,8 +19,9 @@ class Settings(BaseSettings):
     )
 
     # External event sources
-    asknews_client_id: str | None = None
-    asknews_client_secret: str | None = None
+    predicthq_token: str = ""
+    asknews_client_id: str = ""
+    asknews_client_secret: str = ""
 
 
 settings = Settings()
