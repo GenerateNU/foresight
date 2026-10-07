@@ -1,6 +1,0 @@
-boston|ACTIVE|2552
-boston|DELETED|252
-boston|PROVISIONAL|60
-dublin|ACTIVE|1156
-dublin|DELETED|58
-dublin|PROVISIONAL|23
