@@ -27,13 +27,21 @@ COMPETITORS = {
 COMPETITOR_REF = np.mean(list(COMPETITORS.values()))
 
 
-def generate(seed: int = 9, start: str = "2024-01-01", days: int = 730) -> pd.DataFrame:
+def generate(
+    seed: int = 9,
+    start: str = "2024-01-01",
+    days: int = 730,
+    expected_attendance: np.ndarray | None = None,
+) -> pd.DataFrame:
     """Generates one row per room type per night.
 
     Args:
         seed (int): Random seed for reproducible data.
         start (str): First stay date, as YYYY-MM-DD.
         days (int): Number of nights to generate.
+        expected_attendance (np.ndarray | None): Per-night event attendance to
+            use instead of random events; the rest of the data responds to it.
+            Random draws are unchanged, so two calls differ only by its effect.
 
     Returns:
         pd.DataFrame: Mock nightly data, sorted by stay_date then room_type.
@@ -56,7 +64,9 @@ def generate(seed: int = 9, start: str = "2024-01-01", days: int = 730) -> pd.Da
 
     # Events: total expected attendance of the day's events, ~10% of days.
     has_event = rng.random(days) < 0.10
-    expected_attendance = np.where(has_event, rng.lognormal(9.5, 0.7, days), 0)
+    random_attendance = np.where(has_event, rng.lognormal(9.5, 0.7, days), 0)
+    if expected_attendance is None:
+        expected_attendance = random_attendance
 
     demand = np.clip(
         0.55
