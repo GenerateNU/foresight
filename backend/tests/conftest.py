@@ -2,7 +2,6 @@
 
 import pandas as pd
 import pytest
-
 from generate_mock_data import write_csv
 
 # Known only after the night, so never used to predict price.

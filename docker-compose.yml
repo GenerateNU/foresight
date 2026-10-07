@@ -1,3 +1,7 @@
+# Single source of truth for the in-cluster database URL, shared by the
+# `migrate` and `backend` services so they can never drift apart.
+x-database-url: &database-url "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
+
 services:
   db:
     image: postgres:16-alpine
@@ -25,7 +29,7 @@ services:
       dockerfile: Dockerfile
       target: dev
     environment:
-      DATABASE_URL: "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
+      DATABASE_URL: *database-url
     volumes:
       - ./backend/foresight:/app/foresight
       - ./backend/alembic.ini:/app/alembic.ini
@@ -46,7 +50,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
+      DATABASE_URL: *database-url
     volumes:
       # Mount source code for hot reload. The `foresight` package is installed
       # editable in the image, so edits under ./backend/foresight are
