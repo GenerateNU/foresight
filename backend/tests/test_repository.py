@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from foresight.config import settings
@@ -31,6 +31,10 @@ async def session() -> AsyncIterator[AsyncSession]:
     async with AsyncSession(
         bind=conn, join_transaction_mode="create_savepoint"
     ) as session:
+        # Counts below assume an empty table; real ingested rows come back on
+        # rollback.
+        await session.execute(delete(EventObservation))
+        await session.execute(delete(Event))
         yield session
     await trans.rollback()
     await conn.close()
@@ -207,3 +211,63 @@ async def test_observation_payload_tracks_the_latest_revision(
     ).one()
     assert obs.payload == {"id": "phq-test-1", "rev": 2}
     assert obs.source_updated_at == updated_at
+
+
+async def test_deleted_duplicate_stays_harmless_on_every_rerun(
+    session: AsyncSession,
+) -> None:
+    live = _phq()
+    duplicate = _phq(source_ref="phq-test-dupe", status=EventStatus.DELETED)
+
+    for _ in range(3):
+        assert await upsert_event(session, live) in {Outcome.NEW, Outcome.UNCHANGED}
+        assert await upsert_event(session, duplicate) is Outcome.UNCHANGED
+        assert (await _only_event(session)).status is EventStatus.ACTIVE
+
+
+async def test_live_duplicates_settle_on_the_latest_revision(
+    session: AsyncSession,
+) -> None:
+    older = _phq(
+        expected_attendance=210,
+        source_updated_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    newer = _phq(
+        source_ref="phq-test-dupe",
+        expected_attendance=211,
+        source_updated_at=datetime(2026, 10, 5, tzinfo=UTC),
+    )
+    await upsert_event(session, older)
+    assert await upsert_event(session, newer) is Outcome.UPDATED
+
+    # A rerun must not flip the row back and forth between the two listings.
+    assert await upsert_event(session, older) is Outcome.UNCHANGED
+    assert await upsert_event(session, newer) is Outcome.UNCHANGED
+    assert (await _only_event(session)).expected_attendance == 211
+
+
+async def test_live_listing_restores_an_event_its_duplicate_deleted(
+    session: AsyncSession,
+) -> None:
+    # As left behind before sightings recorded their status.
+    await upsert_event(session, _phq(source_ref="phq-test-dupe"))
+    await upsert_event(session, _phq())
+    await session.execute(EventObservation.__table__.update().values(status=None))
+    await session.execute(Event.__table__.update().values(status=EventStatus.DELETED))
+
+    await upsert_event(
+        session, _phq(source_ref="phq-test-dupe", status=EventStatus.DELETED)
+    )
+    assert await upsert_event(session, _phq()) is Outcome.UPDATED
+    assert (await _only_event(session)).status is EventStatus.ACTIVE
+
+
+async def test_structured_deletion_outranks_a_live_article(
+    session: AsyncSession,
+) -> None:
+    await upsert_event(session, _phq())
+    await upsert_event(session, _news())
+
+    deleted = _phq(status=EventStatus.DELETED)
+    assert await upsert_event(session, deleted) is Outcome.UPDATED
+    assert (await _only_event(session)).status is EventStatus.DELETED
