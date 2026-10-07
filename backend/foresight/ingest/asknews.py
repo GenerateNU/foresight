@@ -50,13 +50,12 @@ DEFAULT_API_BASE_URL = "https://api.asknews.app"
 DEFAULT_TOKEN_URL = "https://auth.asknews.app/oauth2/token"
 SEARCH_PATH = "/v1/news/search"
 
-# Phrasings that actually precede a date in an announcement. Broader queries
-# return politics and sport results that never survive extraction.
-DEFAULT_QUERIES = (
-    "festival announces dates lineup tickets",
-    "concert tour date announced tickets on sale",
-    "conference convention summit scheduled venue",
-    "parade marathon street festival city centre",
+# Event-shaped phrasing, paired with a city at query time. Searching these
+# terms globally returns mostly events in cities we do not sell rooms in: an
+# unscoped run rejected 188 of 198 articles on city alone.
+EVENT_TERMS = (
+    "festival concert conference expo parade marathon "
+    "announces dates lineup tickets venue"
 )
 
 _MAX_ATTEMPTS = 3
@@ -123,6 +122,34 @@ class CityTarget:
     @property
     def search_terms(self) -> tuple[str, ...]:
         return (self.name, *self.aliases)
+
+
+@dataclass(frozen=True, slots=True)
+class SearchPlan:
+    """One search call: what to ask for, and where to allow it from."""
+
+    query: str
+    countries: tuple[str, ...] = ()
+
+
+def plan_searches(
+    cities: Sequence[CityTarget], queries: Sequence[str] | None = None
+) -> tuple[SearchPlan, ...]:
+    """One scoped search per city, unless explicit queries are supplied.
+
+    Scoping at the query is what makes the spend worthwhile -- AskNews bills
+    per search, so a global query that we then discard on city is paid-for
+    noise.
+    """
+    if queries is not None:
+        return tuple(SearchPlan(query) for query in queries)
+    return tuple(
+        SearchPlan(
+            f"{city.name} {EVENT_TERMS}",
+            (city.country,) if city.country else (),
+        )
+        for city in cities
+    )
 
 
 @dataclass(slots=True)
@@ -431,31 +458,31 @@ async def collect_events(
     cities: Sequence[CityTarget],
     *,
     today: date,
-    queries: Sequence[str] = DEFAULT_QUERIES,
+    queries: Sequence[str] | None = None,
     articles_per_query: int = 50,
     hours_back: int = 24,
     horizon_days: int = MAX_LOOKAHEAD_DAYS,
 ) -> tuple[list[NormalizedEvent], IngestReport]:
-    """Run every query against AskNews and extract one clean batch.
+    """Run one scoped search per city and extract a single clean batch.
 
-    `hours_back` is the scheduling knob: a daily job uses 24, a catch-up run
-    after an outage uses more. Queries are run against all target cities at
-    once because AskNews ranks globally -- filtering to our cities is the
-    extractor's job, not the query's.
+    This is the whole call a scheduled worker makes. `hours_back` is the
+    scheduling knob: an hourly job overlaps with 24, a catch-up run after an
+    outage uses more. Pass `queries` to override the per-city plan.
     """
     report = IngestReport()
     collected: list[dict[str, Any]] = []
-    for query in queries:
+    for plan in plan_searches(cities, queries):
         report.queries_run += 1
-        collected.extend(
-            await client.search_news(
-                query=query,
-                n_articles=articles_per_query,
-                hours_back=hours_back,
-                method="both",
-                strategy="latest news",
-            )
-        )
+        params: dict[str, Any] = {
+            "query": plan.query,
+            "n_articles": articles_per_query,
+            "hours_back": hours_back,
+            "method": "both",
+            "strategy": "latest news",
+        }
+        if plan.countries:
+            params["countries"] = list(plan.countries)
+        collected.extend(await client.search_news(**params))
     return extract_batch(
         collected, cities, today=today, horizon_days=horizon_days, report=report
     )
