@@ -1,0 +1,4 @@
+$ python -m foresight.ingest.run --source predicthq --since 7d --lat 53.3498 --lon -6.2603 --city Dublin
+# run at 2026-10-06 22:18 EDT
+
+fetched=412 new=0 updated=0 unchanged=412 rejected=0
