@@ -9,8 +9,8 @@ Replay is the default so the pipeline can be demonstrated and regression-checked
 without credentials or network. The extraction path is identical in both modes;
 only where the articles come from differs.
 
-Across runs the script tracks what is genuinely new, so re-polling an
-overlapping window visibly produces no duplicate events.
+Events are written through the shared upsert, so re-polling an overlapping
+window visibly produces no duplicate rows.
 """
 
 from __future__ import annotations
@@ -18,12 +18,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from dataclasses import dataclass, field
+from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import func, select
+
 from foresight.config import settings
+from foresight.database.models.external import Event, EventObservation
+from foresight.database.session import async_session_factory, engine
 from foresight.ingest.asknews import (
     AskNewsClient,
     CityTarget,
@@ -31,8 +35,11 @@ from foresight.ingest.asknews import (
     collect_events,
     extract_batch,
 )
+from foresight.ingest.repository import Outcome, upsert_event
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from foresight.ingest.normalize import NormalizedEvent
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "asknews"
@@ -45,36 +52,25 @@ CITIES = (
 )
 
 
-@dataclass
-class EventStore:
-    """Stands in for the events table so the demo needs no database.
-
-    Keyed the same way the real upsert is -- on `dedupe_key` -- so the new /
-    repeat / revised counts here are the counts the repository would produce.
-    """
-
-    by_key: dict[str, NormalizedEvent] = field(default_factory=dict)
-    key_by_ref: dict[str, str] = field(default_factory=dict)
-
-    def apply(self, events: list[NormalizedEvent]) -> dict[str, list[str]]:
-        outcome: dict[str, list[str]] = {"new": [], "repeat": [], "revised": []}
+async def persist(events: Sequence[NormalizedEvent]) -> Counter[Outcome]:
+    """Write a run through the shared upsert, one transaction per run."""
+    counts: Counter[Outcome] = Counter()
+    async with async_session_factory() as session:
         for event in events:
-            previous_key = self.key_by_ref.get(event.source_ref)
-            if previous_key and previous_key != event.dedupe_key:
-                # Same article, different date: dedupe_key includes the start
-                # date, so a correction lands as a new row rather than an edit.
-                outcome["revised"].append(
-                    f"{event.title} -> {event.start_local_date} "
-                    f"(was {self.by_key[previous_key].start_local_date})"
-                )
-                self.by_key.pop(previous_key, None)
-            elif event.dedupe_key in self.by_key:
-                outcome["repeat"].append(event.title)
-            else:
-                outcome["new"].append(f"{event.title} ({event.start_local_date})")
-            self.by_key[event.dedupe_key] = event
-            self.key_by_ref[event.source_ref] = event.dedupe_key
-        return outcome
+            counts[await upsert_event(session, event)] += 1
+        await session.commit()
+    return counts
+
+
+async def stored_events() -> tuple[list[Event], int]:
+    async with async_session_factory() as session:
+        rows = await session.scalars(
+            select(Event).order_by(Event.start_local_date, Event.title)
+        )
+        observations = await session.scalar(
+            select(func.count()).select_from(EventObservation)
+        )
+        return list(rows), observations or 0
 
 
 def load_fixture(path: Path) -> list[dict[str, Any]]:
@@ -105,18 +101,13 @@ async def run_live(
 
 
 def print_run(
-    label: str,
-    source: str,
-    report: IngestReport,
-    outcome: dict[str, list[str]],
+    label: str, source: str, report: IngestReport, counts: Counter[Outcome]
 ) -> None:
     print(f"\n{'=' * 68}\n{label}  --  {source}\n{'=' * 68}")
     print(report.render())
-    print("against what we already had")
-    for kind in ("new", "repeat", "revised"):
-        print(f"    {kind:<22} {len(outcome[kind])}")
-        for line in outcome[kind]:
-            print(f"        {line}")
+    print("written to the events table")
+    for outcome in Outcome:
+        print(f"    {outcome.value:<22} {counts[outcome]}")
 
 
 async def main() -> int:
@@ -135,7 +126,6 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    store = EventStore()
     totals = IngestReport()
 
     for index in range(1, args.runs + 1):
@@ -153,7 +143,7 @@ async def main() -> int:
             report.queries_run = 1
             source = f"replay {path.name}"
 
-        print_run(f"RUN {index}", source, report, store.apply(events))
+        print_run(f"RUN {index}", source, report, await persist(events))
 
         totals.articles_seen += report.articles_seen
         totals.events_kept += report.events_kept
@@ -164,13 +154,16 @@ async def main() -> int:
     print(f"articles rejected  {totals.articles_rejected}")
     for reason, count in totals.rejected.most_common():
         print(f"    {reason:<22} {count}")
-    print(f"distinct events    {len(store.by_key)}")
-    for event in sorted(store.by_key.values(), key=lambda e: e.start_local_date):
+    rows, observations = await stored_events()
+    print(f"rows in events     {len(rows)}")
+    print(f"rows in observations {observations}")
+    for event in rows:
         print(
             f"    {event.start_local_date} .. {event.end_local_date}  "
             f"{event.city_slug:<10} {event.date_precision:<8} "
             f"conf {event.confidence:.2f}  {event.title}"
         )
+    await engine.dispose()
     return 0
 
 
