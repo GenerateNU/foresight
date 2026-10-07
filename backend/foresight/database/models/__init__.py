@@ -4,6 +4,7 @@ from foresight.database.base import Base
 from foresight.database.models.external import (
     CompetitorRate,
     Event,
+    EventObservation,
     FlightArrival,
     Weather,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "CompetitorRate",
     "DailyPerformance",
     "Event",
+    "EventObservation",
     "FlightArrival",
     "Hotel",
     "RoomType",
