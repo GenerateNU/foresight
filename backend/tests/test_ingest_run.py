@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
-from foresight.ingest.normalize import Source
+from foresight.ingest.normalize import NormalizedEvent, Source
 from foresight.ingest.predicthq import Rejected
 from foresight.ingest.repository import Outcome
 from foresight.ingest.run import Market, RunReport, parse_since
@@ -52,3 +52,30 @@ def test_report_lists_every_count_and_rejection() -> None:
         assert line in rendered
     assert "dublin now holds 5 events (4 active, 1 deleted)" in rendered
     assert "phq-broken" in rendered
+
+
+def test_a_dry_run_reports_what_it_fetched_and_wrote_nothing() -> None:
+    event = NormalizedEvent(
+        source=Source.PREDICTHQ,
+        source_ref="phq-1",
+        title="Forbidden Fruit",
+        city="Dublin",
+        start_local_date=date(2027, 6, 5),
+        end_local_date=date(2027, 6, 7),
+    )
+    report = RunReport(
+        source=Source.PREDICTHQ,
+        market=Market(city="Dublin", latitude=53.3498, longitude=-6.2603),
+        radius="10km",
+        since=NOW,
+        fetched=1,
+        events=[event],
+        dry_run=True,
+    )
+
+    assert report.summary() == "fetched=1 rejected=0 (dry run, nothing written)"
+    rendered = report.render()
+    assert "nothing written (dry run)" in rendered
+    assert "Forbidden Fruit" in rendered
+    # The stored-totals lines would be zeroes and read as data loss.
+    assert "now holds" not in rendered
