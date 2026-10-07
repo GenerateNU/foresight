@@ -148,6 +148,68 @@ Keep rate is not quality. Those 47 include historical entities ("Irish Civil
 War", "midterms"), wrong-city assignments (Reading Festival → Dublin) and one
 festival split across four rows. See "Known gaps".
 
+### What a run looks like
+
+AskNews, `scripts/run_asknews.py --dry-run` (run 1 of the three above):
+
+```
+RUN 1  --  replay run_1.json
+====================================================================
+queries run        1
+articles seen      10
+events kept        5  (50%)
+articles rejected  5
+    no_city_match          1
+    no_resolvable_date     1
+    retrospective          1
+    malformed_record       1
+    beyond_horizon         1
+events by city
+    edinburgh              2
+    dublin                 2
+    lisbon                 1
+events by date precision
+    day                    3
+    quarter                1
+    month                  1
+extracted (nothing written)
+    2026-11-10 .. 2026-11-13  lisbon     day      conf 0.95  Web Summit
+    2026-12-30 .. 2027-01-01  edinburgh  day      conf 0.95  Edinburgh Hogmanay
+    2027-03-01 .. 2027-05-31  dublin     quarter  conf 0.75  Dublin Tech Summit
+    2027-06-05 .. 2027-06-07  dublin     day      conf 0.95  Forbidden Fruit
+    2027-08-01 .. 2027-08-31  edinburgh  month    conf 0.80  Edinburgh Festival Fringe
+```
+
+Without `--dry-run` the last block is replaced by the upsert outcome
+(`new 5 / updated 0 / unchanged 0`), and the run ends with the stored table.
+
+PredictHQ, `python -m foresight.ingest.run --source predicthq --report`:
+
+```
+predicthq ingest | Dublin | 10km around 53.3498, -6.2603
+revised upstream since 2026-09-29 12:00 UTC
+
+  fetched      42
+  ---------------
+  new          31
+  updated       6
+  unchanged     3
+  rejected      2
+
+  dublin now holds 40 events (38 active, 2 deleted)
+  backed by 43 observations (3 asknews, 40 predicthq)
+
+  rejected records:
+    phq-aa11               missing field 'start'
+    phq-bb22               end precedes start
+```
+
+Counts here are illustrative — nobody has run this against a live PredictHQ
+token yet, so the shape is real but the numbers are not. Note the two reports
+differ on purpose: AskNews tallies rejects *by reason*, because inference fails
+in categories; PredictHQ lists them *individually*, because a structured feed
+should only ever reject the odd malformed record.
+
 ## New files
 
 Under `backend/`.
