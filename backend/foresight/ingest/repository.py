@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, func, literal_column, or_, select, update
+from sqlalchemy import and_, delete, func, literal_column, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from foresight.database.models.external import Event, EventObservation
@@ -23,6 +24,8 @@ _OBSERVATIONS = EventObservation.__table__
 
 # Structured listings outrank dates and venues extracted from prose.
 _PRECEDENCE = {Source.PREDICTHQ: 2, Source.ASKNEWS: 1}
+_WITHDRAWN = {EventStatus.DELETED, EventStatus.CANCELLED}
+_NEVER = datetime.min.replace(tzinfo=UTC)
 
 
 class Outcome(StrEnum):
@@ -48,14 +51,10 @@ async def upsert_event(session: AsyncSession, event: NormalizedEvent) -> Outcome
     # changes the key, and resolving by key first would orphan the old row.
     if event_id is not None:
         event_id = await _absorb_key_collision(session, event_id, row["dedupe_key"])
-        outcome = await _apply(session, event_id, row, own_record=True)
+        outcome = await _apply(session, event_id, event)
     else:
         event_id, inserted = await _insert_or_find(session, row)
-        outcome = (
-            Outcome.NEW
-            if inserted
-            else await _apply(session, event_id, row, own_record=False)
-        )
+        outcome = Outcome.NEW if inserted else await _apply(session, event_id, event)
 
     await _record_observation(session, event, event_id)
     return outcome
@@ -100,12 +99,9 @@ async def _insert_or_find(
 
 
 async def _apply(
-    session: AsyncSession,
-    event_id: int,
-    row: Mapping[str, Any],
-    *,
-    own_record: bool,
+    session: AsyncSession, event_id: int, event: NormalizedEvent
 ) -> Outcome:
+    row = event.as_row()
     current = (
         (
             await session.execute(
@@ -117,7 +113,7 @@ async def _apply(
     )
 
     changes: dict[str, Any] = {}
-    if _may_overwrite(current, row, own_record=own_record):
+    if await _outranks_other_sightings(session, event_id, event):
         changes = {k: v for k, v in row.items() if current[k] != v}
 
     await session.execute(
@@ -128,15 +124,52 @@ async def _apply(
     return Outcome.UPDATED if changes else Outcome.UNCHANGED
 
 
-def _may_overwrite(
-    current: Mapping[str, Any], row: Mapping[str, Any], *, own_record: bool
+async def _outranks_other_sightings(
+    session: AsyncSession, event_id: int, event: NormalizedEvent
 ) -> bool:
-    # Another record's deletion (e.g. a PredictHQ duplicate that collapses onto
-    # the surviving listing) must not take down an event seen independently.
-    if not own_record and row["status"] is EventStatus.DELETED:
-        return False
-    incoming = _PRECEDENCE[row["primary_source"]]
-    return incoming >= _PRECEDENCE[Source(current["primary_source"])]
+    """Whether `event` is the sighting whose values the row should carry.
+
+    Every sighting of a row is ranked the same way, so reruns settle on one
+    winner instead of duplicate listings overwriting each other in turn. A
+    deleted duplicate thus never takes down the live listing it shares a row
+    with, on the first run or any later one.
+    """
+    others = await session.execute(
+        select(
+            _OBSERVATIONS.c.source,
+            _OBSERVATIONS.c.status,
+            _OBSERVATIONS.c.source_updated_at,
+            _OBSERVATIONS.c.source_ref,
+        ).where(
+            _OBSERVATIONS.c.event_id == event_id,
+            not_(
+                and_(
+                    _OBSERVATIONS.c.source == event.source,
+                    _OBSERVATIONS.c.source_ref == event.source_ref,
+                )
+            ),
+        )
+    )
+    mine = _rank(event.source, event.status, event.source_updated_at, event.source_ref)
+    return all(mine > _rank(*other) for other in others)
+
+
+def _rank(
+    source: Source,
+    status: EventStatus | None,
+    updated_at: datetime | None,
+    source_ref: str,
+) -> tuple[int, bool, datetime, str]:
+    """Structured sources first, then live listings, then the latest revision.
+
+    source_ref only breaks exact ties, so the winner is stable across reruns.
+    """
+    return (
+        _PRECEDENCE[Source(source)],
+        status not in _WITHDRAWN,
+        updated_at or _NEVER,
+        source_ref,
+    )
 
 
 async def _record_observation(
@@ -147,6 +180,7 @@ async def _record_observation(
         source=event.source,
         source_ref=event.source_ref,
         source_updated_at=event.source_updated_at,
+        status=event.status,
         payload=event.payload,
     )
     excluded = stmt.excluded
@@ -156,6 +190,7 @@ async def _record_observation(
             set_={
                 "event_id": excluded.event_id,
                 "source_updated_at": excluded.source_updated_at,
+                "status": excluded.status,
                 "payload": excluded.payload,
                 "captured_at": func.clock_timestamp(),
             },
@@ -163,6 +198,7 @@ async def _record_observation(
             where=or_(
                 _OBSERVATIONS.c.payload.is_distinct_from(excluded.payload),
                 _OBSERVATIONS.c.event_id.is_distinct_from(excluded.event_id),
+                _OBSERVATIONS.c.status.is_distinct_from(excluded.status),
             ),
         )
     )
