@@ -1,0 +1,301 @@
+<title>PredictHQ Event Ingest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column with full-width data tables; run ledger and before/after pairs carry the evidence. */
+:root {
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --fg: #16202b;
+  --muted: #5a6877;
+  --line: #d9e0e7;
+  --accent: #0b6e83;
+  --accent-soft: #e2f1f4;
+  --good: #1d7a46;
+  --good-soft: #e3f3e9;
+  --bad: #b3361f;
+  --bad-soft: #fbe9e5;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --step-0: 1rem;
+  --step-1: 1.2rem;
+  --step-2: 1.5rem;
+  --step-3: 2.1rem;
+  --small: 0.875rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #161f27; --fg: #e4ebf1; --muted: #98a6b4; --line: #2a3742;
+    --accent: #5cc3d8; --accent-soft: #15323a; --good: #6ccf94; --good-soft: #15301f;
+    --bad: #f08b75; --bad-soft: #3a1d17; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #161f27; --fg: #e4ebf1; --muted: #98a6b4; --line: #2a3742;
+  --accent: #5cc3d8; --accent-soft: #15323a; --good: #6ccf94; --good-soft: #15301f;
+  --bad: #f08b75; --bad-soft: #3a1d17; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body);
+  font-size: var(--step-0); line-height: 1.6; padding: 0 16px;
+}
+main { max-width: 860px; margin: 0 auto; padding-block: 48px 80px; display: grid; gap: 56px; }
+section { display: grid; gap: 16px; min-width: 0; }
+h1, h2, h3 { line-height: 1.2; text-wrap: balance; margin: 0; }
+h1 { font-size: var(--step-3); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: var(--step-2); font-weight: 700; }
+h3 { font-size: var(--step-1); font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 68ch; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+.eyebrow {
+  font-size: var(--small); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+}
+.lede { font-size: var(--step-1); color: var(--muted); max-width: 62ch; }
+header { display: grid; gap: 12px; }
+.meta { font-size: var(--small); color: var(--muted); }
+
+.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 4px; align-content: start; }
+.figure b { font-size: var(--step-2); font-variant-numeric: tabular-nums; }
+.figure span { font-size: var(--small); color: var(--muted); }
+
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: var(--small); }
+.flow .node { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
+.flow .node strong { display: block; font-size: var(--small); }
+.flow .node em { font-style: normal; color: var(--muted); font-family: var(--font-mono); font-size: 0.78rem; }
+.flow .arrow { color: var(--muted); }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: var(--small); font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 600; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+td.wrap { white-space: normal; min-width: 14em; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+tr.hl td { background: var(--good-soft); }
+tr.warn td { background: var(--bad-soft); }
+
+.pairs { display: grid; gap: 16px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.pair > div { padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.pair > div + div { border-left: 1px solid var(--line); }
+.pair .tag { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.pair .tag.after { color: var(--good); }
+.pair pre { margin: 0; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.pair .why { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0 !important; font-size: var(--small); color: var(--muted); }
+@media (max-width: 600px) {
+  .pair { grid-template-columns: 1fr; }
+  .pair > div + div { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+.callout { background: var(--bad-soft); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; display: grid; gap: 10px; }
+.callout h3 { color: var(--bad); }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: var(--small); }
+summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details pre { margin: 0; padding: 0 14px 14px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.5; }
+.cmd { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.7; margin: 0; }
+.note { font-size: var(--small); color: var(--muted); }
+a { color: var(--accent); }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">Foresight · External factors · Meeting 10/7</div>
+    <h1>PredictHQ Event Ingest</h1>
+    <p class="lede">A Python ingest that pulls events near a hotel from the PredictHQ API, cleans and de-duplicates them, stores them, and feeds nightly event attendance into the pricing model.</p>
+    <p class="meta">Runs executed 2026-10-06, 22:15–22:19 EDT · branch <code>external-factors-events</code> · raw logs in <code>docs/event-ingest-runs/</code></p>
+  </header>
+
+  <section aria-labelledby="summary">
+    <h2 id="summary">Results</h2>
+    <div class="figures">
+      <div class="figure"><b>5</b><span>ingest runs across Dublin and Boston, 0 records rejected</span></div>
+      <div class="figure"><b>4,641</b><span>raw PredictHQ listings stored</span></div>
+      <div class="figure"><b>4,101</b><span>unique events after cleaning (540 duplicates merged)</span></div>
+      <div class="figure"><b>0 / 0</b><span>new / updated on every re-run, so cleaning is stable</span></div>
+    </div>
+    <div class="flow" aria-label="Pipeline">
+      <div class="node"><strong>PredictHQ API</strong><em>predicthq.py</em></div><span class="arrow">→</span>
+      <div class="node"><strong>Normalize + validate</strong><em>normalize.py</em></div><span class="arrow">→</span>
+      <div class="node"><strong>De-duplicate + upsert</strong><em>repository.py</em></div><span class="arrow">→</span>
+      <div class="node"><strong>events table</strong><em>Postgres</em></div><span class="arrow">→</span>
+      <div class="node"><strong>Nightly attendance</strong><em>features/events.py</em></div><span class="arrow">→</span>
+      <div class="node"><strong>Pricing model</strong><em>GBM</em></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="runs">
+    <h2 id="runs">The runs</h2>
+    <p>Each run fetches every event within 10 km of the city centre that PredictHQ revised in the window. A re-run of the same query is the test for clean data: if cleaning is correct and stable, nothing should be new or change.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Run</th><th class="num">Fetched</th><th class="num">New</th><th class="num">Updated</th><th class="num">Unchanged</th><th class="num">Rejected</th><th>Reads as</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>Dublin, last 90 days</td><td class="num">1,371</td><td class="num">0</td><td class="num">26</td><td class="num">1,345</td><td class="num">0</td><td><span class="pill info">26 events restored by the fix</span></td></tr>
+          <tr class="hl"><td>2</td><td>Dublin, same query again</td><td class="num">1,371</td><td class="num">0</td><td class="num">0</td><td class="num">1,371</td><td class="num">0</td><td><span class="pill good">Stable</span></td></tr>
+          <tr><td>3</td><td>Boston, last 90 days</td><td class="num">3,270</td><td class="num">0</td><td class="num">23</td><td class="num">3,247</td><td class="num">0</td><td><span class="pill info">Duplicates settled by the fix</span></td></tr>
+          <tr class="hl"><td>4</td><td>Boston, same query again</td><td class="num">3,270</td><td class="num">0</td><td class="num">0</td><td class="num">3,270</td><td class="num">0</td><td><span class="pill good">Stable</span></td></tr>
+          <tr class="hl"><td>5</td><td>Dublin, last 7 days (daily refresh)</td><td class="num">412</td><td class="num">0</td><td class="num">0</td><td class="num">412</td><td class="num">0</td><td><span class="pill good">Stable</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Every event was already stored by earlier pre-fix runs, so these runs show 0 new. On its first ingest Boston produced 2,864 new events from 3,270 listings. One extra Boston attempt timed out waiting on PredictHQ; its log is kept in <code>failed/</code>.</p>
+  </section>
+
+  <section aria-labelledby="cleaning">
+    <h2 id="cleaning">What cleaning does, on real records</h2>
+    <ul>
+      <li><strong>Merges duplicates.</strong> PredictHQ often lists one event several times. Records with the same normalized title, city and local date become one event.</li>
+      <li><strong>Normalizes titles</strong> by dropping tour names, "(Touring)", "presented by…" and "feat." so two sources can match.</li>
+      <li><strong>Converts to local dates.</strong> An 8 pm show is stored on that night, not on the next day in UTC.</li>
+      <li><strong>Fixes coordinates.</strong> PredictHQ sends <code>[longitude, latitude]</code>, so they are swapped and range-checked.</li>
+      <li><strong>Validates.</strong> Records missing an id, title or date, ending before they start, or with impossible coordinates are logged and counted as rejected, and the run continues.</li>
+      <li><strong>Keeps cancellations.</strong> Deleted events stay in the table marked <code>deleted</code>, so the model knows to drop them.</li>
+    </ul>
+
+    <div class="pairs">
+      <div class="pair">
+        <div><span class="tag">Raw from PredictHQ</span><pre>title  "Wicked (Touring)"
+start  2026-11-15T01:00:00Z
+tz     America/New_York</pre></div>
+        <div><span class="tag after">Stored</span><pre>title_norm        "wicked"
+start_local_date  2026-11-14</pre></div>
+        <div class="why">A Saturday 8 pm Boston show is 01:00 Sunday in UTC. Without local dates its demand would land on the wrong hotel night.</div>
+      </div>
+      <div class="pair">
+        <div><span class="tag">Raw from PredictHQ</span><pre>4 listings, one show
+"Nikki Glaser: The Stunning Tour"
+states: active, deleted, …</pre></div>
+        <div><span class="tag after">Stored</span><pre>1 event · Boston · 2026-12-04
+status active
+4 sightings kept for audit</pre></div>
+        <div class="why">Counting all four listings would quadruple that night's attendance in the model.</div>
+      </div>
+      <div class="pair">
+        <div><span class="tag">Raw from PredictHQ</span><pre>"All Ireland League 1A -
+ Old Wesley vs Young Munster"
+listing A  state=active   4,607
+listing B  state=deleted  4,607</pre></div>
+        <div><span class="tag after">Stored</span><pre>1 event · Dublin · 2026-10-24
+status active · attendance 4,607</pre></div>
+        <div class="why">The deleted copy is PredictHQ retiring a duplicate listing, not a cancelled match. Before the fix below, this game was marked deleted.</div>
+      </div>
+      <div class="pair">
+        <div><span class="tag">Raw from PredictHQ</span><pre>location [-71.0623119, 42.3539927]</pre></div>
+        <div><span class="tag after">Stored</span><pre>latitude   42.3539927
+longitude -71.0623119</pre></div>
+        <div class="why">GeoJSON puts longitude first. The swap is what makes distance-to-hotel filtering work.</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Market</th><th class="num">Raw listings</th><th class="num">Unique events</th><th class="num">Duplicates merged</th><th class="num">Marked deleted</th><th class="num">No attendance estimate</th></tr></thead>
+        <tbody>
+          <tr><td>Dublin</td><td class="num">1,371</td><td class="num">1,237</td><td class="num">134 (9.8%)</td><td class="num">32</td><td class="num">44</td></tr>
+          <tr><td>Boston</td><td class="num">3,270</td><td class="num">2,864</td><td class="num">406 (12.4%)</td><td class="num">253</td><td class="num">163</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="bug">
+    <h2 id="bug">Finding: re-runs were deleting live events</h2>
+    <div class="callout">
+      <h3>Found by the re-run test, fixed the same night</h3>
+      <p>Re-running the Dublin query a minute after the first run reported <strong>238 updated</strong> instead of 0, and <strong>20 live events switched to deleted</strong>. The cleaner correctly ignored a deleted duplicate listing on the first run. On later runs it treated that listing as the event's own record and applied its deletion. Live duplicates that differed slightly, such as attendance 210 and 211, also overwrote each other on every run.</p>
+      <p><strong>Fix:</strong> each sighting now stores its own status. Every listing of an event is ranked the same way: structured source first, then live over deleted, then the latest revision. Only the top-ranked listing sets the event's values, so every run picks the same one.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Dublin re-run</th><th class="num">Updated</th><th class="num">Active</th><th class="num">Deleted</th></tr></thead>
+        <tbody>
+          <tr class="warn"><td>Before fix</td><td class="num">238</td><td class="num">1,156</td><td class="num">58</td></tr>
+          <tr class="hl"><td>After fix</td><td class="num">0</td><td class="num">1,182</td><td class="num">32</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">The fix restored 26 Dublin events to active. Four regression tests cover it: a deleted duplicate across three re-runs, live duplicates settling on the latest revision, restoring an event a duplicate deleted, and a structured deletion outranking a live news article.</p>
+  </section>
+
+  <section aria-labelledby="model">
+    <h2 id="model">What it means for the pricing model</h2>
+    <p>The cleaned events become one model feature: <code>expected_attendance</code>, the total expected attendance near the hotel each night. Same-night events are added together, a multi-day event's attendance is split over its nights, deleted events are excluded, and provisional events count by their confidence. The table prices a Dublin standard room twice, with real events and with none. The two prices differ only by the events.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Night</th><th class="num">Attendance</th><th class="num">No events</th><th class="num">With events</th><th class="num">Effect</th><th>Biggest event</th></tr></thead>
+        <tbody>
+          <tr><td>Sat 10 Oct</td><td class="num">58,257</td><td class="num">€137.17</td><td class="num">€166.47</td><td class="num">+€29.30</td><td>All Ireland League rugby</td></tr>
+          <tr><td>Sat 17 Oct</td><td class="num">23,548</td><td class="num">€140.05</td><td class="num">€152.91</td><td class="num">+€12.86</td><td>The Rock Orchestra</td></tr>
+          <tr><td>Thu 22 Oct</td><td class="num">15,774</td><td class="num">€113.87</td><td class="num">€120.30</td><td class="num">+€6.43</td><td>J. Cole</td></tr>
+          <tr><td>Sat 24 Oct</td><td class="num">48,236</td><td class="num">€131.51</td><td class="num">€161.65</td><td class="num">+€30.13</td><td>Leinster vs Munster</td></tr>
+          <tr><td>Sun 25 Oct</td><td class="num">349,723</td><td class="num">€123.47</td><td class="num">€141.22</td><td class="num">+€17.75</td><td>Irish Life Dublin Marathon</td></tr>
+          <tr><td>Mon 19 Oct</td><td class="num">2,090</td><td class="num">€114.93</td><td class="num">€115.28</td><td class="num">+€0.35</td><td>Eliades Ochoa</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Only attendance is real here. The model is trained on mock hotel history, and weather, competitor and flight features are mock placeholders until those sources are ingested. Read the effect column as direction and relative size, not as a price recommendation.</p>
+  </section>
+
+  <section aria-labelledby="next">
+    <h2 id="next">Open questions and next steps</h2>
+    <ul>
+      <li><strong>API, not scraping.</strong> Events come from PredictHQ's API, which gives structured dates, venues and attendance, instead of from scraped web pages. AskNews (news articles) is the planned second source and plugs into the same cleaning.</li>
+      <li><strong>Network retries.</strong> One Boston run failed on a PredictHQ read timeout. The ingest should retry before giving up.</li>
+      <li><strong>Very large events.</strong> The marathon's 349,723 includes spectators. The model learned from mock nights topping out near 40,000, so it can't price beyond that range. It needs a cap or a log scale once trained on real data.</li>
+      <li><strong>Multi-day attendance.</strong> This is assumed to be a total and split evenly across nights. Confirm against PredictHQ's documentation.</li>
+      <li><strong>Missing attendance.</strong> 207 events across both cities have no estimate and currently add nothing. PredictHQ's 0–100 rank could fill the gap.</li>
+      <li><strong>Real training data.</strong> Load hotel history into <code>daily_performance</code> and train on it with the same attendance feature.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="repro">
+    <h2 id="repro">Reproduce</h2>
+    <p>From <code>backend/</code>, with <code>PREDICTHQ_TOKEN</code> set in <code>.env</code> and the database running:</p>
+<pre class="cmd">uv run alembic upgrade head
+uv run python -m foresight.ingest.run --source predicthq --since 90d --lat 53.3498 --lon -6.2603 --city Dublin --report
+uv run python -m foresight.ingest.run --source predicthq --since 90d --lat 42.3601 --lon -71.0589 --city Boston --report
+uv run python scripts/forecast_events.py --city Dublin --days 21
+uv run pytest</pre>
+    <details>
+      <summary>Run 2 output, Dublin re-run</summary>
+<pre>predicthq ingest | Dublin | 10km around 53.3498, -6.2603
+revised upstream since 2026-07-09 02:16 UTC
+
+  fetched    1371
+  ---------------
+  new           0
+  updated       0
+  unchanged  1371
+  rejected      0
+
+  dublin now holds 1237 events (1182 active, 32 deleted, 23 provisional)
+  backed by 1371 observations (1371 predicthq)</pre>
+    </details>
+    <details>
+      <summary>Before-fix Dublin re-run, the failing output</summary>
+<pre>predicthq ingest | Dublin | 10km around 53.3498, -6.2603
+revised upstream since 2026-07-09 02:07 UTC
+
+  fetched    1371
+  ---------------
+  new           0
+  updated     238
+  unchanged  1133
+  rejected      0
+
+  dublin now holds 1237 events (1156 active, 58 deleted, 23 provisional)
+  backed by 1371 observations (1371 predicthq)</pre>
+    </details>
+  </section>
+</main>

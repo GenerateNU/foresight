@@ -1,0 +1,15 @@
+$ python -m foresight.ingest.run --source predicthq --since 90d --lat 53.3498 --lon -6.2603 --city Dublin --report
+# run at 2026-10-06 22:15 EDT
+
+predicthq ingest | Dublin | 10km around 53.3498, -6.2603
+revised upstream since 2026-07-09 02:15 UTC
+
+  fetched    1371
+  ---------------
+  new           0
+  updated      26
+  unchanged  1345
+  rejected      0
+
+  dublin now holds 1237 events (1182 active, 32 deleted, 23 provisional)
+  backed by 1371 observations (1371 predicthq)
