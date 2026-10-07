@@ -13,9 +13,11 @@ from foresight.ingest.asknews import (
     AskNewsClient,
     CityTarget,
     RejectReason,
+    SearchPlan,
     collect_events,
     extract_batch,
     extract_event,
+    plan_searches,
 )
 from foresight.ingest.normalize import (
     DatePrecision,
@@ -410,3 +412,47 @@ async def test_collect_events_is_one_call_a_scheduled_worker_can_make() -> None:
     # The same article from both queries is one event, not two.
     assert len(events) == 1
     assert report.rejected[RejectReason.DUPLICATE_IN_BATCH.value] == 1
+
+
+def test_each_city_gets_its_own_scoped_search() -> None:
+    plans = plan_searches(CITIES)
+
+    assert [p.countries for p in plans] == [("IE",), ("PT",)]
+    assert all(p.query.startswith(c.name) for p, c in zip(plans, CITIES, strict=True))
+    assert all("festival" in p.query for p in plans)
+
+
+def test_explicit_queries_override_the_per_city_plan() -> None:
+    plans = plan_searches(CITIES, ["anything"])
+
+    assert plans == (SearchPlan("anything"),)
+
+
+def test_a_city_without_a_country_is_not_country_filtered() -> None:
+    plans = plan_searches((CityTarget("Dublin", "Europe/Dublin"),))
+
+    assert plans[0].countries == ()
+
+
+async def test_collect_events_sends_one_country_scoped_search_per_city() -> None:
+    sent: list[tuple[str, list[str]]] = []
+
+    def handler(request: httpx.Request, _calls: dict[str, int]) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
+        sent.append(
+            (
+                request.url.params.get("query", ""),
+                request.url.params.get_list("countries"),
+            )
+        )
+        return httpx.Response(200, json={"as_dicts": []})
+
+    client, calls = build_client(handler)
+    _, report = await collect_events(client, CITIES, today=TODAY)
+
+    assert calls["search"] == len(CITIES)
+    assert report.queries_run == len(CITIES)
+    assert [countries for _, countries in sent] == [["IE"], ["PT"]]
+    assert sent[0][0].startswith("Dublin")
+    assert sent[1][0].startswith("Lisbon")

@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING, Any
 
 from foresight.config import settings
 from foresight.ingest.asknews import (
-    DEFAULT_QUERIES,
     AskNewsClient,
     CityTarget,
     IngestReport,
@@ -100,7 +99,6 @@ async def run_live(
             client,
             CITIES,
             today=today,
-            queries=DEFAULT_QUERIES,
             articles_per_query=per_query,
             hours_back=hours_back,
         )
@@ -151,9 +149,7 @@ async def main() -> int:
             if not path.exists():
                 print(f"no fixture for run {index} at {path}")
                 break
-            events, report = extract_batch(
-                load_fixture(path), CITIES, today=args.today
-            )
+            events, report = extract_batch(load_fixture(path), CITIES, today=args.today)
             report.queries_run = 1
             source = f"replay {path.name}"
 
