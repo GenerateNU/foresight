@@ -1,9 +1,11 @@
 # Import all models here so Alembic can detect them
 
 from foresight.database.base import Base
+from foresight.database.models.example_widget import Widget
 from foresight.database.models.external import (
     CompetitorRate,
     Event,
+    EventObservation,
     FlightArrival,
     Weather,
 )
@@ -14,8 +16,10 @@ __all__ = [
     "CompetitorRate",
     "DailyPerformance",
     "Event",
+    "EventObservation",
     "FlightArrival",
     "Hotel",
     "RoomType",
     "Weather",
+    "Widget",
 ]

@@ -14,7 +14,12 @@ dependencies = [
     "alembic>=1.15",
     "asyncpg>=0.30",
     "pydantic-settings>=2.9",
+    "scalar-fastapi>=1.4",
     "python-dotenv>=1.1",
+    "pandas>=2.2",
+    "psycopg2-binary>=2.9",
+    "scikit-learn>=1.9.1",
+    "httpx>=0.28",
 ]
 
 [dependency-groups]
@@ -26,16 +31,25 @@ dev = [
     "pre-commit>=4.2",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
-    "httpx>=0.28",
+]
+ml = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+    "statsmodels>=0.15.0",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/foresight"]
+packages = ["foresight"]
 
 [tool.ruff]
 target-version = "py312"
-src = ["src"]
-exclude = ["src/foresight/database/migrations"]
+src = ["."]
+exclude = ["foresight/database/migrations"]
 line-length = 88
 
 [tool.ruff.lint]
@@ -57,3 +71,4 @@ known-first-party = ["foresight"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = [".", "scripts"]

@@ -75,19 +75,21 @@ Commit messages must follow [Conventional Commits](https://www.conventionalcommi
 ```
 foresight/
 ├── backend/
-│   ├── src/
-│   │   └── foresight/           # Installable package (see pyproject.toml)
-│   │       ├── main.py          # FastAPI app entrypoint (foresight.main:app)
-│   │       ├── config.py        # Settings (pydantic-settings)
-│   │       ├── routes/          # API route handlers
-│   │       ├── schemas/         # Pydantic request/response models
-│   │       ├── services/        # Business logic
-│   │       ├── repository/      # Data-access layer
-│   │       └── database/        # SQLAlchemy + Alembic
-│   │           ├── base.py      # Declarative base
-│   │           ├── session.py   # Async session factory
-│   │           ├── models/      # SQLAlchemy models
-│   │           └── migrations/  # Alembic migrations
+│   ├── foresight/               # Installable package (see pyproject.toml)
+│   │   ├── main.py              # FastAPI app entrypoint (foresight.main:app)
+│   │   ├── config.py            # Settings (pydantic-settings)
+│   │   ├── routes/              # API route handlers
+│   │   ├── schemas/             # Pydantic request/response models
+│   │   ├── services/            # Business logic
+│   │   │   ├── ml/              # ML models (regression, bayesian, ...)
+│   │   │   └── parsers/         # Client data ingestion
+│   │   ├── repository/          # Data-access layer
+│   │   └── database/            # SQLAlchemy + Alembic
+│   │       ├── base.py          # Declarative base
+│   │       ├── session.py       # Async session factory
+│   │       ├── models/          # SQLAlchemy models
+│   │       └── migrations/      # Alembic migrations
+│   ├── scripts/                 # Dev tooling (mock data, model comparison)
 │   ├── tests/                   # Pytest suite
 │   ├── alembic.ini
 │   ├── pyproject.toml
