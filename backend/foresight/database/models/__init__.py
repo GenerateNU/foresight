@@ -10,6 +10,7 @@ from foresight.database.models.external import (
     Weather,
 )
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
+from foresight.database.models.pricing_model import PricingModel
 
 __all__ = [
     "Base",
@@ -19,6 +20,7 @@ __all__ = [
     "EventObservation",
     "FlightArrival",
     "Hotel",
+    "PricingModel",
     "RoomType",
     "Weather",
     "Widget",
