@@ -16,8 +16,11 @@ domain rules live — they're called by routes and call the repository.
   through `repository/`.
 
 ## Patterns & conventions
-- Pure-ish domain functions/classes; take plain inputs or schemas, return domain
-  data — not HTTP responses.
+- Pure-ish domain functions/classes; take plain inputs or `*Request` schemas,
+  return domain data (ORM objects or dataclasses) — never `*Response` schemas.
+  See [`schemas.md`](schemas.md).
+- Parse external API responses into `ExternalPayload` models in the module that
+  calls the API.
 - Get data through the repository layer; don't query the ORM here.
 - Keep ML, parsing, and orchestration in focused modules; prefer small units.
 

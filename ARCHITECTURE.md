@@ -101,7 +101,7 @@ backend/
 │   ├── main.py                # FastAPI app entrypoint; routers registered here
 │   ├── config.py              # Settings (pydantic-settings)
 │   ├── routes/                # API endpoints (one module per resource)
-│   ├── schemas/               # Pydantic request/response models
+│   ├── schemas/               # Pydantic *Request/*Response schemas (agents/schemas.md)
 │   ├── services/              # Business logic
 │   │   ├── ml/                # ML models (regression, bayesian, timeseries, ...)
 │   │   └── parsers/           # Client/external data ingestion

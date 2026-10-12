@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.session import get_session
-from foresight.schemas.example_widget import WidgetCreate, WidgetRead
+from foresight.schemas.example_widget import WidgetRequest, WidgetResponse
 from foresight.services import example_widget as widget_service
 
 router = APIRouter(prefix="/example/widgets", tags=["example"])
@@ -27,32 +27,32 @@ router = APIRouter(prefix="/example/widgets", tags=["example"])
 SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 
 
-@router.post("", response_model=WidgetRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=WidgetResponse, status_code=status.HTTP_201_CREATED)
 async def create_widget(
-    data: WidgetCreate,
+    data: WidgetRequest,
     session: SessionDep,
-) -> WidgetRead:
+) -> WidgetResponse:
     widget = await widget_service.create_widget(session, data)
-    return WidgetRead.model_validate(widget)
+    return WidgetResponse.model_validate(widget)
 
 
-@router.get("", response_model=list[WidgetRead])
+@router.get("", response_model=list[WidgetResponse])
 async def list_widgets(
     session: SessionDep,
-) -> list[WidgetRead]:
+) -> list[WidgetResponse]:
     widgets = await widget_service.list_widgets(session)
-    return [WidgetRead.model_validate(w) for w in widgets]
+    return [WidgetResponse.model_validate(w) for w in widgets]
 
 
-@router.get("/{widget_id}", response_model=WidgetRead)
+@router.get("/{widget_id}", response_model=WidgetResponse)
 async def get_widget(
     widget_id: int,
     session: SessionDep,
-) -> WidgetRead:
+) -> WidgetResponse:
     widget = await widget_service.get_widget(session, widget_id)
     if widget is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Widget {widget_id} not found",
         )
-    return WidgetRead.model_validate(widget)
+    return WidgetResponse.model_validate(widget)

@@ -18,7 +18,8 @@ returns models/data back up. No business rules, no HTTP.
   once per request; CLIs and jobs commit once at the end. Use `flush()` when you
   need generated ids.
 - Encapsulate all query/CRUD logic here so services stay persistence-agnostic.
-- Return ORM models or simple data; let callers map to schemas.
+- Take plain values (never schemas); return ORM models or simple data. Routes map
+  results to `*Response` schemas.
 
 ## Rules / invariants
 - Only this layer imports `session` / ORM query APIs.
