@@ -21,7 +21,7 @@ GitHub Actions · ruff · Conventional Commits.
 routes  →  services  →  repository  →  database
 ```
 
-- **routes** — HTTP layer (FastAPI routers, request/response via Pydantic schemas).
+- **routes** — HTTP layer (FastAPI routers, `*Request`/`*Response` Pydantic schemas).
 - **services** — business logic, orchestration, ML/parsers.
 - **repository** — data access; the only layer that talks to the ORM/session.
 - **database** — SQLAlchemy models, migrations, session/engine.
@@ -38,6 +38,7 @@ Per-layer detail:
 - [`agents/services.md`](agents/services.md)
 - [`agents/repository.md`](agents/repository.md)
 - [`agents/database.md`](agents/database.md)
+- [`agents/schemas.md`](agents/schemas.md) — Pydantic standard (all layers)
 
 ## Commands (run from repo root)
 

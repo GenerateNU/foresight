@@ -17,10 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.example_widget import Widget
 from foresight.repository import example_widget as widget_repo
-from foresight.schemas.example_widget import WidgetCreate
+from foresight.schemas.example_widget import WidgetRequest
 
 
-async def create_widget(session: AsyncSession, data: WidgetCreate) -> Widget:
+async def create_widget(session: AsyncSession, data: WidgetRequest) -> Widget:
     return await widget_repo.create_widget(
         session,
         name=data.name,

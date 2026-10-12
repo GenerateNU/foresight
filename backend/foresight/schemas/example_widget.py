@@ -3,21 +3,24 @@
 Pydantic shapes for the `Widget` reference slice.
 
 Layer rules shown here:
-- `*Create` schemas describe the request body (no `id`, no server fields).
-- `*Read` schemas describe the response and set `from_attributes=True` so they
-  can be built directly from an ORM model instance.
+- `*Request` schemas describe a request body: only the fields a client may set.
+- `*Response` schemas describe what an endpoint returns, built from an ORM
+  object. Each lists its fields explicitly; Request and Response never inherit
+  from each other.
+- See `agents/schemas.md` for the full standard.
 """
 
-from pydantic import BaseModel, ConfigDict
+from foresight.schemas.base import RequestSchema, ResponseSchema
 
 
-class WidgetCreate(BaseModel):
+class WidgetRequest(RequestSchema):
     name: str
     description: str | None = None
     quantity: int = 0
 
 
-class WidgetRead(WidgetCreate):
-    model_config = ConfigDict(from_attributes=True)
-
+class WidgetResponse(ResponseSchema):
     id: int
+    name: str
+    description: str | None
+    quantity: int

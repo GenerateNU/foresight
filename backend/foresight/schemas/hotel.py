@@ -3,10 +3,12 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import computed_field
+
+from foresight.schemas.base import RequestSchema, ResponseSchema
 
 
-class HotelCreate(BaseModel):
+class HotelRequest(RequestSchema):
     name: str
     city: str
     total_rooms: int
@@ -14,26 +16,31 @@ class HotelCreate(BaseModel):
     longitude: float | None = None
 
 
-class HotelRead(HotelCreate):
-    model_config = ConfigDict(from_attributes=True)
-
+class HotelResponse(ResponseSchema):
     id: int
+    name: str
+    city: str
+    total_rooms: int
+    latitude: float | None
+    longitude: float | None
 
 
-class RoomTypeCreate(BaseModel):
+class RoomTypeRequest(RequestSchema):
     hotel_id: int
     name: str
     room_count: int
     base_rate: Decimal
 
 
-class RoomTypeRead(RoomTypeCreate):
-    model_config = ConfigDict(from_attributes=True)
-
+class RoomTypeResponse(ResponseSchema):
     id: int
+    hotel_id: int
+    name: str
+    room_count: int
+    base_rate: Decimal
 
 
-class DailyPerformanceCreate(BaseModel):
+class DailyPerformanceRequest(RequestSchema):
     room_type_id: int
     stay_date: date
     rate: Decimal | None = None
@@ -42,12 +49,16 @@ class DailyPerformanceCreate(BaseModel):
     room_revenue: Decimal = Decimal("0")
 
 
-class DailyPerformanceRead(DailyPerformanceCreate):
+class DailyPerformanceResponse(ResponseSchema):
     """Adds the three standard hotel metrics, calculated rather than stored."""
 
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
+    room_type_id: int
+    stay_date: date
+    rate: Decimal | None
+    rooms_available: int
+    rooms_sold: int
+    room_revenue: Decimal
 
     @computed_field
     @property
