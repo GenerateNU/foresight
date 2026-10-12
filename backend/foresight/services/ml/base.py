@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Any, Self
 
 import numpy as np
 import pandas as pd
@@ -20,9 +20,9 @@ class Model(ABC):
         """
         self.seed = seed
         self.params = params
-        self._model = None  # set by fit
+        self._model: Any = None  # set by fit
 
-    def _fitted(self):
+    def _fitted(self) -> Any:
         """Returns the underlying trained model.
 
         Returns:

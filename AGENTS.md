@@ -63,6 +63,9 @@ API: http://localhost:8000 · docs: http://localhost:8000/docs
 - **Config:** add new settings to `config.py` and document them in `.env.example`.
 - **Keep docs current:** if you change a layer's patterns, update that layer's
   file in `agents/`.
+- **Decisions:** design decisions live in [`docs/decisions/`](docs/decisions/),
+  one per file. Read the relevant record before changing that code; record new
+  decisions there.
 
 ## Do / don't for agents
 
