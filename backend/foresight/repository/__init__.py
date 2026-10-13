@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     from sqlalchemy import Table
     from sqlalchemy.ext.asyncio import AsyncSession
 
+# Postgres allows at most 32,767 bind parameters in one statement.
+_MAX_PARAMS = 32_767
+
 
 class Outcome(StrEnum):
     NEW = "new"
@@ -46,6 +49,26 @@ async def upsert_rows(
     if not rows:
         return counts
 
+    # One statement per batch, sized to stay under the parameter limit.
+    batch = max(1, _MAX_PARAMS // len(rows[0]))
+    for i in range(0, len(rows), batch):
+        for outcome, n in (
+            await _upsert_batch(
+                session, table, constraint, mutable, rows[i : i + batch]
+            )
+        ).items():
+            counts[outcome] += n
+    return counts
+
+
+async def _upsert_batch(
+    session: AsyncSession,
+    table: Table,
+    constraint: str,
+    mutable: Sequence[str],
+    rows: list[Mapping[str, Any]],
+) -> dict[Outcome, int]:
+    counts = dict.fromkeys(Outcome, 0)
     stmt = insert(table).values(rows)
     excluded = stmt.excluded
     set_: dict[str, Any] = {c: excluded[c] for c in mutable}
