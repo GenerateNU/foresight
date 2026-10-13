@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from foresight.ingest.weather import _rows
+from foresight.ingest.weather import _rows, chunks
 
 _DAY = 86400
 # temperature_2m_max, temperature_2m_min, precipitation_sum, wind_speed_10m_max,
@@ -111,3 +111,17 @@ def test_row_matches_the_table_columns() -> None:
         "is_forecast": True,
         "source": "open-meteo",
     }
+
+
+def test_long_ranges_are_split_a_year_at_a_time() -> None:
+    spans = list(chunks(date(2024, 1, 1), date(2025, 6, 30)))
+    assert spans == [
+        (date(2024, 1, 1), date(2024, 12, 30)),
+        (date(2024, 12, 31), date(2025, 6, 30)),
+    ]
+
+
+def test_a_short_range_is_one_request() -> None:
+    assert list(chunks(date(2025, 6, 1), date(2025, 6, 1))) == [
+        (date(2025, 6, 1), date(2025, 6, 1))
+    ]
