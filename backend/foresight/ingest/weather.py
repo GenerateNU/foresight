@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import openmeteo_requests
@@ -8,11 +9,14 @@ import requests_cache
 from retry_requests import retry
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from datetime import date
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 SOURCE = "open-meteo"
+# A year per archive request keeps each call small; a failure only redoes that year.
+CHUNK_DAYS = 365
 
 # Order matters: the response exposes variables by index, not by name.
 _DAILY = (
@@ -141,15 +145,26 @@ def fetch_actuals(
     outright, so a caller backfilling a date range has to clamp `end` to
     today rather than relying on empty rows coming back.
     """
-    response = _get_client().weather_api(
-        ARCHIVE_URL,
-        params={
-            "latitude": latitude,
-            "longitude": longitude,
-            "daily": list(_DAILY),
-            "timezone": timezone,
-            "start_date": start.isoformat(),
-            "end_date": end.isoformat(),
-        },
-    )[0]
-    return _rows(response, city, is_forecast=False)
+    rows: list[dict[str, Any]] = []
+    for chunk_start, chunk_end in chunks(start, end):
+        response = _get_client().weather_api(
+            ARCHIVE_URL,
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "daily": list(_DAILY),
+                "timezone": timezone,
+                "start_date": chunk_start.isoformat(),
+                "end_date": chunk_end.isoformat(),
+            },
+        )[0]
+        rows += _rows(response, city, is_forecast=False)
+    return rows
+
+
+def chunks(start: date, end: date) -> Iterator[tuple[date, date]]:
+    """Split `start`..`end` into back-to-back spans of at most CHUNK_DAYS days."""
+    while start <= end:
+        chunk_end = min(start + timedelta(days=CHUNK_DAYS - 1), end)
+        yield start, chunk_end
+        start = chunk_end + timedelta(days=1)

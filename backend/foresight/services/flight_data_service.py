@@ -15,6 +15,8 @@ import argparse
 import io
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from time import sleep
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -29,6 +31,16 @@ OPENSKY_URL = "https://opensky-network.org/api/flights/arrival"
 OPENSKY_TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
 AERODATABOX_HOST = "aerodatabox.p.rapidapi.com"
 DUBLIN = ZoneInfo("Europe/Dublin")
+# RapidAPI's basic plan allows about one request a second.
+AERODATABOX_PACE_SECONDS = 1.1
+# A 429 is often just "too fast": wait 2s, 4s, 8s before treating it as the quota.
+AERODATABOX_MAX_RETRIES = 3
+AERODATABOX_BACKOFF_SECONDS = 2.0
+_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+class RateLimitedError(Exception):
+    """AeroDataBox said 429: too many requests, or the monthly quota is used up."""
 
 
 def _days(start: date, end: date) -> list[date]:
@@ -140,6 +152,31 @@ def fetch_opensky(start: date, end: date, airport: str = "EIDW") -> pd.DataFrame
     return df
 
 
+def _get_aerodatabox(url: str, **kwargs: Any) -> httpx.Response:
+    """GET from AeroDataBox, retrying rate limits, 5xx and network errors.
+
+    Raises:
+        RateLimitedError: If it still answers 429 after every retry.
+        httpx.HTTPStatusError: On any other failed status.
+    """
+    for attempt in range(AERODATABOX_MAX_RETRIES):
+        try:
+            response = httpx.get(url, **kwargs)
+        except httpx.TransportError:
+            pass  # network blip or timeout: wait and try again
+        else:
+            if response.status_code not in _RETRY_STATUS:
+                response.raise_for_status()
+                return response
+        sleep(AERODATABOX_BACKOFF_SECONDS * 2**attempt)
+    # Last try: a 429 now most likely means the monthly quota is used up.
+    response = httpx.get(url, **kwargs)
+    if response.status_code == 429:
+        raise RateLimitedError(response.text[:300])
+    response.raise_for_status()
+    return response
+
+
 def fetch_aerodatabox(start: date, end: date, airport: str = "DUB") -> pd.DataFrame:
     """Fetch scheduled flights arriving at an airport from AeroDataBox (via RapidAPI).
 
@@ -151,13 +188,15 @@ def fetch_aerodatabox(start: date, end: date, airport: str = "DUB") -> pd.DataFr
         airport (str): IATA airport code. Defaults to "DUB" (Dublin).
 
     Returns:
-        pandas.DataFrame: One row per flight, with columns ``flight_number``,
-        ``airline``, ``aircraft_model``, ``origin_iata``, ``origin_name``,
-        ``origin_country``, ``status`` and ``arrival_time`` (scheduled, in Dublin
-        time). Empty if there were no flights.
+        pandas.DataFrame: One row per flight scheduled in the range, with columns
+        ``flight_number``, ``airline``, ``aircraft_model``, ``origin_iata``,
+        ``origin_name``, ``origin_country``, ``status`` and ``arrival_time``
+        (scheduled, in Dublin time). Empty if there were no flights.
 
     Raises:
-        httpx.HTTPStatusError: If a request fails.
+        RateLimitedError: If AeroDataBox still answers 429 after retrying
+            (usually the monthly quota).
+        httpx.HTTPStatusError: If a request fails otherwise.
     """
     headers = {
         "X-RapidAPI-Key": settings.xrapidapi_key,
@@ -178,19 +217,23 @@ def fetch_aerodatabox(start: date, end: date, airport: str = "DUB") -> pd.DataFr
         midnight = datetime.combine(day, time.min)
         for window_start in (midnight, midnight + timedelta(hours=12)):
             window_end = window_start + timedelta(hours=11, minutes=59)
-            response = httpx.get(
+            sleep(AERODATABOX_PACE_SECONDS)
+            response = _get_aerodatabox(
                 f"https://{AERODATABOX_HOST}/flights/airports/iata/{airport}"
                 f"/{window_start:%Y-%m-%dT%H:%M}/{window_end:%Y-%m-%dT%H:%M}",
                 params=params,
                 headers=headers,
                 timeout=30,
             )
-            response.raise_for_status()
             if response.status_code == 204:  # no flights in this window
                 continue
             for item in response.json().get("arrivals", []):
                 move = item.get("movement") or {}
                 origin = move.get("airport") or {}
+                scheduled = move.get("scheduledTime") or {}
+                # Skip delayed flights that were scheduled for the day before.
+                if not scheduled.get("local", "").startswith(day.isoformat()):
+                    continue
                 rows.append(
                     {
                         "flight_number": item.get("number"),
@@ -200,7 +243,7 @@ def fetch_aerodatabox(start: date, end: date, airport: str = "DUB") -> pd.DataFr
                         "origin_name": origin.get("name"),
                         "origin_country": origin.get("countryCode"),
                         "status": item.get("status"),
-                        "arrival_time": (move.get("scheduledTime") or {}).get("utc"),
+                        "arrival_time": scheduled.get("utc"),
                     }
                 )
 
