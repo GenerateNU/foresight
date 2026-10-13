@@ -14,6 +14,10 @@ domain rules live — they're called by routes and call the repository.
 - `backend/foresight/ingest/` — external-source adapters (events, weather,
   flights). Part of the services layer: they fetch and normalize, then write
   through `repository/`.
+- `backend/foresight/services/backfill/` — fetch an external source over a date
+  range and save it. Long runs yield after each unit of work (a month of events,
+  a day of flights) so the CLIs in `backend/scripts/backfill/` can commit as
+  they go.
 
 ## Patterns & conventions
 - Pure-ish domain functions/classes; take plain inputs or `*Request` schemas,
