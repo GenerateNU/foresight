@@ -1,7 +1,7 @@
 """pricing models
 
 Revision ID: d4f8e2a7b1c9
-Revises: a1b2c3d4e5f6
+Revises: c97a8a991e88
 Create Date: 2026-10-12 00:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'd4f8e2a7b1c9'
-down_revision: Union[str, None] = 'a1b2c3d4e5f6'
+down_revision: Union[str, None] = 'c97a8a991e88'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -21,6 +21,11 @@ class Hotel(Base):
     latitude: Mapped[float | None]
     longitude: Mapped[float | None]
 
+    # The hotel's main airport, used to look up flight arrivals. Both codes are
+    # stored because flight sources use different ones.
+    airport_iata: Mapped[str | None] = mapped_column(String(3))  # "DUB"
+    airport_icao: Mapped[str | None] = mapped_column(String(4))  # "EIDW"
+
     room_types: Mapped[list["RoomType"]] = relationship(back_populates="hotel")
 
     __table_args__ = (UniqueConstraint("name", "city", name="uq_hotels_name_city"),)
