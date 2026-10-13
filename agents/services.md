@@ -11,6 +11,9 @@ domain rules live — they're called by routes and call the repository.
 - `backend/foresight/services/` — business logic modules.
 - `backend/foresight/services/ml/` — modeling / recommendation logic.
 - `backend/foresight/services/parsers/` — ingesting external + hotel data.
+- `backend/foresight/ingest/` — external-source adapters (events, weather,
+  flights). Part of the services layer: they fetch and normalize, then write
+  through `repository/`.
 
 ## Patterns & conventions
 - Pure-ish domain functions/classes; take plain inputs or schemas, return domain
@@ -22,6 +25,8 @@ domain rules live — they're called by routes and call the repository.
 - No FastAPI/HTTP concerns (no `Request`, no status codes, no routers).
 - No direct ORM/session use — all persistence goes through `repository/`.
 - External API access and heavy logic belong here, not in routes.
+- Never open a session or commit. CLIs live in `backend/scripts/`; they open the
+  session, call the service, and commit once.
 
 ## Reference example
 Copy the pattern in `backend/foresight/services/example_widget.py`.
