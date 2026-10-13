@@ -8,10 +8,11 @@ from typing import TYPE_CHECKING
 import pytest
 from sqlalchemy import delete, func, select
 
-from foresight.database.models.external import Event, EventObservation
-from foresight.ingest.normalize import EventStatus, NormalizedEvent, Source
-from foresight.repository import Outcome
-from foresight.repository.events import upsert_event
+from foresight.database.enums import EventStatus, Source
+from foresight.database.models.event import Event, EventObservation
+from foresight.repository.upsert import Outcome
+from foresight.services.event import save_event
+from foresight.services.ingest.normalize import NormalizedEvent
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,7 +69,7 @@ async def _only_event(session: AsyncSession) -> Event:
 async def test_start_date_revision_updates_the_row_instead_of_orphaning_it(
     session: AsyncSession,
 ) -> None:
-    assert await upsert_event(session, _phq()) is Outcome.NEW
+    assert await save_event(session, _phq()) is Outcome.NEW
     first = await _only_event(session)
     first_id, first_seen, first_last = first.id, first.first_seen_at, first.last_seen_at
 
@@ -77,7 +78,7 @@ async def test_start_date_revision_updates_the_row_instead_of_orphaning_it(
         end_local_date=date(2026, 11, 15),
         payload={"id": "phq-test-1", "rev": 2},
     )
-    assert await upsert_event(session, revised) is Outcome.UPDATED
+    assert await save_event(session, revised) is Outcome.UPDATED
 
     assert await _count(session, Event) == 1
     assert await _count(session, EventObservation) == 1
@@ -92,10 +93,10 @@ async def test_start_date_revision_updates_the_row_instead_of_orphaning_it(
 async def test_identical_rerun_is_unchanged_but_still_bumps_last_seen(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _phq())
+    await save_event(session, _phq())
     before = (await _only_event(session)).last_seen_at
 
-    assert await upsert_event(session, _phq()) is Outcome.UNCHANGED
+    assert await save_event(session, _phq()) is Outcome.UNCHANGED
     assert await _count(session, Event) == 1
     assert await _count(session, EventObservation) == 1
     assert (await _only_event(session)).last_seen_at > before
@@ -104,10 +105,10 @@ async def test_identical_rerun_is_unchanged_but_still_bumps_last_seen(
 async def test_second_source_attaches_to_the_existing_event(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _phq())
+    await save_event(session, _phq())
 
     # AskNews is outranked, so the PredictHQ values stand.
-    assert await upsert_event(session, _news()) is Outcome.UNCHANGED
+    assert await save_event(session, _news()) is Outcome.UNCHANGED
 
     assert await _count(session, Event) == 1
     assert await _count(session, EventObservation) == 2
@@ -120,9 +121,9 @@ async def test_second_source_attaches_to_the_existing_event(
 async def test_higher_precedence_source_takes_over_a_text_extracted_event(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _news())
+    await save_event(session, _news())
 
-    assert await upsert_event(session, _phq()) is Outcome.UPDATED
+    assert await save_event(session, _phq()) is Outcome.UPDATED
     event = await _only_event(session)
     assert event.primary_source is Source.PREDICTHQ
     assert event.confidence == 1.0
@@ -132,15 +133,15 @@ async def test_higher_precedence_source_takes_over_a_text_extracted_event(
 async def test_revision_onto_an_existing_key_merges_rather_than_duplicates(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _phq())
+    await save_event(session, _phq())
     # An article already reported the date PredictHQ is about to move to.
-    await upsert_event(
+    await save_event(
         session,
         _news(start_local_date=date(2026, 11, 15), end_local_date=date(2026, 11, 15)),
     )
     assert await _count(session, Event) == 2
 
-    await upsert_event(
+    await save_event(
         session,
         _phq(start_local_date=date(2026, 11, 15), end_local_date=date(2026, 11, 15)),
     )
@@ -155,24 +156,24 @@ async def test_revision_onto_an_existing_key_merges_rather_than_duplicates(
 async def test_deletion_of_a_known_record_marks_the_event_deleted(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _phq())
+    await save_event(session, _phq())
 
     deleted = _phq(status=EventStatus.DELETED, payload={"state": "deleted"})
-    assert await upsert_event(session, deleted) is Outcome.UPDATED
+    assert await save_event(session, deleted) is Outcome.UPDATED
     assert (await _only_event(session)).status is EventStatus.DELETED
 
 
 async def test_another_records_deletion_does_not_kill_a_live_event(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _phq())
+    await save_event(session, _phq())
 
     duplicate = _phq(
         source_ref="phq-test-dupe",
         status=EventStatus.DELETED,
         payload={"deleted_reason": "duplicate"},
     )
-    assert await upsert_event(session, duplicate) is Outcome.UNCHANGED
+    assert await save_event(session, duplicate) is Outcome.UNCHANGED
     assert (await _only_event(session)).status is EventStatus.ACTIVE
     assert await _count(session, EventObservation) == 2
 
@@ -180,9 +181,9 @@ async def test_another_records_deletion_does_not_kill_a_live_event(
 async def test_observation_payload_tracks_the_latest_revision(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _phq())
+    await save_event(session, _phq())
     updated_at = datetime(2026, 10, 6, 9, 30, tzinfo=UTC)
-    await upsert_event(
+    await save_event(
         session,
         _phq(payload={"id": "phq-test-1", "rev": 2}, source_updated_at=updated_at),
     )
@@ -203,8 +204,8 @@ async def test_deleted_duplicate_stays_harmless_on_every_rerun(
     duplicate = _phq(source_ref="phq-test-dupe", status=EventStatus.DELETED)
 
     for _ in range(3):
-        assert await upsert_event(session, live) in {Outcome.NEW, Outcome.UNCHANGED}
-        assert await upsert_event(session, duplicate) is Outcome.UNCHANGED
+        assert await save_event(session, live) in {Outcome.NEW, Outcome.UNCHANGED}
+        assert await save_event(session, duplicate) is Outcome.UNCHANGED
         assert (await _only_event(session)).status is EventStatus.ACTIVE
 
 
@@ -220,12 +221,12 @@ async def test_live_duplicates_settle_on_the_latest_revision(
         expected_attendance=211,
         source_updated_at=datetime(2026, 10, 5, tzinfo=UTC),
     )
-    await upsert_event(session, older)
-    assert await upsert_event(session, newer) is Outcome.UPDATED
+    await save_event(session, older)
+    assert await save_event(session, newer) is Outcome.UPDATED
 
     # A rerun must not flip the row back and forth between the two listings.
-    assert await upsert_event(session, older) is Outcome.UNCHANGED
-    assert await upsert_event(session, newer) is Outcome.UNCHANGED
+    assert await save_event(session, older) is Outcome.UNCHANGED
+    assert await save_event(session, newer) is Outcome.UNCHANGED
     assert (await _only_event(session)).expected_attendance == 211
 
 
@@ -233,24 +234,24 @@ async def test_live_listing_restores_an_event_its_duplicate_deleted(
     session: AsyncSession,
 ) -> None:
     # As left behind before sightings recorded their status.
-    await upsert_event(session, _phq(source_ref="phq-test-dupe"))
-    await upsert_event(session, _phq())
+    await save_event(session, _phq(source_ref="phq-test-dupe"))
+    await save_event(session, _phq())
     await session.execute(EventObservation.__table__.update().values(status=None))
     await session.execute(Event.__table__.update().values(status=EventStatus.DELETED))
 
-    await upsert_event(
+    await save_event(
         session, _phq(source_ref="phq-test-dupe", status=EventStatus.DELETED)
     )
-    assert await upsert_event(session, _phq()) is Outcome.UPDATED
+    assert await save_event(session, _phq()) is Outcome.UPDATED
     assert (await _only_event(session)).status is EventStatus.ACTIVE
 
 
 async def test_structured_deletion_outranks_a_live_article(
     session: AsyncSession,
 ) -> None:
-    await upsert_event(session, _phq())
-    await upsert_event(session, _news())
+    await save_event(session, _phq())
+    await save_event(session, _news())
 
     deleted = _phq(status=EventStatus.DELETED)
-    assert await upsert_event(session, deleted) is Outcome.UPDATED
+    assert await save_event(session, deleted) is Outcome.UPDATED
     assert (await _only_event(session)).status is EventStatus.DELETED

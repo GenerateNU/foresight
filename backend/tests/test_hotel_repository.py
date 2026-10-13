@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select
 
 from foresight.database.models.hotel import DailyPerformance, RoomType
-from foresight.repository import Outcome
 from foresight.repository.hotel import (
     get_hotel,
     stay_date_range,
@@ -15,6 +14,7 @@ from foresight.repository.hotel import (
     upsert_hotel,
     upsert_room_type,
 )
+from foresight.repository.upsert import Outcome
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

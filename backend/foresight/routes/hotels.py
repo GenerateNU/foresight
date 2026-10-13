@@ -52,8 +52,6 @@ async def create_room_type(
     data: RoomTypeRequest, session: SessionDep
 ) -> RoomTypeResponse:
     room_type = await hotel_service.create_room_type(session, data)
-    if room_type is None:
-        raise not_found("Hotel", data.hotel_id)
     return RoomTypeResponse.model_validate(room_type)
 
 
@@ -71,12 +69,9 @@ async def get_room_type(room_type_id: int, session: SessionDep) -> RoomTypeRespo
 async def list_room_types(
     hotel_id: int, session: SessionDep, page: PageDep
 ) -> PageResponse[RoomTypeResponse]:
-    result = await hotel_service.list_room_types(
+    room_types, total = await hotel_service.list_room_types(
         session, hotel_id, limit=page.limit, offset=page.offset
     )
-    if result is None:
-        raise not_found("Hotel", hotel_id)
-    room_types, total = result
     return paginate(RoomTypeResponse, room_types, total, page)
 
 
@@ -93,7 +88,7 @@ async def list_performance(
     room_type_id: int | None = None,
 ) -> PageResponse[DailyPerformanceResponse]:
     """Nightly performance across the hotel's room types; `start`/`end` inclusive."""
-    result = await hotel_service.list_performance(
+    nights, total = await hotel_service.list_performance(
         session,
         hotel_id,
         start=start,
@@ -102,9 +97,6 @@ async def list_performance(
         limit=page.limit,
         offset=page.offset,
     )
-    if result is None:
-        raise not_found("Hotel", hotel_id)
-    nights, total = result
     return paginate(DailyPerformanceResponse, nights, total, page)
 
 
@@ -119,6 +111,5 @@ async def get_recommendation(
     recommendation = await recommendation_service.get_recommendation(
         session, hotel_id, stay_date
     )
-    if recommendation is None:
-        raise not_found("Hotel", hotel_id)
-    return recommendation
+    # ResponseSchema reads attributes, so the nested dataclasses map directly.
+    return RecommendationResponse.model_validate(recommendation)

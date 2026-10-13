@@ -7,8 +7,21 @@ from typing import Any
 
 import httpx
 
-from foresight.ingest.normalize import EventCategory, EventStatus, Source
-from foresight.ingest.predicthq import API_URL, fetch_events, to_normalized
+from foresight.database.enums import EventCategory, EventStatus, Source
+from foresight.services.ingest import predicthq
+from foresight.services.ingest.predicthq import API_URL, Market, to_normalized
+
+
+async def _fetch(
+    handler: Any, market: Market, since: datetime, *, token: str = "t"
+) -> predicthq.FetchResult:
+    transport = httpx.MockTransport(handler)
+    async with predicthq.client(token, transport=transport) as http:
+        return await predicthq.fetch(
+            http,
+            predicthq.recent_params(market, updated_since=since),
+            city=market.city,
+        )
 
 
 def _raw(**overrides: Any) -> dict[str, Any]:
@@ -99,13 +112,11 @@ async def test_fetch_filters_by_radius_and_revision_clock_and_follows_next() -> 
             200, json={"count": 3, "next": page_two, "results": [_raw(id="a")]}
         )
 
-    result = await fetch_events(
+    result = await _fetch(
+        handler,
+        Market("Dublin", 53.3498, -6.2603),
+        datetime(2026, 9, 29, 14, 0, tzinfo=UTC),
         token="test-token",
-        latitude=53.3498,
-        longitude=-6.2603,
-        city="Dublin",
-        updated_since=datetime(2026, 9, 29, 14, 0, tzinfo=UTC),
-        transport=httpx.MockTransport(handler),
     )
 
     first = requests[0]
@@ -129,13 +140,8 @@ async def test_record_missing_required_field_is_rejected_not_raised() -> None:
         del broken["start"]
         return httpx.Response(200, json={"count": 1, "next": None, "results": [broken]})
 
-    result = await fetch_events(
-        token="t",
-        latitude=0.0,
-        longitude=0.0,
-        city="Dublin",
-        updated_since=datetime(2026, 9, 29, tzinfo=UTC),
-        transport=httpx.MockTransport(handler),
+    result = await _fetch(
+        handler, Market("Dublin", 0.0, 0.0), datetime(2026, 9, 29, tzinfo=UTC)
     )
 
     assert result.events == []

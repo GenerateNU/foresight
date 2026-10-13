@@ -1,3 +1,5 @@
+"""Trained pricing models, versioned per hotel."""
+
 from datetime import date, datetime
 from typing import Any
 
@@ -22,23 +24,13 @@ class PricingModel(Base):
     """One trained model version for a hotel.
 
     The fitted model is serialized to bytes in `artifact`. Only one version per
-    hotel is active at a time
+    hotel is active at a time.
     """
 
     __tablename__ = "pricing_models"
-    __table_args__ = (
-        UniqueConstraint("hotel_id", "version"),
-        # At most one active model per hotel.
-        Index(
-            "uq_pricing_models_active_per_hotel",
-            "hotel_id",
-            unique=True,
-            postgresql_where=text("is_active"),
-        ),
-    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id"), index=True)
+    hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
     version: Mapped[int]  # increments per hotel
     algorithm: Mapped[str] = mapped_column(String(60))  # e.g. "ebm"
 
@@ -56,4 +48,17 @@ class PricingModel(Base):
     is_active: Mapped[bool] = mapped_column(default=False)
     trained_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        # Leads on hotel_id, so it also serves as the foreign key index.
+        UniqueConstraint("hotel_id", "version"),
+        # At most one active model per hotel. Named explicitly: a partial index
+        # means something the column-derived convention name can't express.
+        Index(
+            "uq_pricing_models_active_per_hotel",
+            "hotel_id",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
     )

@@ -2,8 +2,9 @@
 
 from datetime import date
 from decimal import Decimal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator
 
 from foresight.schemas.base import RequestSchema, ResponseSchema
 
@@ -16,6 +17,17 @@ class HotelRequest(RequestSchema):
     longitude: float | None = None
     airport_iata: str | None = Field(default=None, min_length=3, max_length=3)
     airport_icao: str | None = Field(default=None, min_length=4, max_length=4)
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _known_zone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError):
+                raise ValueError(f"unknown IANA timezone {value!r}") from None
+        return value
 
 
 class HotelResponse(ResponseSchema):
@@ -27,6 +39,7 @@ class HotelResponse(ResponseSchema):
     longitude: float | None
     airport_iata: str | None
     airport_icao: str | None
+    timezone: str | None
 
 
 class RoomTypeRequest(RequestSchema):

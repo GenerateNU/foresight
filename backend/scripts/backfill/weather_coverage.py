@@ -4,7 +4,7 @@ from datetime import date
 
 from foresight.database.session import async_session_factory, engine
 from foresight.services.backfill.weather_coverage import weather_coverage
-from foresight.services.backfill.window import hotel_window
+from foresight.services.backfill.window import InvalidWindowError, hotel_window
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -33,7 +33,7 @@ async def main() -> int:
                 start, end = await hotel_window(
                     session, args.hotel_id, args.start, args.end
                 )
-            except ValueError as exc:
+            except InvalidWindowError as exc:
                 parser.error(str(exc))
             report = await weather_coverage(
                 session, city=args.city, start=start, end=end

@@ -1,20 +1,25 @@
+"""Data access for `hotels`, `room_types` and `daily_performance`.
+
+`create_*` returns None on a duplicate (API writes); `upsert_*` is idempotent
+(loaders).
+"""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
-from foresight.repository import Outcome, upsert_rows
 from foresight.repository.pagination import fetch_page
+from foresight.repository.upsert import Outcome, upsert_rows
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from datetime import date
     from decimal import Decimal
 
-    from sqlalchemy import Table
     from sqlalchemy.ext.asyncio import AsyncSession
 
 _PERF_KEY = ("room_type_id", "stay_date")
@@ -67,7 +72,7 @@ async def upsert_room_type(
         hotel_id=hotel_id, name=name, room_count=room_count, base_rate=base_rate
     )
     stmt = stmt.on_conflict_do_update(
-        constraint="uq_room_types_hotel_name",
+        constraint="uq_room_types_hotel_id_name",
         set_={
             "room_count": stmt.excluded.room_count,
             # The pricing model scales off base_rate, so a reload correcting it
@@ -84,8 +89,8 @@ async def upsert_daily_performance(
     """Write rows keyed on (room_type_id, stay_date)."""
     return await upsert_rows(
         session,
-        cast("Table", DailyPerformance.__table__),
-        constraint="uq_daily_performance_room_type_stay",
+        DailyPerformance,
+        constraint="uq_daily_performance_room_type_id_stay_date",
         key=_PERF_KEY,
         mutable=_PERF_MEASURES,
         rows=rows,
@@ -100,18 +105,26 @@ async def create_hotel(
     total_rooms: int,
     latitude: float | None,
     longitude: float | None,
-) -> Hotel:
-    hotel = Hotel(
-        name=name,
-        city=city,
-        total_rooms=total_rooms,
-        latitude=latitude,
-        longitude=longitude,
+    airport_iata: str | None,
+    airport_icao: str | None,
+    timezone: str | None,
+) -> Hotel | None:
+    """Insert a hotel; None if one with this name already exists in `city`."""
+    return await session.scalar(
+        insert(Hotel)
+        .values(
+            name=name,
+            city=city,
+            total_rooms=total_rooms,
+            latitude=latitude,
+            longitude=longitude,
+            airport_iata=airport_iata,
+            airport_icao=airport_icao,
+            timezone=timezone,
+        )
+        .on_conflict_do_nothing(constraint="uq_hotels_name_city")
+        .returning(Hotel)
     )
-    session.add(hotel)
-    await session.flush()
-    await session.refresh(hotel)
-    return hotel
 
 
 async def create_room_type(
@@ -121,14 +134,16 @@ async def create_room_type(
     name: str,
     room_count: int,
     base_rate: Decimal,
-) -> RoomType:
-    room_type = RoomType(
-        hotel_id=hotel_id, name=name, room_count=room_count, base_rate=base_rate
+) -> RoomType | None:
+    """Insert a room type; None if the hotel already has one with this name."""
+    return await session.scalar(
+        insert(RoomType)
+        .values(
+            hotel_id=hotel_id, name=name, room_count=room_count, base_rate=base_rate
+        )
+        .on_conflict_do_nothing(constraint="uq_room_types_hotel_id_name")
+        .returning(RoomType)
     )
-    session.add(room_type)
-    await session.flush()
-    await session.refresh(room_type)
-    return room_type
 
 
 async def list_hotels(

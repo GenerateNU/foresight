@@ -1,17 +1,19 @@
+"""Data access for `weather`: daily forecasts and recorded actuals per city."""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from foresight.database.models.external import Weather
-from foresight.repository import Outcome, upsert_rows
+from foresight.database.models.weather import Weather
+from foresight.repository.pagination import fetch_page
+from foresight.repository.upsert import Outcome, upsert_rows
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
     from datetime import date
 
-    from sqlalchemy import Table
     from sqlalchemy.ext.asyncio import AsyncSession
 
 _KEY = ("city", "weather_date", "is_forecast", "source")
@@ -24,8 +26,8 @@ async def upsert_weather(
     """Write rows keyed on (city, weather_date, is_forecast, source)."""
     return await upsert_rows(
         session,
-        cast("Table", Weather.__table__),
-        constraint="uq_weather_city_date_kind_source",
+        Weather,
+        constraint="uq_weather_city_weather_date_is_forecast_source",
         key=_KEY,
         mutable=_MEASURES,
         rows=rows,
@@ -44,3 +46,22 @@ async def recorded_days(
         )
     )
     return {day: has_values for day, has_values in result.tuples().all()}
+
+
+async def list_weather(
+    session: AsyncSession,
+    *,
+    city: str,
+    start: date | None,
+    end: date | None,
+    limit: int,
+    offset: int,
+) -> tuple[Sequence[Weather], int]:
+    # `weather.city` is free text, so compare without regard to case.
+    stmt = select(Weather).where(func.lower(Weather.city) == city.lower())
+    if start is not None:
+        stmt = stmt.where(Weather.weather_date >= start)
+    if end is not None:
+        stmt = stmt.where(Weather.weather_date <= end)
+    stmt = stmt.order_by(Weather.weather_date, Weather.id)
+    return await fetch_page(session, stmt, limit=limit, offset=offset)

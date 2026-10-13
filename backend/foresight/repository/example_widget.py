@@ -13,12 +13,18 @@ Layer rules shown here:
 - No business logic lives here — just queries and persistence.
 """
 
-from collections.abc import Sequence
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.example_widget import Widget
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def create_widget(

@@ -9,18 +9,16 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from foresight.config import settings
-from foresight.database.models.external import Event, EventObservation
-from foresight.ingest.predicthq import API_URL
-from foresight.ingest.run import Market
-from foresight.repository import Outcome
-from foresight.services.backfill.events import (
+from foresight.database.models.event import Event, EventObservation
+from foresight.repository.upsert import Outcome
+from foresight.services.backfill.events import backfill, month_chunks
+from foresight.services.ingest import predicthq
+from foresight.services.ingest.predicthq import (
+    API_URL,
     MAX_RETRIES,
+    Market,
     OutOfCreditsError,
-    RetriesExhaustedError,
-    _get,
-    backfill,
-    chunk_params,
-    month_chunks,
+    PredictHQRetriesExhaustedError,
 )
 
 if TYPE_CHECKING:
@@ -83,7 +81,7 @@ def test_month_chunks_single_day() -> None:
 
 
 def test_chunk_params_cover_the_chunk_with_slack_and_no_revision_filter() -> None:
-    params = chunk_params(DUBLIN, date(2025, 3, 1), date(2025, 3, 31), "10km")
+    params = predicthq.window_params(DUBLIN, date(2025, 3, 1), date(2025, 3, 31))
 
     assert params["active.gte"] == "2025-02-28"
     assert params["active.lte"] == "2025-04-01"
@@ -94,7 +92,9 @@ def test_chunk_params_cover_the_chunk_with_slack_and_no_revision_filter() -> Non
 async def test_success_never_waits() -> None:
     sleep = FakeSleep()
     async with _client(_replies(httpx.Response(200, json={"results": []}))) as client:
-        assert await _get(client, API_URL, None, sleep=sleep) == {"results": []}
+        assert await predicthq.get_page(client, API_URL, None, sleep=sleep) == {
+            "results": []
+        }
     assert sleep.waits == []
 
 
@@ -104,7 +104,7 @@ async def test_rate_limit_backs_off_then_succeeds() -> None:
         httpx.Response(429), httpx.Response(429), httpx.Response(200, json={})
     )
     async with _client(handler) as client:
-        await _get(client, API_URL, None, sleep=sleep)
+        await predicthq.get_page(client, API_URL, None, sleep=sleep)
     assert sleep.waits == [2.0, 4.0]
 
 
@@ -114,15 +114,15 @@ async def test_rate_limit_honours_retry_after() -> None:
         httpx.Response(429, headers={"Retry-After": "7"}), httpx.Response(200, json={})
     )
     async with _client(handler) as client:
-        await _get(client, API_URL, None, sleep=sleep)
+        await predicthq.get_page(client, API_URL, None, sleep=sleep)
     assert sleep.waits == [7.0]
 
 
 async def test_gives_up_after_every_retry() -> None:
     sleep = FakeSleep()
     async with _client(lambda request: httpx.Response(429)) as client:
-        with pytest.raises(RetriesExhaustedError):
-            await _get(client, API_URL, None, sleep=sleep)
+        with pytest.raises(PredictHQRetriesExhaustedError):
+            await predicthq.get_page(client, API_URL, None, sleep=sleep)
     assert len(sleep.waits) == MAX_RETRIES
 
 
@@ -130,7 +130,7 @@ async def test_out_of_credits_stops_without_waiting() -> None:
     sleep = FakeSleep()
     async with _client(_replies(httpx.Response(402, text="quota exceeded"))) as client:
         with pytest.raises(OutOfCreditsError, match="quota exceeded"):
-            await _get(client, API_URL, None, sleep=sleep)
+            await predicthq.get_page(client, API_URL, None, sleep=sleep)
     assert sleep.waits == []
 
 
