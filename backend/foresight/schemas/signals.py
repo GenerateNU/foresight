@@ -1,12 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from foresight.ingest.normalize import (
-    DatePrecision,
-    EventCategory,
-    EventStatus,
-    Source,
-)
+from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
 from foresight.schemas.base import ResponseSchema
 
 

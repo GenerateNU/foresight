@@ -41,9 +41,13 @@ def upgrade() -> None:
             server_default=sa.text('now()'),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(['hotel_id'], ['hotels.id']),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('hotel_id', 'version'),
+        sa.ForeignKeyConstraint(
+            ['hotel_id'], ['hotels.id'], name='pricing_models_hotel_id_fkey'
+        ),
+        sa.PrimaryKeyConstraint('id', name='pricing_models_pkey'),
+        sa.UniqueConstraint(
+            'hotel_id', 'version', name='pricing_models_hotel_id_version_key'
+        ),
     )
     op.create_index(
         op.f('ix_pricing_models_hotel_id'), 'pricing_models', ['hotel_id']

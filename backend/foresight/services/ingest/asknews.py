@@ -26,16 +26,14 @@ from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from foresight.ingest.normalize import (
-    DatePrecision,
-    EventCategory,
-    EventStatus,
+from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
+from foresight.services.ingest.http import RetriesExhaustedError, Sleep, send
+from foresight.services.ingest.normalize import (
     NormalizedEvent,
-    Source,
     normalize_title,
     slugify_city,
 )
-from foresight.ingest.textdates import (
+from foresight.services.ingest.textdates import (
     MAX_LOOKAHEAD_DAYS,
     looks_retrospective,
     resolve_date,
@@ -58,8 +56,7 @@ EVENT_TERMS = (
     "announces dates lineup tickets venue"
 )
 
-_MAX_ATTEMPTS = 3
-_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_MAX_RETRIES = 2
 _TOKEN_EXPIRY_SLACK_SECONDS = 60
 
 _CATEGORY_KEYWORDS: tuple[tuple[EventCategory, tuple[str, ...]], ...] = (
@@ -198,6 +195,7 @@ class AskNewsClient:
         base_url: str = DEFAULT_API_BASE_URL,
         token_url: str = DEFAULT_TOKEN_URL,
         scopes: Sequence[str] = ("news",),
+        sleep: Sleep = asyncio.sleep,
     ) -> None:
         self._client_id = client_id
         self._client_secret = client_secret
@@ -207,18 +205,25 @@ class AskNewsClient:
         self._scopes = tuple(scopes)
         self._token: str | None = None
         self._token_expires_at: datetime | None = None
+        self._sleep = sleep
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        """Issue a request, backing off once per retryable status."""
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
-            response = await self._http.request(method, url, **kwargs)
-            if response.status_code not in _RETRY_STATUSES or attempt == _MAX_ATTEMPTS:
-                response.raise_for_status()
-                return response
-            retry_after = response.headers.get("retry-after")
-            delay = float(retry_after) if retry_after and retry_after.isdigit() else 2.0
-            await asyncio.sleep(delay * attempt)
-        raise AssertionError("unreachable")
+        """Issue a request through the shared retry, raising for any failure."""
+        try:
+            response = await send(
+                self._http,
+                method,
+                url,
+                max_retries=_MAX_RETRIES,
+                sleep=self._sleep,
+                **kwargs,
+            )
+        except RetriesExhaustedError as exc:
+            if exc.response is None:
+                raise
+            response = exc.response
+        response.raise_for_status()
+        return response
 
     async def _access_token(self) -> str:
         now = datetime.now(UTC)

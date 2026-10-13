@@ -7,11 +7,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from foresight.ingest.normalize import (
-    DatePrecision,
-    EventCategory,
+from foresight.database.enums import DatePrecision, EventCategory, Source
+from foresight.services.ingest.normalize import (
     NormalizedEvent,
-    Source,
     coords_from_geojson,
     dedupe_key,
     normalize_title,

@@ -7,10 +7,11 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from foresight.ingest.normalize import NormalizedEvent, Source
-from foresight.ingest.predicthq import Rejected
-from foresight.ingest.run import Market, RunReport, parse_since
-from foresight.repository import Outcome
+from foresight.database.enums import Source
+from foresight.ingest.run import RunReport, parse_since
+from foresight.repository.upsert import Outcome
+from foresight.services.ingest.normalize import NormalizedEvent
+from foresight.services.ingest.predicthq import Market, Rejected
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 

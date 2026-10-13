@@ -52,8 +52,8 @@ def upgrade() -> None:
     sa.Column('primary_source', sa.String(length=40), nullable=False),
     sa.Column('first_seen_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('last_seen_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('dedupe_key')
+    sa.PrimaryKeyConstraint('id', name='events_pkey'),
+    sa.UniqueConstraint('dedupe_key', name='events_dedupe_key_key')
     )
     op.create_index(op.f('ix_events_title_norm'), 'events', ['title_norm'], unique=False)
     op.create_index('ix_events_city_slug_start', 'events', ['city_slug', 'start_local_date'], unique=False)
@@ -65,9 +65,9 @@ def upgrade() -> None:
     sa.Column('source_updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.Column('captured_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['event_id'], ['events.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('source', 'source_ref')
+    sa.ForeignKeyConstraint(['event_id'], ['events.id'], name='event_observations_event_id_fkey'),
+    sa.PrimaryKeyConstraint('id', name='event_observations_pkey'),
+    sa.UniqueConstraint('source', 'source_ref', name='event_observations_source_source_ref_key')
     )
 
 
@@ -89,5 +89,5 @@ def downgrade() -> None:
     sa.Column('longitude', sa.Float(), nullable=True),
     sa.Column('source', sa.String(length=40), nullable=False),
     sa.Column('captured_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id', name='events_pkey')
     )

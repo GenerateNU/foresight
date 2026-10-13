@@ -19,37 +19,30 @@ from typing import TYPE_CHECKING
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import func, select
 
 from foresight.config import settings
-from foresight.database.models.external import Event, EventObservation
+from foresight.database.enums import Source
 from foresight.database.models.hotel import Hotel
 from foresight.database.session import async_session_factory, engine
-from foresight.ingest import predicthq
-from foresight.ingest.normalize import Source, slugify_city
-from foresight.repository import Outcome
-from foresight.repository.events import upsert_event
+from foresight.repository.upsert import Outcome
+from foresight.services.event import market_totals, save_event
+from foresight.services.ingest import predicthq
+from foresight.services.ingest.normalize import slugify_city
+from foresight.services.ingest.predicthq import Market
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.ingest.normalize import NormalizedEvent
-    from foresight.ingest.predicthq import Rejected
+    from foresight.services.ingest.normalize import NormalizedEvent
+    from foresight.services.ingest.predicthq import Rejected
 
 log = logging.getLogger("foresight.ingest")
 
 _MIGRATIONS = Path(__file__).resolve().parents[1] / "database" / "migrations"
 _SPAN = re.compile(r"^(\d+)([hdw])$")
 _UNITS = {"h": "hours", "d": "days", "w": "weeks"}
-
-
-@dataclass(slots=True)
-class Market:
-    city: str
-    latitude: float
-    longitude: float
 
 
 @dataclass(slots=True)
@@ -172,27 +165,6 @@ async def resolve_market(session: AsyncSession, args: argparse.Namespace) -> Mar
     return Market(city=hotel.city, latitude=hotel.latitude, longitude=hotel.longitude)
 
 
-async def market_totals(
-    session: AsyncSession, city: str
-) -> tuple[dict[str, int], dict[str, int]]:
-    slug = slugify_city(city)
-    by_status = await session.execute(
-        select(Event.status, func.count())
-        .where(Event.city_slug == slug)
-        .group_by(Event.status)
-    )
-    by_source = await session.execute(
-        select(EventObservation.source, func.count())
-        .join(Event, EventObservation.event_id == Event.id)
-        .where(Event.city_slug == slug)
-        .group_by(EventObservation.source)
-    )
-    return (
-        {status.value: n for status, n in by_status.all()},
-        {source.value: n for source, n in by_source.all()},
-    )
-
-
 async def run(args: argparse.Namespace) -> RunReport:
     async with async_session_factory() as session:
         market = await resolve_market(session, args)
@@ -204,14 +176,14 @@ async def run(args: argparse.Namespace) -> RunReport:
             dry_run=args.dry_run,
         )
 
-        result = await predicthq.fetch_events(
-            token=settings.predicthq_token,
-            latitude=market.latitude,
-            longitude=market.longitude,
-            city=market.city,
-            updated_since=args.since,
-            radius=args.radius,
-        )
+        async with predicthq.client(settings.predicthq_token) as http:
+            result = await predicthq.fetch(
+                http,
+                predicthq.recent_params(
+                    market, updated_since=args.since, radius=args.radius
+                ),
+                city=market.city,
+            )
         report.fetched = result.fetched
         report.rejected = result.rejected
         report.events = result.events
@@ -219,7 +191,7 @@ async def run(args: argparse.Namespace) -> RunReport:
             return report
 
         for event in result.events:
-            outcome = await upsert_event(session, event)
+            outcome = await save_event(session, event)
             report.outcomes[outcome] = report.outcomes.get(outcome, 0) + 1
         await session.commit()
 

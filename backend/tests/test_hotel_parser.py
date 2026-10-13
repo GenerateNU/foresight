@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import func, select
 
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
-from foresight.repository import Outcome
+from foresight.repository.upsert import Outcome
 from foresight.services.parsers.hotel_data_parser import (
     ROOM_TYPE,
     HotelDataParser,

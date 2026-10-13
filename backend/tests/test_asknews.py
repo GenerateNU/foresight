@@ -8,8 +8,8 @@ from typing import Any
 import httpx
 import pytest
 
-from foresight.ingest import asknews
-from foresight.ingest.asknews import (
+from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
+from foresight.services.ingest.asknews import (
     AskNewsClient,
     CityTarget,
     RejectReason,
@@ -18,13 +18,7 @@ from foresight.ingest.asknews import (
     extract_event,
     plan_searches,
 )
-from foresight.ingest.normalize import (
-    DatePrecision,
-    EventCategory,
-    EventStatus,
-    NormalizedEvent,
-    Source,
-)
+from foresight.services.ingest.normalize import NormalizedEvent
 
 TODAY = date(2026, 6, 1)
 DUBLIN = CityTarget(
@@ -295,7 +289,11 @@ def build_client(handler: Any) -> tuple[AskNewsClient, dict[str, int]]:
         return handler(request, calls)
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(route))
-    return AskNewsClient("id", "secret", http=http), calls
+    return AskNewsClient("id", "secret", http=http, sleep=_no_sleep), calls
+
+
+async def _no_sleep(_seconds: float) -> None:
+    return None
 
 
 def ok(request: httpx.Request, _calls: dict[str, int]) -> httpx.Response:
@@ -338,14 +336,7 @@ async def test_the_bearer_token_is_sent_on_the_search() -> None:
     assert seen == ["Bearer tok"]
 
 
-async def test_a_rate_limited_search_is_retried(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def no_sleep(_seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr(asknews.asyncio, "sleep", no_sleep)
-
+async def test_a_rate_limited_search_is_retried() -> None:
     def throttle(request: httpx.Request, calls: dict[str, int]) -> httpx.Response:
         if request.url.path.endswith("/token"):
             return httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
@@ -361,16 +352,12 @@ async def test_a_rate_limited_search_is_retried(
 
 
 async def test_a_persistent_server_error_is_raised() -> None:
-    async def no_sleep(_seconds: float) -> None:
-        return None
-
     def broken(request: httpx.Request, _calls: dict[str, int]) -> httpx.Response:
         if request.url.path.endswith("/token"):
             return httpx.Response(200, json={"access_token": "tok", "expires_in": 3600})
         return httpx.Response(503, json={})
 
     client, _ = build_client(broken)
-    asknews.asyncio.sleep = no_sleep  # type: ignore[assignment]
 
     with pytest.raises(httpx.HTTPStatusError):
         await client.search_news(query="festival")

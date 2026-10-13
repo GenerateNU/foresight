@@ -1,4 +1,4 @@
-"""Hotel data."""
+"""A hotel, its room types, and how each room type sold per night."""
 
 from datetime import date
 from decimal import Decimal
@@ -10,6 +10,8 @@ from foresight.database.base import Base
 
 
 class Hotel(Base):
+    """A property we price for."""
+
     __tablename__ = "hotels"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -26,9 +28,15 @@ class Hotel(Base):
     airport_iata: Mapped[str | None] = mapped_column(String(3))  # "DUB"
     airport_icao: Mapped[str | None] = mapped_column(String(4))  # "EIDW"
 
-    room_types: Mapped[list["RoomType"]] = relationship(back_populates="hotel")
+    # IANA zone, e.g. "Europe/Dublin". Stay nights are local to the hotel, so
+    # sources reporting UTC instants (OpenSky) are bucketed into days with it.
+    timezone: Mapped[str | None] = mapped_column(String(64))
 
-    __table_args__ = (UniqueConstraint("name", "city", name="uq_hotels_name_city"),)
+    room_types: Mapped[list["RoomType"]] = relationship(
+        back_populates="hotel", lazy="raise", passive_deletes=True
+    )
+
+    __table_args__ = (UniqueConstraint("name", "city"),)
 
 
 class RoomType(Base):
@@ -37,17 +45,18 @@ class RoomType(Base):
     __tablename__ = "room_types"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id"))
+    hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(120))
     room_count: Mapped[int]  # how many physical rooms of this type
     base_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # normal price
 
-    hotel: Mapped["Hotel"] = relationship(back_populates="room_types")
-    nights: Mapped[list["DailyPerformance"]] = relationship(back_populates="room_type")
-
-    __table_args__ = (
-        UniqueConstraint("hotel_id", "name", name="uq_room_types_hotel_name"),
+    hotel: Mapped["Hotel"] = relationship(back_populates="room_types", lazy="raise")
+    nights: Mapped[list["DailyPerformance"]] = relationship(
+        back_populates="room_type", lazy="raise", passive_deletes=True
     )
+
+    # Leads on hotel_id, so it also serves as the foreign key index.
+    __table_args__ = (UniqueConstraint("hotel_id", "name"),)
 
 
 class DailyPerformance(Base):
@@ -56,7 +65,9 @@ class DailyPerformance(Base):
     __tablename__ = "daily_performance"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    room_type_id: Mapped[int] = mapped_column(ForeignKey("room_types.id"))
+    room_type_id: Mapped[int] = mapped_column(
+        ForeignKey("room_types.id", ondelete="CASCADE")
+    )
 
     stay_date: Mapped[date] = mapped_column(Date)  # the night being sold
     rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # price we listed
@@ -64,11 +75,7 @@ class DailyPerformance(Base):
     rooms_sold: Mapped[int] = mapped_column(default=0)
     room_revenue: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
 
-    room_type: Mapped["RoomType"] = relationship(back_populates="nights")
+    room_type: Mapped["RoomType"] = relationship(back_populates="nights", lazy="raise")
 
-    # One row per room type per night.
-    __table_args__ = (
-        UniqueConstraint(
-            "room_type_id", "stay_date", name="uq_daily_performance_room_type_stay"
-        ),
-    )
+    # One row per room type per night. Also serves as the foreign key index.
+    __table_args__ = (UniqueConstraint("room_type_id", "stay_date"),)

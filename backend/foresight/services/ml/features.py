@@ -1,6 +1,6 @@
 import pandas as pd
 
-from foresight.ingest.normalize import EventCategory
+from foresight.database.enums import EventCategory
 
 # Model input columns, in order. Training and serving both use this list.
 FEATURES = [

@@ -1,13 +1,20 @@
-from datetime import date
-from typing import Any
+"""Data access for `pricing_models`: trained model versions per hotel."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.pricing_model import PricingModel
 
+if TYPE_CHECKING:
+    from datetime import date
 
-async def create(
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def create_pricing_model(
     session: AsyncSession,
     *,
     hotel_id: int,
@@ -19,9 +26,9 @@ async def create(
     data_start: date,
     data_end: date,
 ) -> PricingModel:
-    """Saves a new, inactive model as the hotel's next version.
+    """Save a new, inactive model as the hotel's next version.
 
-    Call `activate` afterwards to start serving it.
+    Call `activate_pricing_model` afterwards to start serving it.
     """
     model = PricingModel(
         hotel_id=hotel_id,
@@ -36,30 +43,36 @@ async def create(
         is_active=False,
     )
     session.add(model)
-    await session.commit()
+    await session.flush()
     await session.refresh(model)
     return model
 
 
-async def get(session: AsyncSession, model_id: int) -> PricingModel | None:
+async def get_pricing_model(
+    session: AsyncSession, model_id: int
+) -> PricingModel | None:
     return await session.get(PricingModel, model_id)
 
 
-async def get_active(session: AsyncSession, hotel_id: int) -> PricingModel | None:
-    """Returns the model currently serving the hotel, if any."""
-    result = await session.execute(
+async def get_active_pricing_model(
+    session: AsyncSession, hotel_id: int
+) -> PricingModel | None:
+    """The model currently serving the hotel, if any."""
+    return await session.scalar(
         select(PricingModel).where(
             PricingModel.hotel_id == hotel_id, PricingModel.is_active
         )
     )
-    return result.scalar_one_or_none()
 
 
-async def activate(session: AsyncSession, model_id: int) -> PricingModel | None:
-    """Makes this model the hotel's active one, deactivating any other.
+async def activate_pricing_model(
+    session: AsyncSession, model_id: int
+) -> PricingModel | None:
+    """Make this model the hotel's active one, deactivating any other.
 
-    Both changes commit together, so the hotel is never left with zero or two
-    active models. Returns None if the model doesn't exist.
+    Both writes land in the caller's transaction, so once it commits the hotel
+    is never left with zero or two active models. Returns None if the model
+    doesn't exist.
     """
     model = await session.get(PricingModel, model_id)
     if model is None:
@@ -77,15 +90,15 @@ async def activate(session: AsyncSession, model_id: int) -> PricingModel | None:
     )
     await session.flush()
     model.is_active = True
-    await session.commit()
+    await session.flush()
     await session.refresh(model)
     return model
 
 
 async def _next_version(session: AsyncSession, hotel_id: int) -> int:
-    result = await session.execute(
+    current = await session.scalar(
         select(func.coalesce(func.max(PricingModel.version), 0)).where(
             PricingModel.hotel_id == hotel_id
         )
     )
-    return result.scalar_one() + 1
+    return (current or 0) + 1

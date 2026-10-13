@@ -7,9 +7,10 @@ from datetime import date
 
 from foresight.config import settings
 from foresight.database.session import async_session_factory, engine
-from foresight.ingest.run import market_totals, migrate, resolve_market
+from foresight.ingest.run import migrate, resolve_market
 from foresight.services.backfill.events import BackfillReport, backfill
-from foresight.services.backfill.window import hotel_window
+from foresight.services.backfill.window import InvalidWindowError, hotel_window
+from foresight.services.event import market_totals
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -46,7 +47,7 @@ async def _run(args: argparse.Namespace) -> BackfillReport:
                 start, end = await hotel_window(
                     session, args.hotel_id, args.start, args.end
                 )
-            except ValueError as exc:
+            except InvalidWindowError as exc:
                 raise SystemExit(f"error: {exc}") from exc
             report = None
             async for progress in backfill(

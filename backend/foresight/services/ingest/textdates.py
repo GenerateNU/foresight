@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 
-from foresight.ingest.normalize import DatePrecision
+from foresight.database.enums import DatePrecision
 
 MAX_LOOKAHEAD_DAYS = 540
 _PAST_TOLERANCE_DAYS = 2

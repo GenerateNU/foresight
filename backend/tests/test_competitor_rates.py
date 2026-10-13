@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
-from foresight.database.models.external import CompetitorRate
-from foresight.repository import Outcome
-from foresight.repository.competitor_rates import upsert_competitor_rates
+from foresight.database.models.competitor_rate import CompetitorRate
+from foresight.repository.competitor_rate import upsert_competitor_rates
+from foresight.repository.upsert import Outcome
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

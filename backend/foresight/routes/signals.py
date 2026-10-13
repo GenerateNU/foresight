@@ -9,7 +9,9 @@ from foresight.schemas.signals import (
     FlightArrivalResponse,
     WeatherResponse,
 )
-from foresight.services import signals as signals_service
+from foresight.services import event as event_service
+from foresight.services import flight as flight_service
+from foresight.services import weather as weather_service
 
 router = APIRouter(prefix="/signals", tags=["signals"])
 
@@ -23,7 +25,7 @@ async def list_weather(
     end: date | None = None,
 ) -> PageResponse[WeatherResponse]:
     """Daily weather for a city. Forecast and recorded rows are both returned."""
-    rows, total = await signals_service.list_weather(
+    rows, total = await weather_service.list_weather(
         session, city=city, start=start, end=end, limit=page.limit, offset=page.offset
     )
     return paginate(WeatherResponse, rows, total, page)
@@ -38,7 +40,7 @@ async def list_events(
     end: date | None = None,
 ) -> PageResponse[EventResponse]:
     """Events in a city overlapping the date range; cancelled/deleted are hidden."""
-    rows, total = await signals_service.list_events(
+    rows, total = await event_service.list_events(
         session, city=city, start=start, end=end, limit=page.limit, offset=page.offset
     )
     return paginate(EventResponse, rows, total, page)
@@ -53,7 +55,7 @@ async def list_flight_arrivals(
     end: date | None = None,
 ) -> PageResponse[FlightArrivalResponse]:
     """Arrivals for an airport code exactly as stored (sources differ: DUB, EIDW)."""
-    rows, total = await signals_service.list_flight_arrivals(
+    rows, total = await flight_service.list_flight_arrivals(
         session,
         airport=airport,
         start=start,

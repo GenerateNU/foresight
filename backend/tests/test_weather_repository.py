@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
-from foresight.database.models.external import Weather
-from foresight.repository import Outcome
+from foresight.database.models.weather import Weather
+from foresight.repository.upsert import Outcome
 from foresight.repository.weather import recorded_days, upsert_weather
 
 if TYPE_CHECKING:

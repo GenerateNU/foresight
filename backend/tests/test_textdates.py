@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from foresight.ingest.normalize import DatePrecision
-from foresight.ingest.textdates import looks_retrospective, resolve_date
+from foresight.database.enums import DatePrecision
+from foresight.services.ingest.textdates import looks_retrospective, resolve_date
 
 REFERENCE = date(2026, 6, 1)
 

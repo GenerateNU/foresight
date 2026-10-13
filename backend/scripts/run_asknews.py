@@ -26,22 +26,22 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select
 
 from foresight.config import settings
-from foresight.database.models.external import Event, EventObservation
+from foresight.database.models.event import Event, EventObservation
 from foresight.database.session import async_session_factory, engine
-from foresight.ingest.asknews import (
+from foresight.repository.upsert import Outcome
+from foresight.services.event import save_event
+from foresight.services.ingest.asknews import (
     AskNewsClient,
     CityTarget,
     IngestReport,
     collect_events,
     extract_batch,
 )
-from foresight.repository import Outcome
-from foresight.repository.events import upsert_event
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from foresight.ingest.normalize import NormalizedEvent
+    from foresight.services.ingest.normalize import NormalizedEvent
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "asknews"
 
@@ -58,7 +58,7 @@ async def persist(events: Sequence[NormalizedEvent]) -> Counter[Outcome]:
     counts: Counter[Outcome] = Counter()
     async with async_session_factory() as session:
         for event in events:
-            counts[await upsert_event(session, event)] += 1
+            counts[await save_event(session, event)] += 1
         await session.commit()
     return counts
 

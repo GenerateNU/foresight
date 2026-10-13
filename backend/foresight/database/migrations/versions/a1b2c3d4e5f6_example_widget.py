@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column('name', sa.String(length=120), nullable=False),
         sa.Column('description', sa.String(length=500), nullable=True),
         sa.Column('quantity', sa.Integer(), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
+        sa.PrimaryKeyConstraint('id', name='example_widgets_pkey'),
     )
 
 

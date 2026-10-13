@@ -12,64 +12,13 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, tzinfo
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-
-class Source(StrEnum):
-    PREDICTHQ = "predicthq"
-    ASKNEWS = "asknews"
-
-
-class EventStatus(StrEnum):
-    ACTIVE = "active"
-    PROVISIONAL = "provisional"  # extracted from text, not yet corroborated
-    CANCELLED = "cancelled"
-    DELETED = "deleted"  # withdrawn upstream
-
-
-class DatePrecision(StrEnum):
-    """How precisely the source pinned the date.
-
-    Anything coarser than DAY is unusable for per-night pricing but still worth
-    keeping as early signal, so it is recorded rather than rounded away.
-    """
-
-    DAY = "day"
-    MONTH = "month"
-    QUARTER = "quarter"
-
-
-class EventCategory(StrEnum):
-    """PredictHQ's taxonomy, adopted project-wide.
-
-    Text sources classify into these buckets instead of inventing a second
-    vocabulary.
-    """
-
-    ACADEMIC = "academic"
-    AIRPORT_DELAYS = "airport-delays"
-    COMMUNITY = "community"
-    CONCERTS = "concerts"
-    CONFERENCES = "conferences"
-    DAYLIGHT_SAVINGS = "daylight-savings"
-    DISASTERS = "disasters"
-    EXPOS = "expos"
-    FESTIVALS = "festivals"
-    HEALTH_WARNINGS = "health-warnings"
-    OBSERVANCES = "observances"
-    PERFORMING_ARTS = "performing-arts"
-    POLITICS = "politics"
-    PUBLIC_HOLIDAYS = "public-holidays"
-    SCHOOL_HOLIDAYS = "school-holidays"
-    SEVERE_WEATHER = "severe-weather"
-    SPORTS = "sports"
-    TERROR = "terror"
-    UNKNOWN = "unknown"
 
 
 _BRACKETED = re.compile(r"[(\[{][^)\]}]*[)\]}]")

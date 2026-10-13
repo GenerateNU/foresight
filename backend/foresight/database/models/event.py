@@ -1,7 +1,6 @@
-"""External factors: weather, events, competitor pricing, flights."""
+"""Real-world events, merged across sources, and each source's raw sightings."""
 
 from datetime import date, datetime
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -9,7 +8,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -19,50 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from foresight.database.base import Base
-from foresight.ingest.normalize import (
-    DatePrecision,
-    EventCategory,
-    EventStatus,
-    Source,
-)
-
-
-class Weather(Base):
-    """Daily weather for a city.
-
-    Rows are either a forecast (is_forecast=True, may be revised) or a recorded
-    actual (is_forecast=False, final).
-    """
-
-    __tablename__ = "weather"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    city: Mapped[str] = mapped_column(String(120))
-    weather_date: Mapped[date] = mapped_column(Date)  # the day being described
-
-    temp_max_c: Mapped[float | None]
-    temp_min_c: Mapped[float | None]
-    precip_mm: Mapped[float | None]
-    wind_kph: Mapped[float | None]
-    condition: Mapped[str | None] = mapped_column(String(60))  # "rain", "cloudy", ...
-
-    is_forecast: Mapped[bool]
-    source: Mapped[str] = mapped_column(String(40))
-    captured_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    # A forecast and the recorded actual for the same day are different rows, as
-    # are two sources' readings; re-fetching either one updates in place.
-    __table_args__ = (
-        UniqueConstraint(
-            "city",
-            "weather_date",
-            "is_forecast",
-            "source",
-            name="uq_weather_city_date_kind_source",
-        ),
-    )
+from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
 
 
 class Event(Base):
@@ -126,13 +81,11 @@ class Event(Base):
     )
 
     observations: Mapped[list["EventObservation"]] = relationship(
-        back_populates="event"
+        back_populates="event", lazy="raise", passive_deletes=True
     )
 
     # Serves the core lookup: what is happening near this hotel on this night.
-    __table_args__ = (
-        Index("ix_events_city_slug_start", "city_slug", "start_local_date"),
-    )
+    __table_args__ = (Index(None, "city_slug", "start_local_date"),)
 
 
 class EventObservation(Base):
@@ -149,7 +102,9 @@ class EventObservation(Base):
     __tablename__ = "event_observations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    event_id: Mapped[int | None] = mapped_column(ForeignKey("events.id"))
+    event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("events.id", ondelete="SET NULL"), index=True
+    )
 
     source: Mapped[Source] = mapped_column(SAEnum(Source, native_enum=False, length=40))
     source_ref: Mapped[str] = mapped_column(String(600))
@@ -165,67 +120,8 @@ class EventObservation(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    event: Mapped["Event | None"] = relationship(back_populates="observations")
+    event: Mapped["Event | None"] = relationship(
+        back_populates="observations", lazy="raise"
+    )
 
     __table_args__ = (UniqueConstraint("source", "source_ref"),)
-
-
-class CompetitorRate(Base):
-    """What another hotel is charging for a given night."""
-
-    __tablename__ = "competitor_rates"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    hotel_name: Mapped[str] = mapped_column(String(200))  # the competitor
-    city: Mapped[str] = mapped_column(String(120))
-
-    stay_date: Mapped[date] = mapped_column(Date)  # the night being priced
-    rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # null if sold out
-    is_sold_out: Mapped[bool] = mapped_column(default=False)
-
-    source: Mapped[str] = mapped_column(String(40))
-    captured_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "hotel_name",
-            "city",
-            "stay_date",
-            "source",
-            name="uq_competitor_rates_hotel_date_source",
-        ),
-        # The unique constraint leads on hotel_name, so it can't serve the
-        # market-wide read: every competitor's rate for a range of nights.
-        Index("ix_competitor_rates_city_stay", "city", "stay_date"),
-    )
-
-
-class FlightArrival(Base):
-    """How many people are flying in on a given day."""
-
-    __tablename__ = "flight_arrivals"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    airport: Mapped[str] = mapped_column(String(10))  # "DUB"
-    arrival_date: Mapped[date] = mapped_column(Date)
-
-    flight_count: Mapped[int | None]
-    avg_fare_eur: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-
-    source: Mapped[str] = mapped_column(String(40))
-    captured_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    # CSO, OpenSky and AeroDataBox measure the same day at different grains, so
-    # each keeps its own row and the read layer picks which one wins.
-    __table_args__ = (
-        UniqueConstraint(
-            "airport",
-            "arrival_date",
-            "source",
-            name="uq_flight_arrivals_airport_date_source",
-        ),
-    )

@@ -5,46 +5,27 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import httpx
-
-from foresight.ingest.predicthq import (
-    API_URL,
-    PAGE_LIMIT,
-    STATES,
+from foresight.repository.upsert import Outcome
+from foresight.services.event import save_event
+from foresight.services.ingest import predicthq
+from foresight.services.ingest.predicthq import (
+    FetchResult,
+    Market,
+    PredictHQLimitError,
     Rejected,
-    rejection_reason,
-    to_normalized,
 )
-from foresight.repository import Outcome
-from foresight.repository.events import upsert_event
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator
 
+    import httpx
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.ingest.run import Market
+    from foresight.services.ingest.http import Sleep
 
-log = logging.getLogger("foresight.ingest")
-
-MAX_RETRIES = 5
-BACKOFF_SECONDS = 2.0
-# PredictHQ's docs don't name the status for an exhausted plan; treat both.
-_OUT_OF_CREDITS = {402, 403}
-
-
-class PredictHQLimitError(Exception):
-    """PredictHQ refused further requests; the run should stop."""
-
-
-class OutOfCreditsError(PredictHQLimitError):
-    """The plan's quota or credits are used up."""
-
-
-class RetriesExhaustedError(PredictHQLimitError):
-    """Still rate limited or failing after every retry."""
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -77,15 +58,7 @@ class BackfillReport:
 
 
 def month_chunks(start: date, end: date) -> list[tuple[date, date]]:
-    """Split a date range into calendar-month pieces, oldest first.
-
-    Args:
-        start (date): First day, inclusive.
-        end (date): Last day, inclusive.
-
-    Returns:
-        list[tuple[date, date]]: Inclusive (first, last) day of each piece.
-    """
+    """Split a date range into calendar-month pieces, oldest first, inclusive."""
     chunks = []
     first = start
     while first <= end:
@@ -94,83 +67,6 @@ def month_chunks(start: date, end: date) -> list[tuple[date, date]]:
         chunks.append((first, last))
         first = last + timedelta(days=1)
     return chunks
-
-
-def chunk_params(market: Market, start: date, end: date, radius: str) -> dict[str, Any]:
-    """Query for every event active within a chunk, with a day of slack each side.
-
-    Args:
-        market (Market): Centre of the search.
-        start (date): First day of the chunk.
-        end (date): Last day of the chunk.
-        radius (str): Search radius, e.g. "10km".
-
-    Returns:
-        dict[str, Any]: PredictHQ query parameters.
-    """
-    return {
-        "within": f"{radius}@{market.latitude},{market.longitude}",
-        "active.gte": (start - timedelta(days=1)).isoformat(),
-        "active.lte": (end + timedelta(days=1)).isoformat(),
-        "state": STATES,
-        "limit": PAGE_LIMIT,
-        "sort": "start",
-    }
-
-
-async def _get(
-    client: httpx.AsyncClient,
-    url: str,
-    params: dict[str, Any] | None,
-    *,
-    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-) -> dict[str, Any]:
-    """GET one page, waiting and retrying only on 429, 5xx or network errors.
-
-    Args:
-        client (httpx.AsyncClient): Authenticated client.
-        url (str): Page URL.
-        params (dict[str, Any] | None): Query, or None for a `next` link.
-        sleep (Callable[[float], Awaitable[None]]): Waits between retries.
-
-    Returns:
-        dict[str, Any]: The page's JSON body.
-
-    Raises:
-        OutOfCreditsError: On a 402 or 403.
-        RetriesExhaustedError: If every retry still fails.
-        httpx.HTTPStatusError: On any other 4xx.
-    """
-    problem, delay = "", 0.0
-    for attempt in range(MAX_RETRIES + 1):
-        if attempt:
-            await sleep(delay)
-        try:
-            response = await client.get(url, params=params)
-        except httpx.TransportError as exc:
-            problem = f"network error: {exc}"
-            delay = BACKOFF_SECONDS * 2**attempt
-            continue
-
-        status = response.status_code
-        if status in _OUT_OF_CREDITS:
-            raise OutOfCreditsError(f"HTTP {status}: {response.text[:300]}")
-        if status == 429 or status >= 500:
-            problem = f"HTTP {status}"
-            delay = _retry_after(response) or BACKOFF_SECONDS * 2**attempt
-            log.warning("PredictHQ %s, retrying in %.0fs", problem, delay)
-            continue
-        response.raise_for_status()
-        return response.json()
-
-    raise RetriesExhaustedError(f"{problem} after {MAX_RETRIES} retries")
-
-
-def _retry_after(response: httpx.Response) -> float | None:
-    try:
-        return float(response.headers["Retry-After"])
-    except (KeyError, ValueError):
-        return None
 
 
 async def backfill(
@@ -182,26 +78,16 @@ async def backfill(
     token: str,
     radius: str = "10km",
     transport: httpx.AsyncBaseTransport | None = None,
-    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    sleep: Sleep = asyncio.sleep,
 ) -> AsyncIterator[BackfillReport]:
-    """Fetch and upsert every event active from `start` to `end`, a month at a time.
+    """Fetch and save every event active from `start` to `end`, a month at a time.
 
     Yields the report after each month so the caller can commit as it goes;
     never commits itself. A PredictHQ limit ends the run: the report is yielded
-    once more with `stopped` and `resume_from` set.
+    once more with `stopped` and `resume_from` set, and events from pages
+    fetched before the limit are still saved.
 
-    Args:
-        session (AsyncSession | None): Where to write; None for a dry run.
-        market (Market): City and centre of the search.
-        start (date): First day, inclusive.
-        end (date): Last day, inclusive.
-        token (str): PredictHQ access token.
-        radius (str): Search radius, e.g. "10km".
-        transport (httpx.AsyncBaseTransport | None): Test transport.
-        sleep (Callable[[float], Awaitable[None]]): Waits between retries.
-
-    Yields:
-        BackfillReport: Running counts after each month, or the stopped run.
+    `session=None` is a dry run: fetch and count, write nothing.
     """
     chunks = month_chunks(start, end)
     report = BackfillReport(
@@ -211,55 +97,32 @@ async def backfill(
         chunks_total=len(chunks),
         dry_run=session is None,
     )
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-
-    async with httpx.AsyncClient(
-        headers=headers, timeout=30.0, transport=transport
-    ) as client:
+    async with predicthq.client(token, transport=transport) as http:
         for first, last in chunks:
+            fetched = FetchResult()
+            stopped: str | None = None
             try:
-                await _backfill_chunk(
-                    client, session, report, first, last, radius, sleep
+                await predicthq.fetch(
+                    http,
+                    predicthq.window_params(market, first, last, radius=radius),
+                    city=market.city,
+                    sleep=sleep,
+                    into=fetched,
                 )
             except PredictHQLimitError as exc:
-                report.stopped = str(exc)
-                report.resume_from = first
+                stopped = str(exc)
+
+            report.fetched += fetched.fetched
+            report.rejected += fetched.rejected
+            if fetched.overflowed:
+                report.overflow_chunks.append((first, last))
+            if session is not None:
+                for event in fetched.events:
+                    report.outcomes[await save_event(session, event)] += 1
+
+            if stopped is not None:
+                report.stopped, report.resume_from = stopped, first
                 yield report
                 return
             report.chunks_done += 1
             yield report
-
-
-async def _backfill_chunk(
-    client: httpx.AsyncClient,
-    session: AsyncSession | None,
-    report: BackfillReport,
-    first: date,
-    last: date,
-    radius: str,
-    sleep: Callable[[float], Awaitable[None]],
-) -> None:
-    url: str | None = API_URL
-    query: dict[str, Any] | None = chunk_params(report.market, first, last, radius)
-    while url:
-        body = await _get(client, url, query, sleep=sleep)
-        if body.get("overflow") and (first, last) not in report.overflow_chunks:
-            log.warning(
-                "PredictHQ overflow for %s..%s: plan truncated results", first, last
-            )
-            report.overflow_chunks.append((first, last))
-
-        for raw in body.get("results", []):
-            report.fetched += 1
-            try:
-                event = to_normalized(raw, city=report.market.city)
-            except (KeyError, TypeError, ValueError) as exc:
-                ref = str(raw.get("id", "?")) if isinstance(raw, dict) else "?"
-                log.warning("rejected PredictHQ event %s: %s", ref, exc)
-                report.rejected.append(Rejected(ref, rejection_reason(exc)))
-                continue
-            if session is not None:
-                report.outcomes[await upsert_event(session, event)] += 1
-
-        # `next` already carries every query parameter.
-        url, query = body.get("next"), None

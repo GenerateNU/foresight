@@ -1,4 +1,4 @@
-"""Shared fixtures: a rolled-back Postgres session, mock hotel data, ML splits."""
+"""Shared fixtures: a rolled-back Postgres session and mock hotel data."""
 
 from collections.abc import AsyncIterator
 
@@ -53,32 +53,4 @@ def price_split(df):
     y = df["rate"]
 
     cut = int(len(df) * (1 - TEST_FRAC))
-    return x.iloc[:cut], x.iloc[cut:], y.iloc[:cut], y.iloc[cut:]
-
-
-# SARIMAX inputs besides past prices; same for every room type on a night.
-TS_EXOG_COLUMNS = [
-    "is_weekend",
-    "temp_max_c",
-    "precip_mm",
-    "expected_attendance",
-    "competitor_rate",
-    "competitors_sold_out",
-    "flight_count",
-    "avg_fare_eur",
-]
-
-
-@pytest.fixture(scope="session")
-def ts_split(df):
-    """x_train, x_test, y_train, y_test for forecasting the nightly mean rate.
-
-    One row per night at daily frequency; the test set is the most recent
-    TEST_FRAC of nights.
-    """
-    # SARIMAX needs one row per day, so average the room types for each night.
-    daily = df.groupby("stay_date")[["rate", *TS_EXOG_COLUMNS]].mean().asfreq("D")
-    x, y = daily[TS_EXOG_COLUMNS], daily["rate"]
-
-    cut = int(len(daily) * (1 - TEST_FRAC))
     return x.iloc[:cut], x.iloc[cut:], y.iloc[:cut], y.iloc[cut:]
