@@ -83,6 +83,7 @@ foresight/
 │   │   ├── services/            # Business logic
 │   │   │   ├── ml/              # ML models (regression, bayesian, ...)
 │   │   │   └── parsers/         # Client data ingestion
+│   │   ├── ingest/              # External-source adapters + CLIs (see docs/)
 │   │   ├── repository/          # Data-access layer
 │   │   └── database/            # SQLAlchemy + Alembic
 │   │       ├── base.py          # Declarative base
