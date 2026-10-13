@@ -27,7 +27,8 @@ from foresight.database.models.hotel import Hotel
 from foresight.database.session import async_session_factory, engine
 from foresight.ingest import predicthq
 from foresight.ingest.normalize import Source, slugify_city
-from foresight.ingest.repository import Outcome, upsert_event
+from foresight.repository import Outcome
+from foresight.repository.events import upsert_event
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
