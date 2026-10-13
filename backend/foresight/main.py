@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from scalar_fastapi import Theme, get_scalar_api_reference
 
 from foresight.config import settings
-from foresight.routes import example_widget, health
+from foresight.routes import example_widget, health, hotels, signals
 
 app = FastAPI(
     title=settings.app_name,
@@ -13,6 +13,8 @@ app = FastAPI(
 )
 
 app.include_router(health.router)
+app.include_router(hotels.router)
+app.include_router(signals.router)
 app.include_router(example_widget.router)
 
 
