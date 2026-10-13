@@ -16,6 +16,9 @@ and no database access here.
 ## Patterns & conventions
 - One `APIRouter` per module, with `tags=[...]`; include it in `main.py`.
 - Handlers are `async def`. Type request bodies and responses with schemas.
+- Inject the session as `Depends(get_session, scope="function")` (see
+  `SessionDep` in the widget example). It commits once per request after the
+  handler returns; handlers and services never commit.
 - Call into services; translate service results into responses. Keep handlers thin.
 
 ## Rules / invariants

@@ -21,9 +21,10 @@ from foresight.services import example_widget as widget_service
 
 router = APIRouter(prefix="/example/widgets", tags=["example"])
 
-# Reusable session dependency. Using `Annotated` (instead of a `Depends(...)`
-# default value) keeps the FastAPI DI pattern lint-clean.
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
+# Reusable session dependency: one transaction per request, committed by
+# get_session. scope="function" commits before the response is sent, so a failed
+# commit returns a 500 instead of a 200. Using `Annotated` keeps it lint-clean.
+SessionDep = Annotated[AsyncSession, Depends(get_session, scope="function")]
 
 
 @router.post("", response_model=WidgetRead, status_code=status.HTTP_201_CREATED)
