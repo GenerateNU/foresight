@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from foresight.database.models.external import Weather
 from foresight.repository import Outcome
-from foresight.repository.weather import upsert_weather
+from foresight.repository.weather import recorded_days, upsert_weather
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,3 +85,18 @@ async def test_an_update_restamps_captured_at(session: AsyncSession) -> None:
     assert (
         await session.scalar(select(Weather.captured_at).where(Weather.city == CITY))
     ) > first
+
+
+async def test_recorded_days_flags_days_without_values(session: AsyncSession) -> None:
+    await upsert_weather(
+        session,
+        [
+            _row(weather_date=date(2026, 6, 1)),
+            _row(weather_date=date(2026, 6, 2), temp_max_c=None),
+            _row(weather_date=date(2026, 6, 3), is_forecast=True),
+        ],
+    )
+    days = await recorded_days(
+        session, city=CITY, start=date(2026, 6, 1), end=date(2026, 6, 30)
+    )
+    assert days == {date(2026, 6, 1): True, date(2026, 6, 2): False}
