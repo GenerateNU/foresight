@@ -23,6 +23,8 @@ class Hotel(Base):
 
     room_types: Mapped[list["RoomType"]] = relationship(back_populates="hotel")
 
+    __table_args__ = (UniqueConstraint("name", "city", name="uq_hotels_name_city"),)
+
 
 class RoomType(Base):
     """A category of room, e.g. "Deluxe King". Price is set per room type."""
@@ -37,6 +39,10 @@ class RoomType(Base):
 
     hotel: Mapped["Hotel"] = relationship(back_populates="room_types")
     nights: Mapped[list["DailyPerformance"]] = relationship(back_populates="room_type")
+
+    __table_args__ = (
+        UniqueConstraint("hotel_id", "name", name="uq_room_types_hotel_name"),
+    )
 
 
 class DailyPerformance(Base):
@@ -56,4 +62,8 @@ class DailyPerformance(Base):
     room_type: Mapped["RoomType"] = relationship(back_populates="nights")
 
     # One row per room type per night.
-    __table_args__ = (UniqueConstraint("room_type_id", "stay_date"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "room_type_id", "stay_date", name="uq_daily_performance_room_type_stay"
+        ),
+    )
