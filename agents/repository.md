@@ -14,13 +14,16 @@ returns models/data back up. No business rules, no HTTP.
 
 ## Patterns & conventions
 - Functions are `async` and receive an `AsyncSession` (don't open their own).
+- **Never commit.** The caller owns the transaction: `get_session()` commits
+  once per request; CLIs and jobs commit once at the end. Use `flush()` when you
+  need generated ids.
 - Encapsulate all query/CRUD logic here so services stay persistence-agnostic.
 - Return ORM models or simple data; let callers map to schemas.
 
 ## Rules / invariants
 - Only this layer imports `session` / ORM query APIs.
 - No business logic and no HTTP concerns.
-- Don't manage transactions ad hoc — use the session provided via `get_session()`.
+- No `commit()` or `rollback()` here — that's the caller's job.
 
 ## Reference example
 Copy the pattern in `backend/foresight/repository/example_widget.py` (the

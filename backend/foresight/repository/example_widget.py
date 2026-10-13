@@ -6,7 +6,8 @@ pattern for Foresight.
 Layer rules shown here:
 - This is the ONLY layer that imports ORM models and uses the session.
 - Functions are `async` and receive an `AsyncSession` — they never open their
-  own session or manage the engine.
+  own session, manage the engine, or commit. The caller owns the transaction;
+  `flush()` when you need generated ids.
 - Construct/return ORM models here; callers pass plain values and map to schemas
   themselves, so services stay persistence-agnostic.
 - No business logic lives here — just queries and persistence.
@@ -29,7 +30,7 @@ async def create_widget(
 ) -> Widget:
     widget = Widget(name=name, description=description, quantity=quantity)
     session.add(widget)
-    await session.commit()
+    await session.flush()
     await session.refresh(widget)
     return widget
 
