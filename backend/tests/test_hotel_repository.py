@@ -10,6 +10,7 @@ from foresight.database.models.hotel import DailyPerformance, RoomType
 from foresight.repository import Outcome
 from foresight.repository.hotel import (
     get_hotel,
+    stay_date_range,
     upsert_daily_performance,
     upsert_hotel,
     upsert_room_type,
@@ -162,3 +163,24 @@ async def test_a_reload_without_coordinates_keeps_them(
     assert hotel is not None
     assert (hotel.latitude, hotel.longitude) == (53.3498, -6.2603)
     assert hotel.total_rooms == 45
+
+
+async def test_stay_date_range_spans_every_room_type(session: AsyncSession) -> None:
+    hotel_id = await _hotel(session)
+    king = await _room_type(session, hotel_id)
+    twin = await _room_type(session, hotel_id, name="Twin")
+    await upsert_daily_performance(
+        session,
+        [
+            _night(king, stay_date=date(2026, 6, 3)),
+            _night(twin, stay_date=date(2026, 5, 30)),
+        ],
+    )
+    assert await stay_date_range(session, hotel_id) == (
+        date(2026, 5, 30),
+        date(2026, 6, 3),
+    )
+
+
+async def test_stay_date_range_is_none_without_nights(session: AsyncSession) -> None:
+    assert await stay_date_range(session, await _hotel(session)) is None

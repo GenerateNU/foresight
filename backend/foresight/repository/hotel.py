@@ -174,3 +174,20 @@ async def list_performance(
         stmt = stmt.where(DailyPerformance.stay_date <= end)
     stmt = stmt.order_by(DailyPerformance.stay_date, DailyPerformance.room_type_id)
     return await fetch_page(session, stmt, limit=limit, offset=offset)
+
+
+async def stay_date_range(
+    session: AsyncSession, hotel_id: int
+) -> tuple[date, date] | None:
+    """First and last stay_date loaded for a hotel, or None if it has no nights."""
+    first, last = (
+        await session.execute(
+            select(
+                func.min(DailyPerformance.stay_date),
+                func.max(DailyPerformance.stay_date),
+            )
+            .join(RoomType, DailyPerformance.room_type_id == RoomType.id)
+            .where(RoomType.hotel_id == hotel_id)
+        )
+    ).one()
+    return None if first is None else (first, last)

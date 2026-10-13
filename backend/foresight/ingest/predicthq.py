@@ -98,7 +98,7 @@ async def fetch_events(
                 except (KeyError, TypeError, ValueError) as exc:
                     ref = str(raw.get("id", "?")) if isinstance(raw, dict) else "?"
                     log.warning("rejected PredictHQ event %s: %s", ref, exc)
-                    result.rejected.append(Rejected(ref, _reason(exc)))
+                    result.rejected.append(Rejected(ref, rejection_reason(exc)))
 
             # `next` already carries every query parameter.
             url, query = body.get("next"), None
@@ -156,7 +156,7 @@ def _venue(entities: list[Mapping[str, Any]]) -> str | None:
     return next((e.get("name") for e in entities if e.get("type") == "venue"), None)
 
 
-def _reason(exc: Exception) -> str:
+def rejection_reason(exc: Exception) -> str:
     if isinstance(exc, KeyError):
         return f"missing field {exc.args[0]!r}"
     return str(exc)

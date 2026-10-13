@@ -160,7 +160,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _resolve_market(session: AsyncSession, args: argparse.Namespace) -> Market:
+async def resolve_market(session: AsyncSession, args: argparse.Namespace) -> Market:
     if args.hotel_id is None:
         return Market(city=args.city, latitude=args.lat, longitude=args.lon)
 
@@ -172,7 +172,7 @@ async def _resolve_market(session: AsyncSession, args: argparse.Namespace) -> Ma
     return Market(city=hotel.city, latitude=hotel.latitude, longitude=hotel.longitude)
 
 
-async def _market_totals(
+async def market_totals(
     session: AsyncSession, city: str
 ) -> tuple[dict[str, int], dict[str, int]]:
     slug = slugify_city(city)
@@ -195,7 +195,7 @@ async def _market_totals(
 
 async def run(args: argparse.Namespace) -> RunReport:
     async with async_session_factory() as session:
-        market = await _resolve_market(session, args)
+        market = await resolve_market(session, args)
         report = RunReport(
             source=Source(args.source),
             market=market,
@@ -223,13 +223,13 @@ async def run(args: argparse.Namespace) -> RunReport:
             report.outcomes[outcome] = report.outcomes.get(outcome, 0) + 1
         await session.commit()
 
-        report.events_by_status, report.observations_by_source = await _market_totals(
+        report.events_by_status, report.observations_by_source = await market_totals(
             session, market.city
         )
     return report
 
 
-def _migrate() -> None:
+def migrate() -> None:
     """Bring the schema up to date, so a fresh pull needs no manual step.
 
     A no-op when already at head. No ini file is passed, so Alembic leaves this
@@ -258,7 +258,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     if not (args.dry_run and args.hotel_id is None):
-        _migrate()
+        migrate()
     # DEBUG=true turns on SQL echo, which would bury the report.
     engine.echo = False
     asyncio.run(_main(args))
