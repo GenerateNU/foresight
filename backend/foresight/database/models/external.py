@@ -52,6 +52,18 @@ class Weather(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # A forecast and the recorded actual for the same day are different rows, as
+    # are two sources' readings; re-fetching either one updates in place.
+    __table_args__ = (
+        UniqueConstraint(
+            "city",
+            "weather_date",
+            "is_forecast",
+            "source",
+            name="uq_weather_city_date_kind_source",
+        ),
+    )
+
 
 class Event(Base):
     """One real-world event occurrence, merged across sources.
@@ -176,6 +188,19 @@ class CompetitorRate(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    __table_args__ = (
+        UniqueConstraint(
+            "hotel_name",
+            "city",
+            "stay_date",
+            "source",
+            name="uq_competitor_rates_hotel_date_source",
+        ),
+        # The unique constraint leads on hotel_name, so it can't serve the
+        # market-wide read: every competitor's rate for a range of nights.
+        Index("ix_competitor_rates_city_stay", "city", "stay_date"),
+    )
+
 
 class FlightArrival(Base):
     """How many people are flying in on a given day."""
@@ -192,4 +217,15 @@ class FlightArrival(Base):
     source: Mapped[str] = mapped_column(String(40))
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+    # CSO, OpenSky and AeroDataBox measure the same day at different grains, so
+    # each keeps its own row and the read layer picks which one wins.
+    __table_args__ = (
+        UniqueConstraint(
+            "airport",
+            "arrival_date",
+            "source",
+            name="uq_flight_arrivals_airport_date_source",
+        ),
     )
