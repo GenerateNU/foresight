@@ -1,10 +1,18 @@
-import argparse
 import logging
+from decimal import Decimal
 
 import pandas as pd
-from sqlalchemy import create_engine, text
 
-STAGING_TABLE = "hotel_data_staging"
+from foresight.repository.hotel import (
+    upsert_daily_performance,
+    upsert_hotel,
+    upsert_room_type,
+)
+
+# The client draws no distinction between rooms. They price one standard room
+# and apply their own multipliers downstream, so every night hangs off a single
+# room type rather than the schema's per-type breakdown.
+ROOM_TYPE = "Standard"
 
 
 class HotelDataParser:
@@ -19,24 +27,28 @@ class HotelDataParser:
         - Clean and standardize the data
         - Transform it into Foresight's expected schema
         - Validate the final output
-        - Save the processed data to the local database
 
     Expected flow:
         1. load_data()
         2. clean_data()
         3. transform_data()
         4. validate_data()
-        5. save_to_db()
+
+    Persisting is a separate step, so the parser itself never touches a
+    session. `persist()` writes the result through the repository layer.
 
     Main usage:
-        parser = HotelDataParser(input_path, hotel_name, schema, db_url)
+        parser = HotelDataParser(input_path, hotel_name, city, base_rate)
         parser.run()
 
     Attributes:
         input_path: Path to the client input file
         hotel_name: Name of the hotel this file belongs to
+        city: City the hotel is in, which the client export does not carry
+        base_rate: Standard room rate the client prices against
+        latitude: Hotel latitude, optional, left alone on reload when omitted
+        longitude: Hotel longitude, optional, left alone on reload when omitted
         schema: Expected Foresight schema (required output columns)
-        db_url: Database connection information (sync driver, e.g. psycopg2)
         raw_data: Original loaded client data
         cleaned_data: Cleaned version of the client data
         transformed_data: Data transformed into Foresight's expected schema
@@ -61,8 +73,11 @@ class HotelDataParser:
         self,
         input_path,
         hotel_name,
+        city,
+        base_rate,
+        latitude=None,
+        longitude=None,
         schema=None,
-        db_url=None,
         column_mapping=None,
     ):
         """
@@ -71,8 +86,10 @@ class HotelDataParser:
         Args:
             input_path: Path to the client hotel data file.
             hotel_name: Name of the hotel this file belongs to.
-            schema: Expected Foresight schema (required output columns).
-            db_url: Database connection information (sync driver).
+            city: City the hotel is in.
+            base_rate: Standard room rate the client prices against.
+            latitude: Hotel latitude, which the events ingester needs.
+            longitude: Hotel longitude, which the events ingester needs.
             column_mapping: Optional mapping of client column names
             to Foresight column names.
         """
@@ -80,14 +97,17 @@ class HotelDataParser:
         # Stores anything needed throughout the pipeline
         self.input_path = input_path
         self.hotel_name = hotel_name
+        self.city = city
+        self.base_rate = Decimal(str(base_rate))
+        self.latitude = latitude
+        self.longitude = longitude
         self.schema = schema or self.DEFAULT_SCHEMA
-        self.db_url = db_url
         self.column_mapping = column_mapping or self.DEFAULT_COLUMN_MAPPING
 
         # Stores data at different stages of processing
-        self.raw_data = None
-        self.cleaned_data = None
-        self.transformed_data = None
+        self.raw_data: pd.DataFrame | None = None
+        self.cleaned_data: pd.DataFrame | None = None
+        self.transformed_data: pd.DataFrame | None = None
 
         # Set up logging for parser runs
         logging.basicConfig(
@@ -287,70 +307,35 @@ class HotelDataParser:
 
         return True
 
-    def save_to_db(self, table_name=STAGING_TABLE):
-        """
-        Save the transformed hotel data to the local database.
-
-        Data is only saved after validation has passed. Existing rows for
-        this hotel covering the same date range are deleted first, so
-        re-running the parser on the same file (e.g. from a scheduler retry)
-        doesn't duplicate rows.
-
-        Args:
-            table_name: Name of the database table where hotel data will be stored.
-
-        Raises:
-            ValueError: If transformed data does not exist or no database URL
-                is provided.
-            Exception: If the database insert fails.
-        """
-
+    def total_rooms(self):
+        """The hotel's inventory, which the client reports per night as InStock."""
         if self.transformed_data is None:
-            raise ValueError("Data must be transformed before saving.")
+            raise ValueError("Data must be transformed before reading inventory.")
 
-        if self.db_url is None:
-            raise ValueError("Database URL is required to save data.")
+        return int(self.transformed_data["rooms_available"].astype(int).max())
 
-        self.logger.info("Saving hotel data to database...")
+    def rows(self, room_type_id):
+        """Transformed nights as `daily_performance` rows.
 
-        try:
-            engine = create_engine(self.db_url)
+        One client row is one night for the hotel, which is one night for its
+        single room type. The export has no listed price, so rate is the
+        average rate paid (room revenue / rooms sold, the client's ARR) until
+        listed-rate history arrives. Unsold nights have no rate.
+        """
+        if self.transformed_data is None:
+            raise ValueError("Data must be transformed before persisting.")
 
-            start_date = self.transformed_data["stay_date"].min()
-            end_date = self.transformed_data["stay_date"].max()
-
-            with engine.begin() as connection:
-                table_exists = connection.execute(
-                    text("SELECT to_regclass(:table_name)"),
-                    {"table_name": table_name},
-                ).scalar()
-
-                if table_exists:
-                    connection.execute(
-                        text(
-                            f"DELETE FROM {table_name} "
-                            "WHERE hotel_name = :hotel_name "
-                            "AND stay_date BETWEEN :start_date AND :end_date"
-                        ),
-                        {
-                            "hotel_name": self.hotel_name,
-                            "start_date": start_date,
-                            "end_date": end_date,
-                        },
-                    )
-
-            self.transformed_data.to_sql(
-                name=table_name, con=engine, if_exists="append", index=False
-            )
-
-            self.logger.info(
-                f"{len(self.transformed_data)} rows inserted into {table_name}."
-            )
-
-        except Exception as e:
-            # Log the error and allow the pipeline to fail
-            self.logger.error(f"Failed to save data to database: {e}")
-            raise
+        return [
+            {
+                "room_type_id": room_type_id,
+                "stay_date": night["stay_date"],
+                "rate": average_rate(night["room_revenue"], night["rooms_sold"]),
+                "rooms_available": int(night["rooms_available"]),
+                "rooms_sold": int(night["rooms_sold"]),
+                "room_revenue": Decimal(str(night["room_revenue"])),
+            }
+            for night in self.transformed_data.to_dict(orient="records")
+        ]
 
     def run(self):
         """
@@ -361,7 +346,6 @@ class HotelDataParser:
             2. Clean the data
             3. Transform it into Foresight's schema
             4. Validate the transformed data
-            5. Save the final data to the database
 
         Returns:
             pandas.DataFrame: The final transformed hotel data.
@@ -377,7 +361,6 @@ class HotelDataParser:
             self.clean_data()
             self.transform_data()
             self.validate_data()
-            self.save_to_db()
 
             self.logger.info("Hotel data parser completed successfully.")
 
@@ -389,28 +372,28 @@ class HotelDataParser:
             raise
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Parse client hotel data into Foresight's schema."
-    )
-    parser.add_argument("--input", required=True, help="Path to the client CSV file.")
-    parser.add_argument(
-        "--hotel-name", required=True, help="Hotel this file belongs to."
-    )
-    parser.add_argument(
-        "--db-url",
-        required=True,
-        help="Sync SQLAlchemy database URL (e.g. postgresql+psycopg2://...).",
-    )
-    args = parser.parse_args()
-
-    hotel_parser = HotelDataParser(
-        input_path=args.input,
-        hotel_name=args.hotel_name,
-        db_url=args.db_url,
-    )
-    hotel_parser.run()
+def average_rate(room_revenue, rooms_sold):
+    """Revenue per room sold, to the cent; None when nothing sold."""
+    if not rooms_sold:
+        return None
+    return (Decimal(str(room_revenue)) / int(rooms_sold)).quantize(Decimal("0.01"))
 
 
-if __name__ == "__main__":
-    main()
+async def persist(parser, session):
+    """Write a parsed hotel's nights through the repository, without committing."""
+    hotel_id = await upsert_hotel(
+        session,
+        name=parser.hotel_name,
+        city=parser.city,
+        total_rooms=parser.total_rooms(),
+        latitude=parser.latitude,
+        longitude=parser.longitude,
+    )
+    room_type_id = await upsert_room_type(
+        session,
+        hotel_id=hotel_id,
+        name=ROOM_TYPE,
+        room_count=parser.total_rooms(),
+        base_rate=parser.base_rate,
+    )
+    return await upsert_daily_performance(session, parser.rows(room_type_id))
