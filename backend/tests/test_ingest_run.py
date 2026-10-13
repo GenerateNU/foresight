@@ -9,8 +9,8 @@ import pytest
 
 from foresight.ingest.normalize import NormalizedEvent, Source
 from foresight.ingest.predicthq import Rejected
-from foresight.ingest.repository import Outcome
 from foresight.ingest.run import Market, RunReport, parse_since
+from foresight.repository import Outcome
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 

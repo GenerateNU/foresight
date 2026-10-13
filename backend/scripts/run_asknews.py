@@ -35,7 +35,8 @@ from foresight.ingest.asknews import (
     collect_events,
     extract_batch,
 )
-from foresight.ingest.repository import Outcome, upsert_event
+from foresight.repository import Outcome
+from foresight.repository.events import upsert_event
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

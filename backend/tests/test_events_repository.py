@@ -7,38 +7,21 @@ from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from foresight.config import settings
 from foresight.database.models.external import Event, EventObservation
 from foresight.ingest.normalize import EventStatus, NormalizedEvent, Source
-from foresight.ingest.repository import Outcome, upsert_event
+from foresight.repository import Outcome
+from foresight.repository.events import upsert_event
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
-@pytest.fixture
-async def session() -> AsyncIterator[AsyncSession]:
-    engine = create_async_engine(settings.database_url)
-    try:
-        conn = await engine.connect()
-    except (OSError, ConnectionError) as exc:
-        await engine.dispose()
-        pytest.skip(f"Postgres unavailable: {exc}")
-
-    trans = await conn.begin()
-    async with AsyncSession(
-        bind=conn, join_transaction_mode="create_savepoint"
-    ) as session:
-        # Counts below assume an empty table; real ingested rows come back on
-        # rollback.
-        await session.execute(delete(EventObservation))
-        await session.execute(delete(Event))
-        yield session
-    await trans.rollback()
-    await conn.close()
-    await engine.dispose()
+@pytest.fixture(autouse=True)
+async def _empty_events(session: AsyncSession) -> None:
+    """Counts below assume empty tables; real rows come back on rollback."""
+    await session.execute(delete(EventObservation))
+    await session.execute(delete(Event))
 
 
 def _phq(**overrides: object) -> NormalizedEvent:

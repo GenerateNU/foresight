@@ -1,8 +1,34 @@
-"""Shared fixtures: mock hotel data and train/test splits for the ML models."""
+"""Shared fixtures: a rolled-back Postgres session, mock hotel data, ML splits."""
+
+from collections.abc import AsyncIterator
 
 import pandas as pd
 import pytest
 from generate_mock_data import write_csv
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+from foresight.config import settings
+
+
+@pytest.fixture
+async def session() -> AsyncIterator[AsyncSession]:
+    """A session whose transaction is always rolled back; skips with no Postgres."""
+    engine = create_async_engine(settings.database_url)
+    try:
+        conn = await engine.connect()
+    except (OSError, ConnectionError) as exc:
+        await engine.dispose()
+        pytest.skip(f"Postgres unavailable: {exc}")
+
+    trans = await conn.begin()
+    async with AsyncSession(
+        bind=conn, join_transaction_mode="create_savepoint"
+    ) as session:
+        yield session
+    await trans.rollback()
+    await conn.close()
+    await engine.dispose()
+
 
 # Known only after the night, so never used to predict price.
 POST_STAY_COLUMNS = ["rooms_sold", "occupancy", "room_revenue"]

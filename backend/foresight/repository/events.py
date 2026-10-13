@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, delete, func, literal_column, not_, or_, select, update
@@ -11,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from foresight.database.models.external import Event, EventObservation
 from foresight.ingest.normalize import EventStatus, Source
+from foresight.repository import Outcome
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -26,12 +26,6 @@ _OBSERVATIONS = EventObservation.__table__
 _PRECEDENCE = {Source.PREDICTHQ: 2, Source.ASKNEWS: 1}
 _WITHDRAWN = {EventStatus.DELETED, EventStatus.CANCELLED}
 _NEVER = datetime.min.replace(tzinfo=UTC)
-
-
-class Outcome(StrEnum):
-    NEW = "new"
-    UPDATED = "updated"
-    UNCHANGED = "unchanged"
 
 
 async def upsert_event(session: AsyncSession, event: NormalizedEvent) -> Outcome:
