@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 
 from foresight.repository import hotel as hotel_repo
-from foresight.services.backfill.window import hotel_window
+from foresight.services.ingest.window import hotel_window
 
 HOTEL_RANGE = (date(2022, 3, 1), date(2025, 9, 30))
 

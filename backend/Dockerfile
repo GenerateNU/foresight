@@ -42,8 +42,9 @@ CMD ["uv", "run", "uvicorn", "foresight.main:app", \
 # ---- prod ------------------------------------------------------------------
 # No dev deps, no --reload, and uvicorn is invoked directly from the venv so
 # no dependency resolution runs at container start (immutable, fast boot).
-# Scale workers via WEB_CONCURRENCY env or by overriding CMD in your deploy.
+# One worker: background jobs run inside the API process and a job's uploaded
+# files live in its memory, so a second worker would split them.
 FROM base AS prod
 
 CMD [".venv/bin/uvicorn", "foresight.main:app", \
-     "--host", "0.0.0.0", "--port", "8000"]
+     "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

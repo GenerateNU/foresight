@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from foresight.services.ingest.http import RetriesExhaustedError, send
+from foresight.services.adapters.http import RetriesExhaustedError, send
 
 if TYPE_CHECKING:
     from collections.abc import Callable

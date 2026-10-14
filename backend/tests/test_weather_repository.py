@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
-from foresight.database.models.weather import Weather
+from foresight.database.models.signals.weather import Weather
+from foresight.repository.signals.weather import recorded_days, upsert_weather
 from foresight.repository.upsert import Outcome
-from foresight.repository.weather import recorded_days, upsert_weather
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

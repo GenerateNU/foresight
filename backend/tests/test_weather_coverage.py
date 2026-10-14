@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
-from foresight.repository import weather as weather_repo
-from foresight.services.backfill.weather_coverage import weather_coverage
+from foresight.repository.signals import weather as weather_repo
+from foresight.services.domain.weather_coverage import weather_coverage
 
 if TYPE_CHECKING:
     import pytest

@@ -1,6 +1,3 @@
-"""External data adapters: fetch from a third-party API and normalize.
-
-Adapters never touch the database. Domain services (`services/event.py`,
-`services/weather.py`, `services/flight.py`) call them and persist the result
-through the repository layer.
+"""Ingest: fetch a signal for a city through an adapter and save it, in
+chunks a job commits as it goes.
 """

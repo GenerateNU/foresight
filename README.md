@@ -75,29 +75,25 @@ Commit messages must follow [Conventional Commits](https://www.conventionalcommi
 ```
 foresight/
 ├── backend/
-│   ├── foresight/               # Installable package (see pyproject.toml)
-│   │   ├── main.py              # FastAPI app entrypoint (foresight.main:app)
-│   │   ├── config.py            # Settings (pydantic-settings)
-│   │   ├── routes/              # API route handlers
-│   │   ├── schemas/             # Pydantic request/response models
-│   │   ├── services/            # Business logic
-│   │   │   ├── ml/              # ML models (regression, bayesian, ...)
-│   │   │   └── parsers/         # Client data ingestion
-│   │   ├── ingest/              # External-source adapters + CLIs (see docs/)
-│   │   ├── repository/          # Data-access layer
-│   │   └── database/            # SQLAlchemy + Alembic
-│   │       ├── base.py          # Declarative base
-│   │       ├── session.py       # Async session factory
-│   │       ├── models/          # SQLAlchemy models
-│   │       └── migrations/      # Alembic migrations
-│   ├── scripts/                 # Dev tooling (mock data, model comparison)
-│   ├── tests/                   # Pytest suite
-│   ├── alembic.ini
+│   ├── foresight/          # Installable package (see pyproject.toml)
+│   │   ├── main.py         # FastAPI app (foresight.main:app)
+│   │   ├── config.py       # Settings (pydantic-settings)
+│   │   ├── worker.py       # Runs background jobs
+│   │   ├── routes/         # HTTP: routers and their schemas
+│   │   ├── services/       # Business logic: domain, ingest, adapters, ml
+│   │   ├── repository/     # Data access
+│   │   └── database/       # Models, enums, session, Alembic migrations
+│   ├── tests/
 │   ├── pyproject.toml
 │   └── Dockerfile
-├── frontend/                    # TBD
+├── docs/
+│   ├── system-design.md    # How the backend fits together
+│   └── decisions/          # One design decision per file
+├── frontend/               # TBD
 ├── docker-compose.yml
 ├── justfile
-├── .env.example
-└── .pre-commit-config.yaml
+└── .env.example
 ```
+
+See [`docs/system-design.md`](docs/system-design.md) for the layers, data
+model, jobs and API.

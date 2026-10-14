@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 
 from foresight.database.models.example_widget import Widget
+from foresight.repository.pagination import fetch_page
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -45,6 +46,10 @@ async def get_widget(session: AsyncSession, widget_id: int) -> Widget | None:
     return await session.get(Widget, widget_id)
 
 
-async def list_widgets(session: AsyncSession) -> Sequence[Widget]:
-    result = await session.execute(select(Widget).order_by(Widget.id))
-    return result.scalars().all()
+async def list_widgets(
+    session: AsyncSession, *, limit: int, offset: int
+) -> tuple[Sequence[Widget], int]:
+    """One page, ordered so pages are stable, plus the unpaged total."""
+    return await fetch_page(
+        session, select(Widget).order_by(Widget.id), limit=limit, offset=offset
+    )

@@ -8,8 +8,8 @@ from typing import Any
 import httpx
 
 from foresight.database.enums import EventCategory, EventStatus, Source
-from foresight.services.ingest import predicthq
-from foresight.services.ingest.predicthq import API_URL, Market, to_normalized
+from foresight.services.adapters import predicthq
+from foresight.services.adapters.predicthq import API_URL, Market, to_normalized
 
 
 async def _fetch(

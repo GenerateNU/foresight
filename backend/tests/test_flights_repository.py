@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
-from foresight.database.models.flight import FlightArrival
-from foresight.repository.flight import upsert_flight_arrivals
+from foresight.database.models.signals.flight import FlightArrival
+from foresight.repository.signals.flight import upsert_flight_arrivals
 from foresight.repository.upsert import Outcome
 
 if TYPE_CHECKING:

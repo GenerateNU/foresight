@@ -9,17 +9,17 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from foresight.config import settings
-from foresight.database.models.event import Event, EventObservation
+from foresight.database.models.signals.event import Event, EventObservation
 from foresight.repository.upsert import Outcome
-from foresight.services.backfill.events import backfill, month_chunks
-from foresight.services.ingest import predicthq
-from foresight.services.ingest.predicthq import (
+from foresight.services.adapters import predicthq
+from foresight.services.adapters.predicthq import (
     API_URL,
     MAX_RETRIES,
     Market,
     OutOfCreditsError,
     PredictHQRetriesExhaustedError,
 )
+from foresight.services.ingest.event import backfill, month_chunks
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable

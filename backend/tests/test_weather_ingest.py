@@ -8,8 +8,8 @@ from typing import Any
 import httpx
 import pytest
 
-from foresight.services.ingest import open_meteo
-from foresight.services.ingest.open_meteo import chunks, condition, rows
+from foresight.services.adapters import open_meteo
+from foresight.services.adapters.open_meteo import chunks, condition, rows
 
 TODAY = date(2026, 6, 10)
 

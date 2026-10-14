@@ -58,3 +58,19 @@ class EventCategory(StrEnum):
     SPORTS = "sports"
     TERROR = "terror"
     UNKNOWN = "unknown"
+
+
+class JobKind(StrEnum):
+    """What a background job ingests. Each has one handler in `services/job.py`."""
+
+    WEATHER = "weather"  # Open-Meteo forecast and recorded weather
+    EVENTS = "events"  # PredictHQ events
+    PERFORMANCE = "performance"  # the hotel's own nightly CSV exports
+
+
+class JobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    STOPPED = "stopped"  # a source's quota or rate limit; resume from `resume_from`
+    FAILED = "failed"  # any other error; `resume_from` says where to pick up
