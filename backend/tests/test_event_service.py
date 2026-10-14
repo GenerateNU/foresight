@@ -9,10 +9,10 @@ import pytest
 from sqlalchemy import delete, func, select
 
 from foresight.database.enums import EventStatus, Source
-from foresight.database.models.event import Event, EventObservation
+from foresight.database.models.signals.event import Event, EventObservation
 from foresight.repository.upsert import Outcome
-from foresight.services.event import save_event
-from foresight.services.ingest.normalize import NormalizedEvent
+from foresight.services.adapters.normalize import NormalizedEvent
+from foresight.services.domain.event import save_event
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

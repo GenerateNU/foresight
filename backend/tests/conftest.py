@@ -4,10 +4,10 @@ from collections.abc import AsyncIterator
 
 import pandas as pd
 import pytest
-from generate_mock_data import write_csv
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from foresight.config import settings
+from tests.fixtures.mock_hotel_data import write_csv
 
 
 @pytest.fixture

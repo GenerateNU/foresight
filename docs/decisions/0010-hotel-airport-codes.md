@@ -1,6 +1,6 @@
 # 0010. Hotels store both IATA and ICAO airport codes
 
-**Status:** Accepted · **Date:** 2026-10-13
+**Status:** Superseded by [0017](0017-cities-are-the-market.md) · **Date:** 2026-10-13
 
 ## Context
 Flight arrivals are stored per airport, but nothing linked a hotel to its

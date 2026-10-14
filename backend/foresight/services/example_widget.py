@@ -5,33 +5,44 @@ Business logic for the `Widget` reference slice.
 Layer rules shown here:
 - Services hold domain logic and orchestration; they call the repository for
   persistence and never touch the ORM/session directly.
-- Services take plain inputs or schemas and return domain data (ORM models or
-  simple values) — never HTTP responses or status codes.
-- Map request schemas to repository calls here so the repository stays
-  schema-agnostic.
+- Services take plain arguments (never a schema) and return domain data (ORM
+  models or dataclasses) — never `*Response` schemas or status codes.
+- When an operation can't go ahead, raise an error from `services/errors.py`
+  (`NotFoundError`, `ConflictError`, ...); `routes/errors.py` maps it to HTTP.
+  `get_x(id)` raises NotFoundError rather than returning None.
 """
 
-from collections.abc import Sequence
+from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING
 
-from foresight.database.models.example_widget import Widget
 from foresight.repository import example_widget as widget_repo
-from foresight.schemas.example_widget import WidgetRequest
+from foresight.services.errors import NotFoundError
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from foresight.database.models.example_widget import Widget
 
 
-async def create_widget(session: AsyncSession, data: WidgetRequest) -> Widget:
+async def create_widget(
+    session: AsyncSession, *, name: str, description: str | None, quantity: int
+) -> Widget:
     return await widget_repo.create_widget(
-        session,
-        name=data.name,
-        description=data.description,
-        quantity=data.quantity,
+        session, name=name, description=description, quantity=quantity
     )
 
 
-async def get_widget(session: AsyncSession, widget_id: int) -> Widget | None:
-    return await widget_repo.get_widget(session, widget_id)
+async def get_widget(session: AsyncSession, widget_id: int) -> Widget:
+    widget = await widget_repo.get_widget(session, widget_id)
+    if widget is None:
+        raise NotFoundError("Widget", widget_id)
+    return widget
 
 
-async def list_widgets(session: AsyncSession) -> Sequence[Widget]:
-    return await widget_repo.list_widgets(session)
+async def list_widgets(
+    session: AsyncSession, *, limit: int, offset: int
+) -> tuple[Sequence[Widget], int]:
+    return await widget_repo.list_widgets(session, limit=limit, offset=offset)

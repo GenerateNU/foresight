@@ -15,7 +15,7 @@ status; don't rewrite history.
 ## Consequences — what follows, including trade-offs
 ```
 
-Number files sequentially (`0011-short-title.md`) and add them to the index.
+Number files sequentially (`0027-short-title.md`) and add them to the index.
 
 ## Index
 
@@ -30,5 +30,20 @@ Number files sequentially (`0011-short-title.md`) and add them to the index.
 | [0007](0007-shared-feature-builder.md) | One feature builder for training and serving | ML |
 | [0008](0008-models-stored-in-postgres.md) | Store trained models in Postgres | ML / database |
 | [0009](0009-one-model-per-hotel.md) | One model per hotel, one active at a time | ML / database |
-| [0010](0010-hotel-airport-codes.md) | Hotels store both IATA and ICAO airport codes | database |
-| [0011](0011-pydantic-at-boundaries.md) | Pydantic only at boundaries, named Request/Response | schemas |
+| [0010](0010-hotel-airport-codes.md) | ~~Hotels store both IATA and ICAO airport codes~~ (superseded by 0017) | database |
+| [0011](0011-pydantic-at-boundaries.md) | ~~Pydantic only at boundaries, named Request/Response~~ (superseded by 0015) | schemas |
+| [0012](0012-layered-architecture.md) | Four layers, each calling only the one below | architecture |
+| [0013](0013-one-transaction-per-unit-of-work.md) | Only the request and the job runner commit | architecture |
+| [0014](0014-services-raise-domain-errors.md) | Services raise domain errors; one place maps them to HTTP | architecture |
+| [0015](0015-schemas-in-route-modules.md) | HTTP schemas live in the route that uses them | routes |
+| [0016](0016-services-split-by-role.md) | Services are split into domain, adapters, ingest and ml | services |
+| [0017](0017-cities-are-the-market.md) | Cities are the market every signal belongs to | data model |
+| [0018](0018-idempotent-upserts.md) | Every outside write is an upsert on a natural key | data model |
+| [0019](0019-events-merged-across-sources.md) | Events are merged across sources; raw sightings are kept | data model |
+| [0020](0020-jobs-in-the-api-process.md) | Long work runs as jobs inside the API, through the API only | jobs |
+| [0021](0021-one-ingest-job-per-signal.md) | One ingest job per signal; the dates decide refresh or backfill | jobs |
+| [0022](0022-no-retries-resume-instead.md) | No automatic retries; jobs commit per chunk and record where to resume | jobs |
+| [0023](0023-stay-nights-are-local-dates.md) | A stay night is a local date in the city's timezone | data model |
+| [0024](0024-weather-for-future-nights.md) | Weather for future nights: forecast, then typical weather | ML |
+| [0025](0025-migrations.md) | Linear migrations that always roll back | database |
+| [0026](0026-no-authentication.md) | The API has no authentication | API |

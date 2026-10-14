@@ -1,8 +1,7 @@
 """Domain errors raised by services and translated to HTTP by the routes layer.
 
-Services describe *what* went wrong; `main.py` maps each error to a status code.
-A `get_x(id)` lookup that finds nothing still returns None; these errors are for
-operations that cannot go ahead.
+Services describe *what* went wrong; `routes/errors.py` maps each error to a
+status code. A `get_x(id)` lookup that finds nothing raises NotFoundError.
 """
 
 
@@ -21,3 +20,12 @@ class NotFoundError(DomainError):
 
 class ConflictError(DomainError):
     """The write would duplicate something that already exists."""
+
+
+class InvalidRequestError(DomainError):
+    """The request can't be carried out as given, e.g. a hotel lacks the data
+    a source needs, or a date window is empty."""
+
+
+class NotConfiguredError(DomainError):
+    """A server-side setting the operation needs (an API key) is missing."""

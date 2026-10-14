@@ -1,6 +1,6 @@
 # 0011. Pydantic only at boundaries, named Request/Response
 
-**Status:** Accepted · **Date:** 2026-10-13
+**Status:** Superseded by [0015](0015-schemas-in-route-modules.md) · **Date:** 2026-10-13
 
 ## Context
 Schemas followed a `*Create` / `*Read` pattern, one pair per table, with `Read`
@@ -20,7 +20,6 @@ HTTP, and inheritance silently copies input fields into output.
 - Services may take `Request` schemas but never return `Response` schemas; the
   repository never imports schemas.
 
-Full standard: [`agents/schemas.md`](../../agents/schemas.md).
 
 ## Consequences
 - Widget and hotel schemas were converted.

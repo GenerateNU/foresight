@@ -2,11 +2,15 @@
 
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Date, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from foresight.database.base import Base
+
+if TYPE_CHECKING:
+    from foresight.database.models.city import City
 
 
 class Hotel(Base):
@@ -16,27 +20,23 @@ class Hotel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    city: Mapped[str] = mapped_column(String(120))
+    # Its market. Timezone, airport and every outside signal come from here.
+    # RESTRICT: a city can't be deleted while hotels are in it.
+    city_id: Mapped[int] = mapped_column(ForeignKey("cities.id", ondelete="RESTRICT"))
     total_rooms: Mapped[int]
 
-    # Used to measure distance to event venues.
+    # The hotel's own location, for distance to event venues. The city's
+    # centre is used for searching.
     latitude: Mapped[float | None]
     longitude: Mapped[float | None]
 
-    # The hotel's main airport, used to look up flight arrivals. Both codes are
-    # stored because flight sources use different ones.
-    airport_iata: Mapped[str | None] = mapped_column(String(3))  # "DUB"
-    airport_icao: Mapped[str | None] = mapped_column(String(4))  # "EIDW"
-
-    # IANA zone, e.g. "Europe/Dublin". Stay nights are local to the hotel, so
-    # sources reporting UTC instants (OpenSky) are bucketed into days with it.
-    timezone: Mapped[str | None] = mapped_column(String(64))
-
+    city: Mapped["City"] = relationship(lazy="raise")
     room_types: Mapped[list["RoomType"]] = relationship(
         back_populates="hotel", lazy="raise", passive_deletes=True
     )
 
-    __table_args__ = (UniqueConstraint("name", "city"),)
+    # Leads on city_id, so it also serves as the foreign key index.
+    __table_args__ = (UniqueConstraint("city_id", "name"),)
 
 
 class RoomType(Base):

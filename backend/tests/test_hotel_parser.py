@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
 from foresight.repository.upsert import Outcome
-from foresight.services.parsers.hotel_data_parser import (
+from foresight.services.adapters.hotel_csv import (
     ROOM_TYPE,
     HotelDataParser,
     persist,

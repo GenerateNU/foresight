@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
-from foresight.services.ingest.asknews import (
+from foresight.services.adapters.asknews import (
     AskNewsClient,
     CityTarget,
     RejectReason,
@@ -18,7 +18,7 @@ from foresight.services.ingest.asknews import (
     extract_event,
     plan_searches,
 )
-from foresight.services.ingest.normalize import NormalizedEvent
+from foresight.services.adapters.normalize import NormalizedEvent
 
 TODAY = date(2026, 6, 1)
 DUBLIN = CityTarget(

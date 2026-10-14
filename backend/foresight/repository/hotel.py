@@ -1,15 +1,17 @@
 """Data access for `hotels`, `room_types` and `daily_performance`.
 
 `create_*` returns None on a duplicate (API writes); `upsert_*` is idempotent
-(loaders).
+(loaders). Hotels are always returned with their `city` loaded.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
 from foresight.repository.pagination import fetch_page
@@ -27,37 +29,30 @@ _PERF_MEASURES = ("rate", "rooms_available", "rooms_sold", "room_revenue")
 
 
 async def get_hotel(session: AsyncSession, hotel_id: int) -> Hotel | None:
-    return await session.get(Hotel, hotel_id)
-
-
-async def upsert_hotel(
-    session: AsyncSession,
-    *,
-    name: str,
-    city: str,
-    total_rooms: int,
-    latitude: float | None = None,
-    longitude: float | None = None,
-) -> int:
-    """Return the id of the hotel named `name` in `city`, creating it if new."""
-    stmt = insert(Hotel).values(
-        name=name,
-        city=city,
-        total_rooms=total_rooms,
-        latitude=latitude,
-        longitude=longitude,
+    return await session.scalar(
+        select(Hotel)
+        .options(joinedload(Hotel.city))
+        .where(Hotel.id == hotel_id)
+        .execution_options(populate_existing=True)
     )
-    stmt = stmt.on_conflict_do_update(
-        constraint="uq_hotels_name_city",
-        set_={
-            "total_rooms": stmt.excluded.total_rooms,
-            # Coordinates are optional, so a caller that omits them must not
-            # erase what another caller already stored.
-            "latitude": func.coalesce(stmt.excluded.latitude, Hotel.latitude),
-            "longitude": func.coalesce(stmt.excluded.longitude, Hotel.longitude),
-        },
-    ).returning(Hotel.id)
-    return (await session.execute(stmt)).scalar_one()
+
+
+async def update_hotel(
+    session: AsyncSession, hotel_id: int, changes: Mapping[str, Any]
+) -> Hotel | None:
+    """Apply `changes`; None if they'd duplicate another hotel's name and city.
+
+    Runs in a savepoint so a rejected rename leaves the caller's transaction
+    usable. The caller checks a new `city_id` exists.
+    """
+    try:
+        async with session.begin_nested():
+            await session.execute(
+                update(Hotel).where(Hotel.id == hotel_id).values(**changes)
+            )
+    except IntegrityError:
+        return None
+    return await get_hotel(session, hotel_id)
 
 
 async def upsert_room_type(
@@ -101,30 +96,28 @@ async def create_hotel(
     session: AsyncSession,
     *,
     name: str,
-    city: str,
+    city_id: int,
     total_rooms: int,
     latitude: float | None,
     longitude: float | None,
-    airport_iata: str | None,
-    airport_icao: str | None,
-    timezone: str | None,
 ) -> Hotel | None:
-    """Insert a hotel; None if one with this name already exists in `city`."""
-    return await session.scalar(
+    """Insert a hotel; None if one with this name already exists in the city.
+
+    The caller checks `city_id` exists.
+    """
+    hotel_id = await session.scalar(
         insert(Hotel)
         .values(
             name=name,
-            city=city,
+            city_id=city_id,
             total_rooms=total_rooms,
             latitude=latitude,
             longitude=longitude,
-            airport_iata=airport_iata,
-            airport_icao=airport_icao,
-            timezone=timezone,
         )
-        .on_conflict_do_nothing(constraint="uq_hotels_name_city")
-        .returning(Hotel)
+        .on_conflict_do_nothing(constraint="uq_hotels_city_id_name")
+        .returning(Hotel.id)
     )
+    return None if hotel_id is None else await get_hotel(session, hotel_id)
 
 
 async def create_room_type(
@@ -146,23 +139,18 @@ async def create_room_type(
     )
 
 
-async def list_hotels(
-    session: AsyncSession, *, limit: int, offset: int
-) -> tuple[Sequence[Hotel], int]:
-    return await fetch_page(
-        session, select(Hotel).order_by(Hotel.id), limit=limit, offset=offset
-    )
+async def list_hotels(session: AsyncSession) -> Sequence[Hotel]:
+    stmt = select(Hotel).options(joinedload(Hotel.city)).order_by(Hotel.id)
+    return (await session.scalars(stmt)).all()
 
 
 async def get_room_type(session: AsyncSession, room_type_id: int) -> RoomType | None:
     return await session.get(RoomType, room_type_id)
 
 
-async def list_room_types(
-    session: AsyncSession, hotel_id: int, *, limit: int, offset: int
-) -> tuple[Sequence[RoomType], int]:
+async def list_room_types(session: AsyncSession, hotel_id: int) -> Sequence[RoomType]:
     stmt = select(RoomType).where(RoomType.hotel_id == hotel_id).order_by(RoomType.id)
-    return await fetch_page(session, stmt, limit=limit, offset=offset)
+    return (await session.scalars(stmt)).all()
 
 
 async def list_performance(
