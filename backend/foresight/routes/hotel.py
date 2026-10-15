@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Query, status
 from pydantic import Field, computed_field, field_validator
@@ -155,17 +155,7 @@ class DailyPerformanceResponse(ResponseSchema):
 class FactorResponse(ResponseSchema):
     """One term's pull on the recommended rate."""
 
-    signal: str = Field(
-        description="Which signal the term belongs to",
-        examples=["calendar", "weather", "room type", "other"],
-    )
-    direction: Literal["up", "down", "neutral"] = Field(
-        description="Whether the term raises or lowers the rate; neutral for "
-        "the combined small effects"
-    )
-    detail: str = Field(
-        description="The term and its amount, in words", examples=["Saturday: +€10.00"]
-    )
+    detail: str = Field(description="The factor, in words", examples=["Saturday"])
     amount: Decimal = Field(
         description="Contribution in EUR; baseline plus every amount is the "
         "recommended rate"
@@ -187,21 +177,6 @@ class ConfidenceIntervalResponse(ResponseSchema):
     )
 
 
-class SignalUsedResponse(ResponseSchema):
-    """What the model saw for one signal on this night."""
-
-    signal: str = Field(
-        description="The signal", examples=["weather", "events", "flights"]
-    )
-    source: str = Field(
-        description="Where this night's values came from",
-        examples=["recorded", "forecast", "typical week 1 (1 years)", "missing"],
-    )
-    values: dict[str, float | None] = Field(
-        description="The values the model saw; empty if the signal isn't used"
-    )
-
-
 class RecommendationResponse(ResponseSchema):
     hotel_id: int = Field(description="The hotel priced")
     stay_date: date = Field(description="The night priced, local to the city")
@@ -215,10 +190,6 @@ class RecommendationResponse(ResponseSchema):
     uncertainty: Decimal = Field(
         description="How much the model's sub-models disagree, in EUR. High "
         "means an unusual night: review the rate"
-    )
-    signals: list[SignalUsedResponse] = Field(
-        description="The data used for this night. Nothing is fetched here; "
-        "ingest first"
     )
     model_id: int = Field(description="The model version that priced it")
     model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])

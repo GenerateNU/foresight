@@ -421,14 +421,13 @@ GET /hotels/7/recommendations?date=2026-10-24[&room_type_id=]
       model_repo.get_active_pricing_model       404 if none
       domain/model_inputs.weather_for           recorded → forecast → typical week (0024)
       build_features → predict_interval, explain, predict_uncertainty
-  ← rate, 80% interval, factors in € that sum to the rate, signals used
+  ← rate, 80% interval, factors in € that sum to the rate
 ```
 
 Every training run is a new version
 ([0029](decisions/0029-every-training-run-is-a-new-version.md)):
-`description` says what it tried, `training_summary` what it was trained on.
-`copy_settings_from` retrains an earlier version's setup, and
-`POST /models/{id}/activate` chooses which version serves.
+`description` says what it tried, and `POST /models/{id}/activate` chooses
+which version serves.
 
 ---
 

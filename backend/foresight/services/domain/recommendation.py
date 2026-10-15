@@ -1,8 +1,8 @@
 """Nightly rate recommendations from the hotel's active pricing model.
 
-Reads only what's already ingested; it never fetches. If a signal is missing
-for the night, the model gets an empty value (it learned an effect for that)
-and the response says so, rather than this call pulling the data in.
+Reads only what's already ingested; it never fetches. If data is missing for
+the night, the model gets an empty value (it learned an effect for that)
+rather than this call pulling the data in.
 
 Returns domain dataclasses; the route maps them to `RecommendationResponse`.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, cast
 
 import pandas as pd
 
@@ -21,7 +21,6 @@ from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
     NO_EVENTS,
     NO_FLIGHTS,
-    WEATHER_COLUMNS,
     weather_for,
 )
 from foresight.services.errors import InvalidRequestError, NotFoundError
@@ -41,31 +40,13 @@ _MONTHS = [
     "January", "February", "March", "April", "May", "June", "July",
     "August", "September", "October", "November", "December",
 ]  # fmt: skip
-# Which signal each model term belongs to; interactions take their first part.
-_SIGNAL = {
-    "room_type": "room type",
-    "day_of_week": "calendar",
-    "month": "calendar",
-    "is_public_holiday": "calendar",
-    "is_school_holiday": "calendar",
-    "temp_max_c": "weather",
-    "precip_mm": "weather",
-    "wind_kph": "weather",
-    "event_count": "events",
-    "event_attendance": "events",
-    "event_rank_max": "events",
-    "flight_count": "flights",
-    "avg_fare_eur": "flights",
-}
 
 
 @dataclass(frozen=True, slots=True)
 class Factor:
     """One term's pull on the recommended rate."""
 
-    signal: str  # "calendar", "weather", "room type", "events", "flights"
-    direction: Literal["up", "down", "neutral"]
-    detail: str
+    detail: str  # the factor, e.g. "Saturday" or "18.3°C max"
     amount: Decimal  # contribution in currency; terms + baseline = the rate
 
 
@@ -84,15 +65,6 @@ class ConfidenceInterval:
 
 
 @dataclass(frozen=True, slots=True)
-class SignalUsed:
-    """What the model saw for one signal on this night."""
-
-    signal: str
-    source: str  # "recorded", "forecast", "typical week 43 (4 years)", "missing"
-    values: dict[str, float | None]
-
-
-@dataclass(frozen=True, slots=True)
 class Recommendation:
     hotel_id: int
     stay_date: date
@@ -102,7 +74,6 @@ class Recommendation:
     explanation: Explanation
     confidence_interval: ConfidenceInterval
     uncertainty: Decimal  # sub-model disagreement; high = review (decision 0006)
-    signals: list[SignalUsed]
     model_id: int
     model_version: str
     is_placeholder: bool  # kept for clients written against the placeholder
@@ -163,7 +134,6 @@ async def get_recommendation(
             _money(max(lower, 0.0)), _money(upper), round(1 - model.alpha, 2)
         ),
         uncertainty=_money(float(model.predict_uncertainty(x)[0])),
-        signals=_signals(weather.sources[stay_date], row),
         model_id=stored.id,
         model_version=f"{stored.algorithm}-v{stored.version}",
         is_placeholder=False,
@@ -183,36 +153,33 @@ def _explanation(
     for term, amount in contributions.sort_values(key=abs, ascending=False).items():
         if abs(amount) < _MIN_FACTOR_EUR:
             continue
-        factors.append(
-            Factor(
-                signal=_SIGNAL.get(term.split(" & ")[0], "other"),
-                direction="up" if amount > 0 else "down",
-                detail=f"{_describe(term, row)}: {_signed(amount)}",
-                amount=_money(amount),
-            )
-        )
+        factors.append(Factor(detail=_describe(str(term), row), amount=_money(amount)))
     other = _money(pred) - baseline - sum((f.amount for f in factors), Decimal(0))
     if other:
-        factors.append(
-            Factor(
-                "other",
-                "neutral",
-                f"Smaller effects combined: {_signed(float(other))}",
-                other,
-            )
-        )
-    top = factors[0].detail if factors else "no strong factors"
+        factors.append(Factor(detail="Smaller effects combined", amount=other))
+    top = (
+        f"{factors[0].detail}: {_signed(float(factors[0].amount))}"
+        if factors
+        else "no strong factors"
+    )
     summary = f"€{pred:.0f} from a typical €{intercept:.0f}; biggest factor: {top}."
     return Explanation(summary, baseline, factors)
 
 
 def _describe(term: str, row: pd.Series) -> str:
     """Name a term by the night's value, e.g. "Saturday" or "18.3°C max"."""
-    return " with ".join(_value(part, row[part]) for part in term.split(" & "))
+    # `row` is one night, so each column holds a single scalar; pandas' stubs
+    # type indexing as possibly a Series, hence the cast.
+    return " with ".join(
+        _value(part, cast("float | int | str | None", row[part]))
+        for part in term.split(" & ")
+    )
 
 
-def _value(feature: str, value: object) -> str:
-    if pd.isna(value):
+def _value(feature: str, value: float | int | str | None) -> str:
+    """One feature's value for this night, in words. Values are scalars:
+    numbers for calendar and weather, a name for the room type."""
+    if value is None or pd.isna(value):
         return f"{feature.replace('_', ' ')} unknown"
     if feature == "day_of_week":
         return _DAYS[int(value)]
@@ -227,15 +194,6 @@ def _value(feature: str, value: object) -> str:
     if feature == "room_type":
         return f"{value} room"
     return f"{feature.replace('_', ' ')} {value}"
-
-
-def _signals(weather_source: str, row: pd.Series) -> list[SignalUsed]:
-    weather = {c: None if pd.isna(row[c]) else float(row[c]) for c in WEATHER_COLUMNS}
-    return [
-        SignalUsed("weather", weather_source, weather),
-        SignalUsed("events", "not used yet", {}),
-        SignalUsed("flights", "not used yet", {}),
-    ]
 
 
 def _signed(amount: float) -> str:

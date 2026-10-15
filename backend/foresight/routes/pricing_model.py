@@ -107,17 +107,12 @@ class TrainRequest(RequestSchema):
         default_factory=EBMSettings,
         description="EBM settings to try; omitted ones use the library default",
     )
-    copy_settings_from: int | None = Field(
-        default=None,
-        description="Retrain with an earlier version's settings and window; "
-        "anything sent here overrides them",
-    )
 
 
 # One per use, shown as a picker in /docs. The first is the body built from
 # the fields (`example_body`), so it matches the schema and its defaults; the
-# others change one thing from it. Only these set settings or copy from a
-# model: those change what training does, so the fields carry no example.
+# others change one thing from it. Only the experiment sets settings: they
+# change what training does, so the fields carry no example.
 _FULL = example_body(TrainRequest)
 _TRAIN_EXAMPLES: dict[str, Any] = {
     "window": {"summary": "New model on a window", "value": _FULL},
@@ -128,12 +123,6 @@ _TRAIN_EXAMPLES: dict[str, Any] = {
     "experiment": {
         "summary": "Try settings without serving it",
         "value": {**_FULL, "activate": False, "settings": {"interactions": 0}},
-    },
-    "retrain": {
-        "summary": "Retrain an earlier version's setup",
-        "description": "Copies that version's settings and window; anything "
-        "sent overrides them.",
-        "value": {"description": _FULL["description"], "copy_settings_from": 1},
     },
 }
 
@@ -151,9 +140,6 @@ class PricingModelResponse(ResponseSchema):
     metrics: dict[str, Any] = Field(
         description="Scored on the most recent nights, held out from training; "
         "mae and rmse in EUR"
-    )
-    training_summary: dict[str, Any] = Field(
-        description="Nights used and excluded, settings, which signals had data"
     )
     lib_versions: dict[str, str] = Field(
         description="Library versions it was trained with"
@@ -197,7 +183,6 @@ async def train_model(
         end=data.end,
         activate=data.activate,
         ebm_params=data.settings.model_dump(exclude_none=True),
-        copy_settings_from=data.copy_settings_from,
     )
     tasks.add_task(worker.run_job, job.id)
     return JobResponse.model_validate(job)

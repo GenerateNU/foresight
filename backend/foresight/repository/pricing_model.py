@@ -27,7 +27,6 @@ async def create_pricing_model(
     features: list[str],
     metrics: dict[str, Any],
     lib_versions: dict[str, str],
-    training_summary: dict[str, Any],
     data_start: date,
     data_end: date,
 ) -> PricingModel:
@@ -44,7 +43,6 @@ async def create_pricing_model(
         features=features,
         metrics=metrics,
         lib_versions=lib_versions,
-        training_summary=training_summary,
         data_start=data_start,
         data_end=data_end,
         is_active=False,

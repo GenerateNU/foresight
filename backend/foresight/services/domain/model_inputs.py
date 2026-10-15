@@ -45,7 +45,6 @@ NO_EVENTS = pd.DataFrame(
     ]
 )
 NO_FLIGHTS = pd.DataFrame(columns=["arrival_date", "flight_count", "avg_fare_eur"])
-UNUSED_SIGNALS = {"events": "not used yet", "flights": "not used yet"}
 
 
 @dataclass(frozen=True, slots=True)

@@ -14,13 +14,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from foresight.repository import hotel as hotel_repo
 from foresight.services.errors import InvalidRequestError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,7 +43,7 @@ class Window:
         }
 
     @classmethod
-    def from_params(cls, params: dict) -> Window:
+    def from_params(cls, params: Mapping[str, Any]) -> Window:
         return cls(
             date.fromisoformat(params["start"]),
             date.fromisoformat(params["end"]),
