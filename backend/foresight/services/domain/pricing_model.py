@@ -24,7 +24,6 @@ from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
     NO_EVENTS,
     NO_FLIGHTS,
-    UNUSED_SIGNALS,
     weather_for,
 )
 from foresight.services.errors import InvalidRequestError, NotFoundError
@@ -56,6 +55,7 @@ class TrainingResult:
     model: PricingModel
     activated: bool
     seconds: float
+    nights_used: int
 
 
 async def check_trainable(
@@ -101,16 +101,14 @@ async def train(
     """
     began = time.monotonic()
     rows = await hotel_repo.training_nights(session, hotel.id, start=start, end=end)
-    nights = pd.DataFrame(
-        rows,
-        columns=["stay_date", "room_type", "rate", "rooms_sold", "rooms_available"],
-    )
-    nights["rate"] = pd.to_numeric(nights["rate"], errors="coerce").astype(float)
+    nights = pd.DataFrame(rows, columns=pd.Index(_NIGHT_COLUMNS))
+    # Rates arrive as Decimal or None; None becomes NaN.
+    rate = pd.Series(nights["rate"], dtype=float)
+    nights["rate"] = rate
 
     # Decision 0004: free/staff/unpriced nights go before features and weights,
     # so all three line up row for row.
-    keep = training_mask(nights["rate"])
-    excluded = int((~keep).sum())
+    keep = training_mask(rate)
     nights = nights.loc[keep].reset_index(drop=True)
     if len(nights) < MIN_TRAINING_NIGHTS:
         raise InvalidRequestError(
@@ -126,30 +124,8 @@ async def train(
     weights = sample_weights(occupancy.clip(0, 1))
 
     # CPU-bound for seconds; a thread keeps the API answering meanwhile.
-    model, metrics, artifact = await asyncio.to_thread(
-        _fit, x, y, weights, nights, params
-    )
+    metrics, artifact = await asyncio.to_thread(_fit, x, y, weights, nights, params)
 
-    with_weather = sum(1 for d in days if weather.sources[d] == "recorded")
-    summary = {
-        "nights_used": len(nights),
-        "nights_excluded_unpriced": excluded,
-        "room_types": sorted(nights["room_type"].unique().tolist()),
-        "window": {
-            "start": start.isoformat() if start else None,
-            "end": end.isoformat() if end else None,
-        },
-        "weighting": "occupancy, floored at 0.05 (decision 0003)",
-        "ebm_params": params,
-        "signals": {
-            "weather": {
-                "source": "recorded only",
-                "days_with_data": with_weather,
-                "days_missing": len(days) - with_weather,
-            },
-            **UNUSED_SIGNALS,
-        },
-    }
     saved = await model_repo.create_pricing_model(
         session,
         hotel_id=hotel.id,
@@ -159,13 +135,16 @@ async def train(
         features=FEATURES,
         metrics=metrics,
         lib_versions={lib: version(lib) for lib in _LIBS},
-        training_summary=summary,
         data_start=nights["stay_date"].min(),
         data_end=nights["stay_date"].max(),
     )
     if activate:
-        saved = await model_repo.activate_pricing_model(session, saved.id)
-    return TrainingResult(saved, activate, round(time.monotonic() - began, 1))
+        activated = await model_repo.activate_pricing_model(session, saved.id)
+        assert activated is not None  # saved just above, in this transaction
+        saved = activated
+    return TrainingResult(
+        saved, activate, round(time.monotonic() - began, 1), len(nights)
+    )
 
 
 async def list_models(
@@ -199,13 +178,15 @@ def _fit(
     weights: np.ndarray,
     nights: pd.DataFrame,
     params: dict[str, Any],
-) -> tuple[EBMModel, dict[str, Any], bytes]:
+) -> tuple[dict[str, Any], bytes]:
+    """Fit, score on the held-out nights, and serialize. Returns the metrics
+    and the artifact to store."""
     model = EBMModel(alpha=0.2, calibration_frac=HOLDOUT_FRAC, **params).fit(
         x, y, sample_weight=weights
     )
     cut = int(len(x) * (1 - HOLDOUT_FRAC))
     metrics = _metrics(model, x.iloc[cut:], y.iloc[cut:], nights.iloc[cut:])
-    return model, metrics, model.to_bytes()
+    return metrics, model.to_bytes()
 
 
 def _metrics(

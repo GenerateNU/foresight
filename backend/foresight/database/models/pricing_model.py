@@ -43,7 +43,8 @@ class PricingModel(Base):
     features: Mapped[list[str]] = mapped_column(JSONB)  # input columns, in order
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)  # mae, rmse, r2, ...
     lib_versions: Mapped[dict[str, str]] = mapped_column(JSONB)  # pickle compat
-    # What it was trained on: nights used and excluded, which signals had data.
+    # No longer written; new versions get {}. Older rows may still hold a
+    # summary. Kept until what a version was trained on gets its own columns.
     training_summary: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb")
     )

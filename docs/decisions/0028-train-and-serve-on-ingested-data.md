@@ -12,8 +12,9 @@ having run.
   (`GET /hotels/{id}/recommendations`) read only what's already saved. Neither
   calls an adapter.
 - Missing data isn't fetched: the feature stays empty, which the model learned
-  an effect for. The response's `signals` says what was used for the night
-  (`recorded`, `forecast`, `typical week N`, `missing`, `not used yet`).
+  an effect for. The response doesn't yet say which data was used for the
+  night; that waits until it can be reported from stored data rather than
+  fixed labels.
 - Weather follows [0024](0024-weather-for-future-nights.md): training uses
   recorded weather only; serving uses recorded, then forecast, then the
   typical weather for that ISO week. Week 53 borrows week 52 when no recorded

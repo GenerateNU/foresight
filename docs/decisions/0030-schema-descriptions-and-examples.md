@@ -19,8 +19,8 @@ those were written by hand, so they could disagree with the fields' defaults.
 - `RequestSchema` builds each body's example from its fields
   (`example_body` in `routes/helpers.py`): the default where there is one,
   else the example. Nobody writes a body example by hand, so it can't drift.
-- Fields whose value changes what a request does (`copy_settings_from`, the
-  EBM `settings`) carry no example, so the default body never sets them.
+- Fields whose value changes what a request does (the EBM `settings`) carry
+  no example, so the default body never sets them.
   They're shown in the endpoint's picker instead.
 - Endpoints with several modes (ingest, train) keep a picker. Its first entry
   is the generated body; the others are derived from it.

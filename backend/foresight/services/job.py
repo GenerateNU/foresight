@@ -30,7 +30,6 @@ from foresight.services.domain import pricing_model as pricing_model_service
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.errors import (
     ConflictError,
-    InvalidRequestError,
     NotConfiguredError,
     NotFoundError,
 )
@@ -156,30 +155,14 @@ async def start_train_job(
     end: date | None,
     activate: bool,
     ebm_params: dict[str, Any],
-    copy_settings_from: int | None,
 ) -> Job:
     """Train a new model version on what's already ingested.
 
-    `copy_settings_from` reuses an earlier version's EBM settings and window;
-    anything sent explicitly overrides them.
-
     Raises:
-        NotFoundError: Unknown hotel, or unknown model to copy from.
-        InvalidRequestError: Nothing to train on, start after end, or the
-            model to copy from belongs to another hotel.
+        NotFoundError: Unknown hotel.
+        InvalidRequestError: Nothing to train on, or start after end.
         ConflictError: A training job is already queued or running.
     """
-    if copy_settings_from is not None:
-        base = await pricing_model_service.get_model(session, copy_settings_from)
-        if base.hotel_id != hotel_id:
-            raise InvalidRequestError(
-                f"model {base.id} belongs to hotel {base.hotel_id}, not {hotel_id}"
-            )
-        summary = base.training_summary or {}
-        ebm_params = {**summary.get("ebm_params", {}), **ebm_params}
-        window = summary.get("window", {})
-        start = start or _date_or_none(window.get("start"))
-        end = end or _date_or_none(window.get("end"))
     hotel = await pricing_model_service.check_trainable(
         session, hotel_id, start=start, end=end
     )
@@ -189,7 +172,6 @@ async def start_train_job(
         "end": end.isoformat() if end else None,
         "activate": activate,
         "ebm_params": ebm_params,
-        "copy_settings_from": copy_settings_from,
     }
     return await _queue(session, hotel, JobKind.TRAIN, params)
 
@@ -408,7 +390,7 @@ async def _train(
             "version": model.version,
             "activated": result.activated,
             "seconds": result.seconds,
-            "nights_used": model.training_summary["nights_used"],
+            "nights_used": result.nights_used,
             "metrics": {k: model.metrics[k] for k in ("mae", "mape", "r2", "coverage")},
         },
         None,
