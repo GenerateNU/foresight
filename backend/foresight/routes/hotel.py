@@ -113,33 +113,62 @@ class DailyPerformanceResponse(ResponseSchema):
 
 
 class FactorResponse(ResponseSchema):
-    """One signal's pull on the recommended rate."""
+    """One term's pull on the recommended rate."""
 
-    signal: str = Field(description='e.g. "events", "weather", "flights"')
+    signal: str = Field(
+        description='"calendar", "weather", "room type", "events", "flights", '
+        'or "other"'
+    )
     direction: Literal["up", "down", "neutral"]
-    detail: str
+    detail: str = Field(examples=["Saturday: +€23.40"])
+    amount: Decimal = Field(
+        description="Contribution in currency; baseline plus every amount is "
+        "the recommended rate"
+    )
 
 
 class ExplanationResponse(ResponseSchema):
     summary: str
+    baseline: Decimal = Field(description="The model's rate before any factor")
     factors: list[FactorResponse]
 
 
 class ConfidenceIntervalResponse(ResponseSchema):
     lower: Decimal
     upper: Decimal
-    level: float = Field(description="Coverage, e.g. 0.95")
+    level: float = Field(description="Coverage, e.g. 0.8")
+
+
+class SignalUsedResponse(ResponseSchema):
+    """What the model saw for one signal on this night."""
+
+    signal: str
+    source: str = Field(
+        description='"recorded", "forecast", "typical week N (Y years)", '
+        '"missing", or "not used yet"'
+    )
+    values: dict[str, float | None]
 
 
 class RecommendationResponse(ResponseSchema):
     hotel_id: int
     stay_date: date
+    room_type: str
     recommended_rate: Decimal
     currency: str
     explanation: ExplanationResponse
     confidence_interval: ConfidenceIntervalResponse
+    uncertainty: Decimal = Field(
+        description="How much the model's sub-models disagree, in currency. "
+        "High means an unusual night: review the rate"
+    )
+    signals: list[SignalUsedResponse] = Field(
+        description="The data used for this night. Nothing is fetched here; "
+        "ingest first"
+    )
+    model_id: int
     model_version: str
-    is_placeholder: bool = Field(description="True until the pricing model is wired in")
+    is_placeholder: bool = Field(description="Always false; kept for older clients")
 
 
 # --- endpoints --------------------------------------------------------------
@@ -240,10 +269,24 @@ async def get_recommendation(
     hotel_id: int,
     session: SessionDep,
     # Named `stay_date` in code because `date` is the type; the query key stays `date`.
-    stay_date: Annotated[date, Query(alias="date")],
+    stay_date: Annotated[
+        date,
+        Query(
+            alias="date",
+            description="The night to price, YYYY-MM-DD",
+            examples=["2026-10-24"],
+        ),
+    ],
+    room_type_id: Annotated[
+        int | None, Query(description="Defaults to the hotel's first room type")
+    ] = None,
 ) -> RecommendationResponse:
-    """Placeholder rate for one night, in the final response shape."""
+    """The active model's rate for one night, with its explanation.
+
+    Uses only ingested data: recorded weather, else the forecast, else the
+    typical weather for that week. 404 if the hotel has no active model.
+    """
     recommendation = await recommendation_service.get_recommendation(
-        session, hotel_id, stay_date
+        session, hotel_id, stay_date, room_type_id=room_type_id
     )
     return RecommendationResponse.model_validate(recommendation)

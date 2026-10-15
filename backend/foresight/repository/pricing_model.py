@@ -5,10 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.orm import defer
 
 from foresight.database.models.pricing_model import PricingModel
+from foresight.repository.pagination import fetch_page
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +22,12 @@ async def create_pricing_model(
     *,
     hotel_id: int,
     algorithm: str,
+    description: str | None,
     artifact: bytes,
     features: list[str],
     metrics: dict[str, Any],
     lib_versions: dict[str, str],
+    training_summary: dict[str, Any],
     data_start: date,
     data_end: date,
 ) -> PricingModel:
@@ -34,10 +39,12 @@ async def create_pricing_model(
         hotel_id=hotel_id,
         version=await _next_version(session, hotel_id),
         algorithm=algorithm,
+        description=description,
         artifact=artifact,
         features=features,
         metrics=metrics,
         lib_versions=lib_versions,
+        training_summary=training_summary,
         data_start=data_start,
         data_end=data_end,
         is_active=False,
@@ -49,15 +56,32 @@ async def create_pricing_model(
 
 
 async def get_pricing_model(
-    session: AsyncSession, model_id: int
+    session: AsyncSession, model_id: int, *, with_artifact: bool = False
 ) -> PricingModel | None:
-    return await session.get(PricingModel, model_id)
+    """One model. The artifact (megabytes) is only loaded if asked for."""
+    stmt = select(PricingModel).where(PricingModel.id == model_id)
+    if not with_artifact:
+        stmt = stmt.options(defer(PricingModel.artifact))
+    return await session.scalar(stmt)
+
+
+async def list_pricing_models(
+    session: AsyncSession, hotel_id: int, *, limit: int, offset: int
+) -> tuple[Sequence[PricingModel], int]:
+    """The hotel's models, newest version first, without their artifacts."""
+    stmt = (
+        select(PricingModel)
+        .options(defer(PricingModel.artifact))
+        .where(PricingModel.hotel_id == hotel_id)
+        .order_by(PricingModel.version.desc())
+    )
+    return await fetch_page(session, stmt, limit=limit, offset=offset)
 
 
 async def get_active_pricing_model(
     session: AsyncSession, hotel_id: int
 ) -> PricingModel | None:
-    """The model currently serving the hotel, if any."""
+    """The model currently serving the hotel, if any, artifact included."""
     return await session.scalar(
         select(PricingModel).where(
             PricingModel.hotel_id == hotel_id, PricingModel.is_active
@@ -74,7 +98,7 @@ async def activate_pricing_model(
     is never left with zero or two active models. Returns None if the model
     doesn't exist.
     """
-    model = await session.get(PricingModel, model_id)
+    model = await get_pricing_model(session, model_id)
     if model is None:
         return None
 

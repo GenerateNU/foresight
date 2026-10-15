@@ -194,3 +194,31 @@ async def stay_date_range(
         )
     ).one()
     return None if first is None else (first, last)
+
+
+async def training_nights(
+    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
+) -> Sequence[Mapping[str, Any]]:
+    """Every night of every room type, oldest first, for training.
+
+    Rows carry stay_date, room_type (its name), rate, rooms_sold and
+    rooms_available. Nights with no or a zero rate are included; the caller
+    decides what to drop.
+    """
+    stmt = (
+        select(
+            DailyPerformance.stay_date,
+            RoomType.name.label("room_type"),
+            DailyPerformance.rate,
+            DailyPerformance.rooms_sold,
+            DailyPerformance.rooms_available,
+        )
+        .join(RoomType, DailyPerformance.room_type_id == RoomType.id)
+        .where(RoomType.hotel_id == hotel_id)
+    )
+    if start is not None:
+        stmt = stmt.where(DailyPerformance.stay_date >= start)
+    if end is not None:
+        stmt = stmt.where(DailyPerformance.stay_date <= end)
+    stmt = stmt.order_by(DailyPerformance.stay_date, RoomType.id)
+    return (await session.execute(stmt)).mappings().all()

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     LargeBinary,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -33,6 +34,8 @@ class PricingModel(Base):
     hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
     version: Mapped[int]  # increments per hotel
     algorithm: Mapped[str] = mapped_column(String(60))  # e.g. "ebm"
+    # What this version tried, written by whoever trained it.
+    description: Mapped[str | None] = mapped_column(Text)
 
     # Serialized fitted model. Only load artifacts our own training wrote.
     artifact: Mapped[bytes] = mapped_column(LargeBinary)
@@ -40,6 +43,10 @@ class PricingModel(Base):
     features: Mapped[list[str]] = mapped_column(JSONB)  # input columns, in order
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)  # mae, rmse, r2, ...
     lib_versions: Mapped[dict[str, str]] = mapped_column(JSONB)  # pickle compat
+    # What it was trained on: nights used and excluded, which signals had data.
+    training_summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
 
     # Training window (stay dates).
     data_start: Mapped[date] = mapped_column(Date)

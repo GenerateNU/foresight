@@ -17,6 +17,7 @@ from foresight.routes import (
     hotel,
     ingest,
     job,
+    pricing_model,
     weather,
 )
 from foresight.routes.errors import register_error_handlers
@@ -48,6 +49,7 @@ app.include_router(event.router)
 app.include_router(flight.router)
 app.include_router(ingest.router)
 app.include_router(job.router)
+app.include_router(pricing_model.router)
 app.include_router(example_widget.router)
 
 
