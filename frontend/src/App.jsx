@@ -1,120 +1,118 @@
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import logo from './assets/foresight-logo.svg'
+import OptionPicker from './components/OptionPicker'
+import Events from './components/Events'
+import PriceBreakdown from './components/PriceBreakdown'
+import { DAYS, DAY_ADJ, FLIGHTS, FULL_DAY, WEATHER, priceFactors, signed } from './pricing'
 import './App.css'
 
+const STEPS = ['Signals come in', 'Learns from history', 'Explains its price', 'Manager approves']
+
+// The starting state, also used by the Reset button.
+function initialState() {
+  return {
+    day: 'Sat',
+    weather: 'Rain',
+    flights: 'More',
+    approved: false,
+    nextId: 3,
+    events: [
+      { id: 1, title: 'Concert at Gillette', category: 'concert', day: 'Sat', attendance: 65000 },
+      { id: 2, title: 'Second Gillette show', category: 'concert', day: 'Sun', attendance: 65000 },
+    ],
+  }
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [state, setState] = useState(initialState)
+  // Changing this number gives the Events form a fresh start on Reset.
+  const [resetCount, setResetCount] = useState(0)
+
+  // Any change to the inputs means the price has to be approved again.
+  function update(changes) {
+    setState({ ...state, ...changes, approved: false })
+  }
+
+  function reset() {
+    setState(initialState())
+    setResetCount(resetCount + 1)
+  }
+
+  function addEvent(event) {
+    update({ events: [...state.events, { ...event, id: state.nextId }], nextId: state.nextId + 1 })
+  }
+
+  function removeEvent(id) {
+    update({ events: state.events.filter((e) => e.id !== id) })
+  }
+
+  const dayOptions = DAYS.map((d) => ({ id: d, label: d, delta: signed(DAY_ADJ[d]) }))
+  const weatherOptions = WEATHER.map((w) => ({ id: w.id, label: w.id, delta: signed(w.adj) }))
+  const flightOptions = FLIGHTS.map((f) => ({ id: f.id, label: f.id, delta: signed(f.adj) }))
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+      <header className="header">
+        <img src={logo} alt="Foresight" width="120" />
+        <div className="header-right">
+          <span className="example-label">example numbers</span>
+          <button className="button-outline" onClick={reset}>Reset</button>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      <main className="main">
+        <div className="steps">
+          {STEPS.map((step, i) => (
+            <span key={step} className="step-group">
+              {i > 0 && <span className="arrow" aria-hidden="true">→</span>}
+              <span className="step">{step}</span>
+            </span>
+          ))}
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+        <div className="columns">
+          <section className="controls-column">
+            <OptionPicker
+              title="Date"
+              options={dayOptions}
+              value={state.day}
+              onChange={(day) => update({ day })}
+            />
+            <OptionPicker
+              title="Weather"
+              source="Open-Meteo"
+              options={weatherOptions}
+              value={state.weather}
+              onChange={(weather) => update({ weather })}
+            />
+            <OptionPicker
+              title="Flights"
+              source="AeroDataBox"
+              options={flightOptions}
+              value={state.flights}
+              onChange={(flights) => update({ flights })}
+            />
+            <Events
+              key={resetCount}
+              events={state.events}
+              selectedDay={state.day}
+              onAdd={addEvent}
+              onRemove={removeEvent}
+            />
+          </section>
+
+          <PriceBreakdown
+            factors={priceFactors(state)}
+            dayName={FULL_DAY[state.day]}
+            approved={state.approved}
+            onApprove={() => setState({ ...state, approved: true })}
+          />
+        </div>
+
+        <div className="footnote">
+          Explainable Boosting Machine (InterpretML). Every factor's effect on the price is visible.
+        </div>
+      </main>
     </>
   )
 }
