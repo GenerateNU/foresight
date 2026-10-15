@@ -61,11 +61,12 @@ class EventCategory(StrEnum):
 
 
 class JobKind(StrEnum):
-    """What a background job ingests. Each has one handler in `services/job.py`."""
+    """What a background job does. Each has one handler in `services/job.py`."""
 
     WEATHER = "weather"  # Open-Meteo forecast and recorded weather
     EVENTS = "events"  # PredictHQ events
     PERFORMANCE = "performance"  # the hotel's own nightly CSV exports
+    TRAIN = "train"  # a new pricing model version
 
 
 class JobStatus(StrEnum):

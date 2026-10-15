@@ -48,3 +48,5 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0025](0025-migrations.md) | Linear migrations that always roll back | database |
 | [0026](0026-no-authentication.md) | The API has no authentication | API |
 | [0027](0027-neon-postgres.md) | Postgres is hosted on Neon; pooled for the app, direct for migrations | database |
+| [0028](0028-train-and-serve-on-ingested-data.md) | Training and recommendations use only ingested data | ML |
+| [0029](0029-every-training-run-is-a-new-version.md) | Every training run is a new, described version | ML |

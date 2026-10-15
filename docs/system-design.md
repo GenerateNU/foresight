@@ -25,7 +25,7 @@ nightly rate.
                     │   ingest/    fetch + save, in chunks          │
                     │   adapters/  outside APIs and files, no DB    │──▶ outside APIs
                     │   job.py     job kinds + lifecycle            │
-                    │   ml/        pricing model (not wired in yet) │
+                    │   ml/        pricing model (EBM)              │
                     └──────────────┬───────────────────────────────┘
                                    │ plain values in, ORM objects out
                     ┌──────────────▼───────────────────────────────┐
@@ -86,11 +86,13 @@ backend/foresight/
   routes/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
-    city.py hotel.py weather.py event.py flight.py ingest.py job.py health.py
+    city.py hotel.py weather.py event.py flight.py ingest.py job.py
+    pricing_model.py health.py
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
-    domain/                city, hotel, weather, weather_coverage, event, flight, recommendation
+    domain/                city, hotel, weather, weather_coverage, event, flight,
+                           model_inputs, pricing_model, recommendation
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, asknews, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates
@@ -388,21 +390,38 @@ job EVENTS, mode=window, 2025-01-01 … 2025-12-31
       yield Step(progress, resume_from = next month's start)   → commit
 ```
 
-### 6.4 A recommendation (placeholder)
+### 6.4 Training and recommendations
 
-`GET /hotels/7/recommendations?date=…` returns a fixed placeholder
-(`is_placeholder: true`) in the final response shape. The pieces that will
-feed it exist but aren't connected:
+Both read only what's already ingested; neither fetches
+([0028](decisions/0028-train-and-serve-on-ingested-data.md)).
 
 ```
-daily_performance + weather + events + flights
-  → ml/features.build_features     same function for training and serving (0007)
-  → ml/weighting.sample_weights    training nights weighted by occupancy (0003)
-  → ml/ebm.EBMModel                fit, predict with interval, explain (0001, 0005, 0006)
-  → repository/pricing_model       stored in Postgres, one active per hotel (0008, 0009)
+POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
+  job_service.start_train_job       hotel exists, nights loaded in window → 422
+  → domain/pricing_model.train
+      hotel_repo.training_nights                every night, oldest first
+      ml/weighting.training_mask                drop unpriced nights (0004)
+      domain/model_inputs.weather_for           recorded weather only
+      ml/features.build_features                events and flights empty (0007)
+      ml/weighting.sample_weights               occupancy (0003)
+      EBMModel.fit in a thread                  calibrates on the newest 15% (0005)
+      model_repo.create_pricing_model           new version, inactive (0008, 0009)
+      model_repo.activate_pricing_model         unless activate=false
+  progress = {model_id, version, metrics, ...}
+
+GET /hotels/7/recommendations?date=2026-10-24[&room_type_id=]
+  → domain/recommendation.get_recommendation
+      model_repo.get_active_pricing_model       404 if none
+      domain/model_inputs.weather_for           recorded → forecast → typical week (0024)
+      build_features → predict_interval, explain, predict_uncertainty
+  ← rate, 80% interval, factors in € that sum to the rate, signals used
 ```
 
-Weather for future nights follows [0024](decisions/0024-weather-for-future-nights.md).
+Every training run is a new version
+([0029](decisions/0029-every-training-run-is-a-new-version.md)):
+`description` says what it tried, `training_summary` what it was trained on.
+`copy_settings_from` retrains an earlier version's setup, and
+`POST /models/{id}/activate` chooses which version serves.
 
 ---
 
@@ -422,7 +441,11 @@ Weather for future nights follows [0024](decisions/0024-weather-for-future-night
 | GET | `/hotels/{id}/coverage/weather` | recorded-weather gaps in a window |
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/flight-arrivals` | paginated; one row per source per day |
-| GET | `/hotels/{id}/recommendations?date=` | placeholder |
+| GET | `/hotels/{id}/recommendations?date=` | active model; optional `room_type_id` |
+| POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |
+| GET | `/hotels/{id}/models` | paginated, newest version first |
+| GET | `/models/{id}` | one version, no artifact |
+| POST | `/models/{id}/activate` | serve this version |
 | POST | `/hotels/{id}/ingest/{weather,events}` | job, 202; optional `{start, end}` |
 | POST | `/hotels/{id}/ingest/performance` | job, 202; multipart files + `base_rate` |
 | GET | `/jobs/{id}` | |
@@ -456,8 +479,6 @@ requested.
 
 | Piece | State |
 |---|---|
-| `services/ml/*` | built and decided (0001–0009); nothing trains or serves |
-| `repository/pricing_model.py` | built; no service or endpoint |
 | `adapters/aerodatabox.py`, `opensky.py` | work; no flights job yet, so `flight_arrivals` stays empty |
 | `adapters/cso.py` | monthly airport passengers; needs a monthly table before it can be stored |
 | `adapters/asknews.py` | news-extracted events; no job yet |
@@ -467,9 +488,8 @@ requested.
 
 ## 10. Open questions
 
-1. **Training and serving.** When training runs (likely a job), which nights it
-   trains on, how features are read from four tables, and how the
-   recommendation endpoint loads the active model.
+1. **Events and flights in the model.** Both have feature columns but no
+   history to train on (PredictHQ shows only recent months; no flights job).
 2. **Choosing between sources.** Weather is decided (recorded beats forecast).
    Which flight source wins, and whether CSO's monthly totals are spread over
    days, isn't.

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from datetime import date as date_cls
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -25,8 +26,14 @@ from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
 from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
+from foresight.services.domain import pricing_model as pricing_model_service
 from foresight.services.domain.hotel import get_hotel
-from foresight.services.errors import ConflictError, NotConfiguredError, NotFoundError
+from foresight.services.errors import (
+    ConflictError,
+    InvalidRequestError,
+    NotConfiguredError,
+    NotFoundError,
+)
 from foresight.services.ingest import event as event_ingest
 from foresight.services.ingest import performance as performance_ingest
 from foresight.services.ingest import weather as weather_ingest
@@ -138,6 +145,53 @@ async def start_performance_job(
     parsed = performance_ingest.parse_files(list(files))
     params = {"files": [f.name for f in parsed], "base_rate": str(base_rate)}
     return await _queue(session, hotel, JobKind.PERFORMANCE, params), parsed
+
+
+async def start_train_job(
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    description: str | None,
+    start: date | None,
+    end: date | None,
+    activate: bool,
+    ebm_params: dict[str, Any],
+    copy_settings_from: int | None,
+) -> Job:
+    """Train a new model version on what's already ingested.
+
+    `copy_settings_from` reuses an earlier version's EBM settings and window;
+    anything sent explicitly overrides them.
+
+    Raises:
+        NotFoundError: Unknown hotel, or unknown model to copy from.
+        InvalidRequestError: Nothing to train on, start after end, or the
+            model to copy from belongs to another hotel.
+        ConflictError: A training job is already queued or running.
+    """
+    if copy_settings_from is not None:
+        base = await pricing_model_service.get_model(session, copy_settings_from)
+        if base.hotel_id != hotel_id:
+            raise InvalidRequestError(
+                f"model {base.id} belongs to hotel {base.hotel_id}, not {hotel_id}"
+            )
+        summary = base.training_summary or {}
+        ebm_params = {**summary.get("ebm_params", {}), **ebm_params}
+        window = summary.get("window", {})
+        start = start or _date_or_none(window.get("start"))
+        end = end or _date_or_none(window.get("end"))
+    hotel = await pricing_model_service.check_trainable(
+        session, hotel_id, start=start, end=end
+    )
+    params = {
+        "description": description,
+        "start": start.isoformat() if start else None,
+        "end": end.isoformat() if end else None,
+        "activate": activate,
+        "ebm_params": ebm_params,
+        "copy_settings_from": copy_settings_from,
+    }
+    return await _queue(session, hotel, JobKind.TRAIN, params)
 
 
 async def get_job(session: AsyncSession, job_id: int) -> Job:
@@ -335,10 +389,37 @@ async def _performance(
         )
 
 
+async def _train(
+    session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
+) -> AsyncIterator[Step]:
+    result = await pricing_model_service.train(
+        session,
+        hotel,
+        description=params["description"],
+        start=_date_or_none(params["start"]),
+        end=_date_or_none(params["end"]),
+        activate=params["activate"],
+        params=params["ebm_params"],
+    )
+    model = result.model
+    yield Step(
+        {
+            "model_id": model.id,
+            "version": model.version,
+            "activated": result.activated,
+            "seconds": result.seconds,
+            "nights_used": model.training_summary["nights_used"],
+            "metrics": {k: model.metrics[k] for k in ("mae", "mape", "r2", "coverage")},
+        },
+        None,
+    )
+
+
 _HANDLERS: dict[JobKind, Handler] = {
     JobKind.WEATHER: _weather,
     JobKind.EVENTS: _events,
     JobKind.PERFORMANCE: _performance,
+    JobKind.TRAIN: _train,
 }
 
 
@@ -370,6 +451,10 @@ def _next_resume(
         return None
     _, first, last = pieces[done + 1]
     return window.resume_point(first, last)
+
+
+def _date_or_none(value: str | None) -> date | None:
+    return None if value is None else date_cls.fromisoformat(value)
 
 
 def _forecast_end(today: date) -> date:
