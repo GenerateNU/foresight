@@ -13,10 +13,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with the app's database URL. Online mode uses an
-# async engine, so the +asyncpg driver is kept as-is here; offline mode strips
-# it below since it renders SQL without a live async connection.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Override sqlalchemy.url with the direct (non-pooled) database URL: Neon's
+# pooler runs PgBouncer in transaction mode, which migrations must bypass.
+# Online mode uses an async engine, so the +asyncpg driver is kept as-is here;
+# offline mode strips it below since it renders SQL without a live connection.
+# `%` is escaped because Alembic's config is a ConfigParser.
+config.set_main_option(
+    "sqlalchemy.url", settings.async_migration_database_url.replace("%", "%%")
+)
 
 target_metadata = Base.metadata
 

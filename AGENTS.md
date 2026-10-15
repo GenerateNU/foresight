@@ -40,7 +40,8 @@ four layers (`example_widget.py` in each).
 ## Commands (run from repo root)
 
 ```bash
-just dev              # db + backend with hot reload
+just dev              # db + backend with hot reload (local Docker Postgres)
+just dev --neon       # same, against Neon; `--neon` works on run/migrate*/test too
 just migrate          # apply migrations
 just migrate-create "msg"   # new Alembic migration after model changes
 just migrate-down     # roll back last migration

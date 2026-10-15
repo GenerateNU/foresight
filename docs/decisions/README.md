@@ -47,3 +47,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0024](0024-weather-for-future-nights.md) | Weather for future nights: forecast, then typical weather | ML |
 | [0025](0025-migrations.md) | Linear migrations that always roll back | database |
 | [0026](0026-no-authentication.md) | The API has no authentication | API |
+| [0027](0027-neon-postgres.md) | Postgres is hosted on Neon; pooled for the app, direct for migrations | database |

@@ -53,3 +53,5 @@ backend/data/
 
 # requests-cache store written by the Open-Meteo client
 .cache.sqlite
+.neon
+node_modules/
