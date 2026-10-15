@@ -204,7 +204,14 @@ HTTP schemas live in the route module that uses them
 - `RequestSchema` rejects unknown fields; `ResponseSchema` builds from an ORM
   object or a dataclass. Both are in `routes/helpers.py`.
 - Constraints and descriptions go in `Field(...)`, so they are enforced and
-  shown in `/docs`.
+  shown in `/docs`. Every field, path id and query parameter has a
+  description; units, inclusive dates, currency and what `null` means go there
+  ([0030](decisions/0030-schema-descriptions-and-examples.md)).
+- Example values go in `examples=`, as neutral placeholders. A field with a
+  default shows its default instead. The body `/docs` shows is built from the
+  fields (`example_body` in `routes/helpers.py`), never written by hand.
+- A PATCH body reuses its create body's field settings; each module keeps its
+  own "cannot be null" check and its own `start`/`end` parameters.
 - PATCH bodies use `model_dump(exclude_unset=True)`: omitted fields are left
   alone, `null` clears an optional field and is a 422 on a required one.
 - Derived values (occupancy, ADR, RevPAR) are `@computed_field`s, never stored.
