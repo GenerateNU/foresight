@@ -19,7 +19,7 @@ from foresight.routes.helpers import (
 from foresight.services.domain import hotel as hotel_service
 from foresight.services.domain import recommendation as recommendation_service
 
-router = APIRouter(tags=["hotels"])
+router = APIRouter(tags=["Hotels"])
 
 
 # --- schemas ----------------------------------------------------------------

@@ -15,7 +15,7 @@ from foresight.routes.helpers import (
 )
 from foresight.services.domain import flight as flight_service
 
-router = APIRouter(tags=["flights"])
+router = APIRouter(tags=["Flights"])
 
 
 class FlightArrivalResponse(ResponseSchema):

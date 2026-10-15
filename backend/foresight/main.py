@@ -15,6 +15,7 @@ from foresight.routes import (
     flight,
     health,
     hotel,
+    ingest,
     job,
     weather,
 )
@@ -45,6 +46,7 @@ app.include_router(hotel.router)
 app.include_router(weather.router)
 app.include_router(event.router)
 app.include_router(flight.router)
+app.include_router(ingest.router)
 app.include_router(job.router)
 app.include_router(example_widget.router)
 

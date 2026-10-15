@@ -9,7 +9,7 @@ from pydantic import Field, field_validator
 from foresight.routes.helpers import RequestSchema, ResponseSchema, SessionDep
 from foresight.services.domain import city as city_service
 
-router = APIRouter(tags=["cities"])
+router = APIRouter(tags=["Cities"])
 
 _NAME = Field(max_length=120, description='e.g. "Dublin"')
 _COUNTRY = Field(

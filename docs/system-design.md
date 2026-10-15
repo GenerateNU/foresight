@@ -86,7 +86,7 @@ backend/foresight/
   routes/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
-    city.py hotel.py weather.py event.py flight.py job.py health.py
+    city.py hotel.py weather.py event.py flight.py ingest.py job.py health.py
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
@@ -307,7 +307,7 @@ queued, so one bad file is a 422 and nothing is saved.
 
 ```
 POST /hotels/7/ingest/events {"start": "2025-01-01"}
-  routes/job.ingest_events
+  routes/ingest.ingest_events
     → job_service.start_events_job(session, 7, start=…, end=None)
         get_hotel                                   → 404
         API key set?                                → 503
