@@ -70,8 +70,8 @@ async def upsert_room_type(
         constraint="uq_room_types_hotel_id_name",
         set_={
             "room_count": stmt.excluded.room_count,
-            # The pricing model scales off base_rate, so a reload correcting it
-            # has to win rather than be silently dropped.
+            # base_rate is the hotel's stated normal price (the export has none),
+            # so a reload correcting it has to win rather than be dropped.
             "base_rate": stmt.excluded.base_rate,
         },
     ).returning(RoomType.id)

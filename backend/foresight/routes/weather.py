@@ -15,7 +15,7 @@ from foresight.routes.helpers import (
 from foresight.services.domain import weather as weather_service
 from foresight.services.domain import weather_coverage as coverage_service
 
-router = APIRouter(tags=["weather"])
+router = APIRouter(tags=["Weather"])
 
 
 class WeatherResponse(ResponseSchema):

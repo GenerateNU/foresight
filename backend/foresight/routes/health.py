@@ -6,7 +6,7 @@ from fastapi import APIRouter
 
 from foresight.routes.helpers import ResponseSchema
 
-router = APIRouter(tags=["health"])
+router = APIRouter(tags=["Health"])
 
 
 class HealthResponse(ResponseSchema):

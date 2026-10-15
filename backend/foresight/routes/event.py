@@ -15,7 +15,7 @@ from foresight.routes.helpers import (
 )
 from foresight.services.domain import event as event_service
 
-router = APIRouter(tags=["events"])
+router = APIRouter(tags=["Events"])
 
 
 class EventResponse(ResponseSchema):
