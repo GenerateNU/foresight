@@ -17,9 +17,14 @@ Layer rules shown here:
   catch.
 - Every handler declares `response_model=` and has a docstring: both appear in
   `/docs`.
+- Schemas follow the conventions in `routes/helpers.py` (decision 0030): every
+  field has a description, example values go in `examples=`, and the body
+  /docs shows is built from the fields' defaults and examples.
 """
 
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Path, status
 from pydantic import Field
 
 from foresight.routes.helpers import (
@@ -32,22 +37,42 @@ from foresight.routes.helpers import (
 )
 from foresight.services import example_widget as widget_service
 
-router = APIRouter(prefix="/example/widgets", tags=["example"])
+router = APIRouter(prefix="/example/widgets", tags=["Example"])
+
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Schemas                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 # Request and Response never inherit from each other. Constraints and
 # descriptions go in `Field(...)` so they are enforced and shown in /docs.
 class WidgetRequest(RequestSchema):
-    name: str = Field(max_length=120)
-    description: str | None = Field(default=None, max_length=500)
+    name: str = Field(
+        max_length=120, description="The widget's name", examples=["Example Widget"]
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Free text; null for none",
+        examples=["A short description"],
+    )
     quantity: int = Field(default=0, ge=0, description="Units in stock")
 
 
 class WidgetResponse(ResponseSchema):
-    id: int
-    name: str
-    description: str | None
-    quantity: int
+    id: int = Field(description="The widget's id")
+    name: str = Field(description="The widget's name")
+    description: str | None = Field(description="Free text; null if none")
+    quantity: int = Field(description="Units in stock")
+
+
+WidgetId = Annotated[int, Path(description="The widget's id", examples=[1])]
+
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                        Endpoints                         │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 @router.post("", response_model=WidgetResponse, status_code=status.HTTP_201_CREATED)
@@ -69,7 +94,7 @@ async def list_widgets(
 
 
 @router.get("/{widget_id}", response_model=WidgetResponse)
-async def get_widget(widget_id: int, session: SessionDep) -> WidgetResponse:
+async def get_widget(widget_id: WidgetId, session: SessionDep) -> WidgetResponse:
     """One widget."""
     widget = await widget_service.get_widget(session, widget_id)
     return WidgetResponse.model_validate(widget)

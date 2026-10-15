@@ -8,8 +8,8 @@ Every run makes a new version, so earlier ones stay for comparison. Poll
 from datetime import date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, status
-from pydantic import ConfigDict, Field
+from fastapi import APIRouter, BackgroundTasks, Body, Path, status
+from pydantic import Field
 
 from foresight import worker
 from foresight.routes.helpers import (
@@ -18,6 +18,7 @@ from foresight.routes.helpers import (
     RequestSchema,
     ResponseSchema,
     SessionDep,
+    example_body,
     paginate,
 )
 from foresight.routes.job import JobResponse
@@ -27,9 +28,11 @@ from foresight.services.domain import pricing_model as model_service
 router = APIRouter(tags=["Models"])
 
 
-# --- schemas ----------------------------------------------------------------
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Schemas                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
-_DATE_HELP = "ISO 8601 date, YYYY-MM-DD"
+_DATE_HELP = "YYYY-MM-DD"
 
 
 class EBMSettings(RequestSchema):
@@ -39,44 +42,55 @@ class EBMSettings(RequestSchema):
         default=None,
         ge=0,
         le=50,
-        description="Pairwise terms like 'day_of_week & month'; 0 for none",
+        description="Pairwise terms such as day of week with month; 0 for "
+        "none. Library default: 5 x the feature count",
     )
-    learning_rate: float | None = Field(default=None, gt=0, le=1)
-    max_bins: int | None = Field(default=None, ge=8, le=4096)
+    learning_rate: float | None = Field(
+        default=None,
+        gt=0,
+        le=1,
+        description="Step size per boosting round; smaller learns slower and "
+        "smoother. Library default: 0.04",
+    )
+    max_bins: int | None = Field(
+        default=None,
+        ge=8,
+        le=4096,
+        description="Most bins a numeric feature is cut into. Library default: 1024",
+    )
     outer_bags: int | None = Field(
         default=None,
         ge=2,
         le=64,
-        description="Sub-models averaged; also drives the uncertainty signal",
+        description="Sub-models averaged; also drives the uncertainty signal. "
+        "Library default: 14",
     )
-    min_samples_leaf: int | None = Field(default=None, ge=1, le=500)
-    smoothing_rounds: int | None = Field(default=None, ge=0, le=5000)
+    min_samples_leaf: int | None = Field(
+        default=None,
+        ge=1,
+        le=500,
+        description="Fewest nights a split may leave on a side. Library default: 4",
+    )
+    smoothing_rounds: int | None = Field(
+        default=None,
+        ge=0,
+        le=5000,
+        description="Early rounds that smooth the learned curves. Library default: 500",
+    )
 
 
 class TrainRequest(RequestSchema):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "description": "Baseline: 2022-2025 nights, recorded weather",
-                    "start": "2022-01-01",
-                    "end": "2025-12-31",
-                }
-            ]
-        }
-    )
-
     description: str | None = Field(
         default=None,
         max_length=2000,
         description="What this version tries, so you can tell versions apart",
-        examples=["Baseline: 2022-2025 nights, recorded weather"],
+        examples=["What this version tries"],
     )
     start: date | None = Field(
         default=None,
         description=f"First night to train on, inclusive. {_DATE_HELP}. "
         "Omit for the first loaded night",
-        examples=["2022-01-01"],
+        examples=["2025-01-01"],
     )
     end: date | None = Field(
         default=None,
@@ -89,7 +103,10 @@ class TrainRequest(RequestSchema):
         description="Serve this version once trained. False keeps the current "
         "one serving, to compare first",
     )
-    settings: EBMSettings = Field(default_factory=EBMSettings)
+    settings: EBMSettings = Field(
+        default_factory=EBMSettings,
+        description="EBM settings to try; omitted ones use the library default",
+    )
     copy_settings_from: int | None = Field(
         default=None,
         description="Retrain with an earlier version's settings and window; "
@@ -97,55 +114,62 @@ class TrainRequest(RequestSchema):
     )
 
 
+# One per use, shown as a picker in /docs. The first is the body built from
+# the fields (`example_body`), so it matches the schema and its defaults; the
+# others change one thing from it. Only these set settings or copy from a
+# model: those change what training does, so the fields carry no example.
+_FULL = example_body(TrainRequest)
 _TRAIN_EXAMPLES: dict[str, Any] = {
-    "baseline": {
+    "window": {"summary": "New model on a window", "value": _FULL},
+    "all_nights": {
         "summary": "New model on every loaded night",
-        "value": {"description": "Baseline: every night, recorded weather"},
-    },
-    "window": {
-        "summary": "New model on a window",
-        "value": {
-            "description": "2023 onwards only",
-            "start": "2023-01-01",
-            "end": "2025-12-31",
-        },
+        "value": {"description": _FULL["description"], "activate": _FULL["activate"]},
     },
     "experiment": {
         "summary": "Try settings without serving it",
-        "value": {
-            "description": "No interaction terms",
-            "activate": False,
-            "settings": {"interactions": 0},
-        },
+        "value": {**_FULL, "activate": False, "settings": {"interactions": 0}},
     },
     "retrain": {
         "summary": "Retrain an earlier version's setup",
-        "value": {"description": "v1 retrained on new nights", "copy_settings_from": 1},
+        "description": "Copies that version's settings and window; anything "
+        "sent overrides them.",
+        "value": {"description": _FULL["description"], "copy_settings_from": 1},
     },
 }
 
 
 class PricingModelResponse(ResponseSchema):
-    id: int
-    hotel_id: int
-    version: int
-    algorithm: str
-    description: str | None
-    is_active: bool
-    features: list[str]
+    id: int = Field(description="The model's id")
+    hotel_id: int = Field(description="The hotel it prices")
+    version: int = Field(description="Counts up per hotel, from 1")
+    algorithm: str = Field(description="The model type", examples=["ebm"])
+    description: str | None = Field(
+        description="What this version tries, as given; null if none"
+    )
+    is_active: bool = Field(description="True for the one version serving the hotel")
+    features: list[str] = Field(description="Model inputs, in order")
     metrics: dict[str, Any] = Field(
-        description="Scored on the most recent nights, held out from training"
+        description="Scored on the most recent nights, held out from training; "
+        "mae and rmse in EUR"
     )
     training_summary: dict[str, Any] = Field(
         description="Nights used and excluded, settings, which signals had data"
     )
-    lib_versions: dict[str, str]
-    data_start: date
-    data_end: date
-    trained_at: datetime
+    lib_versions: dict[str, str] = Field(
+        description="Library versions it was trained with"
+    )
+    data_start: date = Field(description="First night trained on, inclusive")
+    data_end: date = Field(description="Last night trained on, inclusive")
+    trained_at: datetime = Field(description="When it was saved, UTC")
 
 
-# --- endpoints --------------------------------------------------------------
+HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
+ModelId = Annotated[int, Path(description="The model's id", examples=[1])]
+
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                        Endpoints                         │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 @router.post(
@@ -154,7 +178,7 @@ class PricingModelResponse(ResponseSchema):
     response_model=JobResponse,
 )
 async def train_model(
-    hotel_id: int,
+    hotel_id: HotelId,
     session: SessionDep,
     tasks: BackgroundTasks,
     data: Annotated[TrainRequest | None, Body(openapi_examples=_TRAIN_EXAMPLES)] = None,
@@ -183,7 +207,7 @@ async def train_model(
     "/hotels/{hotel_id}/models", response_model=PageResponse[PricingModelResponse]
 )
 async def list_models(
-    hotel_id: int, session: SessionDep, page: PageDep
+    hotel_id: HotelId, session: SessionDep, page: PageDep
 ) -> PageResponse[PricingModelResponse]:
     """Every version for the hotel, newest first, to compare metrics."""
     models, total = await model_service.list_models(
@@ -193,7 +217,7 @@ async def list_models(
 
 
 @router.get("/models/{model_id}", response_model=PricingModelResponse)
-async def get_model(model_id: int, session: SessionDep) -> PricingModelResponse:
+async def get_model(model_id: ModelId, session: SessionDep) -> PricingModelResponse:
     """One version: what it was trained on and how it scored."""
     return PricingModelResponse.model_validate(
         await model_service.get_model(session, model_id)
@@ -201,7 +225,9 @@ async def get_model(model_id: int, session: SessionDep) -> PricingModelResponse:
 
 
 @router.post("/models/{model_id}/activate", response_model=PricingModelResponse)
-async def activate_model(model_id: int, session: SessionDep) -> PricingModelResponse:
+async def activate_model(
+    model_id: ModelId, session: SessionDep
+) -> PricingModelResponse:
     """Serve this version for its hotel; the previous one stops serving."""
     return PricingModelResponse.model_validate(
         await model_service.activate_model(session, model_id)

@@ -18,28 +18,35 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, File, Form, UploadFile, status
-from pydantic import ConfigDict, Field
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Body,
+    File,
+    Form,
+    Path,
+    UploadFile,
+    status,
+)
+from pydantic import Field
 
 from foresight import worker
-from foresight.routes.helpers import RequestSchema, SessionDep
+from foresight.routes.helpers import RequestSchema, SessionDep, example_body
 from foresight.routes.job import JobResponse
 from foresight.services import job as job_service
 
 router = APIRouter(tags=["Ingest"])
 
 
-# --- schemas ----------------------------------------------------------------
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Schemas                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
-_DATE_HELP = "ISO 8601 date, YYYY-MM-DD, local to the hotel's city"
+_DATE_HELP = "YYYY-MM-DD, local to the hotel's city"
 
 
 class IngestRequest(RequestSchema):
     """Both dates are optional. Leave both out for the routine refresh."""
-
-    model_config = ConfigDict(
-        json_schema_extra={"examples": [{"start": "2025-01-01", "end": "2025-12-31"}]}
-    )
 
     start: date | None = Field(
         default=None,
@@ -54,21 +61,20 @@ class IngestRequest(RequestSchema):
     )
 
 
-# One per mode, shown as a picker in /docs. The first is the default body
-# /docs shows, so it carries both keys; the empty refresh body goes last.
+# One per mode, shown as a picker in /docs. The first is the body built from
+# the fields (`example_body`), so it matches the schema; the others are cut
+# down from it. The empty refresh body goes last.
+_FULL = example_body(IngestRequest)
 _DATE_EXAMPLES: dict[str, Any] = {
-    "window": {
-        "summary": "Backfill a window",
-        "value": {"start": "2025-01-01", "end": "2025-12-31"},
-    },
+    "window": {"summary": "Backfill a window", "value": _FULL},
     "start_only": {
         "summary": "Backfill from a date to today",
-        "value": {"start": "2025-01-01"},
+        "value": {"start": _FULL["start"]},
     },
     "end_only": {
         "summary": "Backfill back to the first loaded night",
         "description": "Needs performance data loaded first; walks newest first.",
-        "value": {"end": "2025-12-31"},
+        "value": {"end": _FULL["end"]},
     },
     "refresh": {
         "summary": "Routine refresh (no dates)",
@@ -82,13 +88,17 @@ IngestBody = Annotated[IngestRequest | None, Body(openapi_examples=_DATE_EXAMPLE
 
 _ACCEPTED = {"status_code": status.HTTP_202_ACCEPTED, "response_model": JobResponse}
 
+HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
 
-# --- endpoints --------------------------------------------------------------
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                        Endpoints                         │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 @router.post("/hotels/{hotel_id}/ingest/weather", **_ACCEPTED)
 async def ingest_weather(
-    hotel_id: int,
+    hotel_id: HotelId,
     session: SessionDep,
     tasks: BackgroundTasks,
     data: IngestBody = None,
@@ -110,7 +120,7 @@ async def ingest_weather(
 
 @router.post("/hotels/{hotel_id}/ingest/events", **_ACCEPTED)
 async def ingest_events(
-    hotel_id: int,
+    hotel_id: HotelId,
     session: SessionDep,
     tasks: BackgroundTasks,
     data: IngestBody = None,
@@ -130,7 +140,7 @@ async def ingest_events(
 
 @router.post("/hotels/{hotel_id}/ingest/performance", **_ACCEPTED)
 async def ingest_performance(
-    hotel_id: int,
+    hotel_id: HotelId,
     session: SessionDep,
     tasks: BackgroundTasks,
     files: Annotated[
@@ -140,10 +150,9 @@ async def ingest_performance(
         Decimal,
         Form(
             gt=0,
-            description="The standard room's normal nightly price (rack rate), "
-            "in the export's currency. Stored on the room type; re-importing "
-            "with a new value replaces it",
-            examples=["150.00"],
+            description="The standard nightly price (rack rate), in EUR. Stored "
+            "on the room type; re-importing with a new value replaces it",
+            examples=["100.00"],
         ),
     ],
 ) -> JobResponse:
