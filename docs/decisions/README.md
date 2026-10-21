@@ -51,3 +51,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0028](0028-train-and-serve-on-ingested-data.md) | Training and recommendations use only ingested data | ML |
 | [0029](0029-every-training-run-is-a-new-version.md) | Every training run is a new, described version | ML |
 | [0030](0030-schema-descriptions-and-examples.md) | Every field is described; examples are built from the fields | API |
+| [0031](0031-pms-reports-for-training.md) | Guestline reports used for training | data |
