@@ -1,6 +1,6 @@
 # Guestline export data
 
-Beresford Hotel exports from Rezlynx, checked on 25 Oct 2026. [0032](decisions/0032-three-guestline-reports.md) lists the reports and why each one matters. This page records what the exports actually contain.
+Beresford Hotel exports from Rezlynx, checked on 25 Oct 2026. [0037](decisions/0037-three-guestline-reports.md) lists the reports and why each one matters. This page records what the exports actually contain.
 
 The real exports are not in the repo. `backend/hidden_data/` is gitignored:
 
@@ -29,7 +29,7 @@ No field in `clean/` equals a guest name or part of one. The only matches were v
 | Daily New Reservations | 55,377 | booked 1 Jan 2024 to 21 Oct 2026 | booking date | Complete for the range |
 | Cancellations | 44,026 | arrivals 1 Jan 2024 to 22 Oct 2026 | arrival date, not cancellation date | Usable for past nights |
 | Rate Override | 200 | applied 1 to 2 Jan 2024 | applied date | Out of scope. Cut off at 200 rows. |
-| Actual & Forecast | 1,025 | 1 Jan 2024 to 21 Oct 2026 | stay date | Stops at the export date, not 3 months ahead |
+| Actual & Forecast | 1,025 | 1 Jan 2024 to 21 Oct 2026 | stay date | Complete for the range |
 | Daily Rate Analysis | none | | | Out of scope. Not exported. |
 
 Rate Override and Daily Rate Analysis are out of scope. On 25 Oct 2026 the team decided neither is useful. The Rate Override rows already exported stay in `clean/`, but nothing depends on them.
@@ -63,23 +63,17 @@ In 2024 the count runs short. It is 29 rooms a night short in January and reache
 
 ## Pickup for future nights needs cancellations by cancellation date
 
- The current Cancellations export is filtered by arrival date and has only 44 rows for arrivals after the export date. Future-night features ("% sold so far", "7-day pickup") need cancellations of future stays.
+The current Cancellations export is filtered by arrival date and has only 44 rows for arrivals after the export date. Future-night features ("% sold so far", "7-day pickup") need cancellations of future stays.
 
-## Daily or one-off (proposal, not decided)
+## All three reports are uploaded daily
 
-| Report | Proposal | Why |
-|---|---|---|
-| Actual & Forecast | daily | Already uploaded nightly |
-| Daily New Reservations | daily | Gives pickup for future nights |
-| Cancellations | daily, filtered by cancellation date | Gives pickup for future nights |
-
-All three reports are daily. The first upload of each covers the full history.
+[0037](decisions/0037-three-guestline-reports.md) records the decision. The first upload of each report is a 2-year backfill to today. After that, the manager uploads the last 7 days of each report every day.
 
 ## Still open
 
-- Re-export Actual & Forecast to 3 months ahead, and check the Blocks, Wait List and ROOS options.
-- Optional: re-export Cancellations by cancellation date, and export bookings from mid-2023.
+- Check whether Blocks, Wait List and DFS in Actual & Forecast are always 0 or were switched off in the export.
+- Re-export Cancellations by cancellation date.
+- Optional: export bookings from mid-2023.
 - Find out why `Accomm` sits between nett and gross.
 - Check Reservation Logs for amendments and System Logs for rate-table changes.
 - Check whether **Compare with → Custom** in Actual & Forecast shows how full a past night was at an earlier date.
-- Decide the daily and one-off split with the team.
