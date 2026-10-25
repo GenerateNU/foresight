@@ -30,7 +30,7 @@ Thumbs.db
 postgres_data/
 
 # Client data
-backend/data/
+backend/hidden_data/
 
 # Testing
 .pytest_cache/
@@ -40,8 +40,6 @@ htmlcov/
 # uv
 .uv/
 
-# Generated data
-backend/data/
 # Ruff
 .ruff_cache/
 
