@@ -1,4 +1,4 @@
-# 0032. Three Guestline reports used for training
+# 0037. Three Guestline reports, uploaded daily
 
 **Status:** Accepted · **Date:** 2026-10-25
 
@@ -39,13 +39,22 @@ reservation.
 | Cancellations | room cancelled | CancelRef, CancelDate, CancelReasonCode, Ref, ArrivalDate, DepartureDate, EstimatedRevenue, BookingCreatedDate |
 | Actual & Forecast | night | Date, Avail, Total, Indv, Multi, Blocks, Occ, Accomm, ARR, APR, Yield, Blked, ROOS, DFS, Waitlist, InStock |
 
-### Exports to collect
+### Exports and uploads
 
-| Report | Date range | Filter by |
-|---|---|---|
-| Daily New Reservations | 2 years back to today | booking date |
-| Cancellations | same 2 years | cancellation date |
-| Actual & Forecast | 2 years back to 3 months ahead | stay date; Blocks, Wait List and ROOS on; one row per day |
+All three reports are uploaded daily. The first upload of each is a one-off
+backfill of the history.
+
+| Report | Filter by | Backfill (once) | Daily upload |
+|---|---|---|---|
+| Daily New Reservations | booking date | 2 years back to today | last 7 days |
+| Cancellations | cancellation date | 2 years back to today | last 7 days |
+| Actual & Forecast | stay date; Blocks, Wait List and ROOS on; one row per day | 2 years back to today | last 7 nights |
+
+- Each daily upload overlaps the last six, so a missed day is filled by the
+  next upload. Loading the same rows twice changes nothing.
+- Actual & Forecast stops at today. A future night's row only shows rooms
+  booked so far, which the booking rebuild already gives, and it would look
+  like a finished night with low occupancy.
 
 - Delete guest columns before sharing (GuestName, Surname, ProfileRef,
   Operator, OperatorCode, and the free-text CompanyName, Company and
@@ -81,14 +90,16 @@ DOUBLE 53, DS 19, DBZ 18, TWIN 13, SINGLE 4).
 - Nett vs gross must be consistent: gross = nett + 13.5% VAT. `Accomm` in
   Actual & Forecast is 8.5% above the bookings' nett total and 4.3% below
   gross, for reasons not yet known.
-- Parsers drop guest columns; sample exports aren't committed.
+- "% sold so far" for future nights uses total rooms, not rooms − ROOS,
+  because future nights' ROOS isn't imported.
+- Parsers drop guest columns; real exports aren't committed.
+- Daily New Reservations filtered by booking date never shows a booking
+  again after it is made. If amendments turn out to be common, add a
+  periodic export of future arrivals by arrival date.
 - The rebuild misses date changes on amended bookings and may miss group
   blocks.
 
 Still to confirm:
-- Which reports the manager uploads daily and which once as a backfill.
-  The proposal is all three daily, with the first upload covering the
-  history.
 - Whether amended bookings keep their original dates (Help → Logs →
   Reservation Logs).
 - What DFS means, and whether Blocks, Wait List and DFS are always 0 or were

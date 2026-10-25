@@ -1,6 +1,6 @@
 # 0031. Guestline reports used for training
 
-**Status:** Superseded by [0032](0032-three-guestline-reports.md) · **Date:** 2026-10-20
+**Status:** Superseded by [0037](0037-three-guestline-reports.md) · **Date:** 2026-10-20
 
 ## Context
 We have full access to the client's PMS, Guestline Rezlynx (Beresford Hotel,
