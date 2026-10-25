@@ -541,7 +541,7 @@ requested.
    recommendation snapshots) only run when called.
 5. **Tests.** The suite predates this design and hasn't been updated. Nothing
    has been run against real PredictHQ, AskNews, AeroDataBox or OpenSky keys.
-6. **Booking-level PMS data.** [0031](decisions/0031-pms-reports-for-training.md)
+6. **Booking-level PMS data.** [0032](decisions/0032-three-guestline-reports.md)
    picks the Guestline reports to import, but the table, parsers and the
    rebuild of how full each night was before arrival aren't designed yet.
    Until then, the performance import (6.2) is the only hotel data.

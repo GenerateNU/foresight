@@ -26,7 +26,7 @@ end.
 | Events from PredictHQ | AskNews / news-extracted events |
 | Weather | Flights, competitor rates (built but not connected) |
 | Scheduled refresh and retraining | Pushing rates to the PMS or channel manager (no API exists) |
-| Manual CSV upload of Guestline reports ([0031](decisions/0031-pms-reports-for-training.md)) | Guestline API integration (full PMS access, but API needs partner onboarding) |
+| Manual CSV upload of Guestline reports ([0032](decisions/0032-three-guestline-reports.md)) | Guestline API integration (full PMS access, but API needs partner onboarding) |
 | One room type ("Standard") | Multiple room types (soon after) |
 
 ## User stories
@@ -99,8 +99,8 @@ The current `frontend/` is a static prototype with no API calls.
 
 | # | Item | Stories |
 |---|---|---|
-| **D1** | **Collect the five Guestline exports listed in [0031](decisions/0031-pms-reports-for-training.md) (2 years, CSV, guest columns removed) and answer its "still to confirm" list.** | S11 |
-| D2 | Booking-level table, parsers and migration for Daily New Reservations, Cancellations, Daily Rate Analysis and Rate Override; map Blocks, ROOS and Wait List from Actual & Forecast. Check the rebuild of how full each night was against Actual & Forecast. New decision record. | S11, S2 |
+| **D1** | **Collect the three Guestline exports in [guestline-data.md](guestline-data.md) (2 years, CSV, guest columns removed) and answer the "still to confirm" list in [0032](decisions/0032-three-guestline-reports.md).** | S11 |
+| D2 | Booking-level table, parsers and migration for Daily New Reservations and Cancellations; map Blocks, ROOS and Wait List from Actual & Forecast. Check the rebuild of how full each night was against Actual & Forecast. New decision record. | S11, S2 |
 | D3 | Weighting factors for "sold out too early" and waitlist, and "% sold so far" / "7-day pickup" features (Q2). New decision records. | S2, S10 |
 
 ## Open questions
@@ -108,13 +108,13 @@ The current `frontend/` is a static prototype with no API calls.
 | # | Question | Blocks |
 |---|---|---|
 | Q1 | How is the manager told about an update: a badge on the calendar card, a notification, or nothing beyond the change shown on the card? | F2, S6 |
-| Q2 | **The design shows data the MVP doesn't have.** "% sold" and "Pickup, 7 days" can come from the Guestline booking reports ([0031](decisions/0031-pms-reports-for-training.md), D2/D3). "Comp set median" and "Comp set gap" need competitor rates (out of scope): drop them or mock them? | D2, F2, F3 |
+| Q2 | **The design shows data the MVP doesn't have.** "% sold" and "Pickup, 7 days" can come from the Guestline booking reports ([0032](decisions/0032-three-guestline-reports.md), D2/D3). "Comp set median" and "Comp set gap" need competitor rates (out of scope): drop them or mock them? | D2, F2, F3 |
 | Q3 | What goes on each calendar card and in the "Color by" options (Demand, Occupancy, Price change, Comp set gap, Events, Weather)? This is a design question. | F2 |
 | Q4 | How does feedback train the model? Replace the label with the ideal rate, add a feature, or weight the night more? How are verdicts with no number used? Does "who was right" help the model? | M1 |
 | Q5 | Retrain on every piece of feedback, or on a schedule? Depends on M2. | M1, O1 |
 | Q6 | Where does the scheduler run: in the API process, external cron calling the API, or a Neon cron trigger? The API currently runs a single worker and jobs die on restart. | O1 |
 | Q7 | How often should each refresh run (events, weather, retrain)? "Within hours" for events is the goal; PredictHQ credit limits apply. | O1, S6 |
-| Q8 | ~~Which CSVs will the manager upload, and what decides whether a past rate was optimal?~~ Answered in [0031](decisions/0031-pms-reports-for-training.md). Still open: which of the five the manager uploads daily vs. once as a backfill. | D1, D2 |
+| Q8 | ~~Which CSVs will the manager upload, and what decides whether a past rate was optimal?~~ Answered in [0032](decisions/0032-three-guestline-reports.md). Still open: which of the three the manager uploads daily vs. once as a backfill. | D1, D2 |
 | Q9 | Auth: invite-only, or self-signup and Google login as in the design? The sign-up page says "free for 30 days" and "within the limits you set". Are trials and rate limits (min/max rates) in the MVP? | B1, F1 |
 | Q10 | The design says "Rates shown are Double, lowest available". Until room types are added, is "Standard" the rate we show? | F2 |
 | Q11 | Is past performance (e.g. the same night last year) ever shown? It's not in the MVP for now. | — |
