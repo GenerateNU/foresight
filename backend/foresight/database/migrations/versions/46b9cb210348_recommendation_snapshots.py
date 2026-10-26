@@ -62,7 +62,7 @@ def upgrade() -> None:
             ["model_id"],
             ["pricing_models.id"],
             name=op.f("fk_recommendation_snapshots_model_id_pricing_models"),
-            ondelete="CASCADE",
+            ondelete="NO ACTION",
         ),
         sa.ForeignKeyConstraint(
             ["room_type_id"],
