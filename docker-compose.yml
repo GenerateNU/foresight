@@ -1,5 +1,7 @@
 # Single source of truth for the in-cluster database URL, shared by the
 # `migrate` and `backend` services so they can never drift apart.
+# This file always targets the local `db` container, even though .env holds
+# Neon URLs; `just <recipe> --neon` layers docker-compose.neon.yml on top to switch.
 x-database-url: &database-url "postgresql+asyncpg://foresight:foresight@db:5432/foresight_db"
 
 services:
@@ -51,6 +53,8 @@ services:
       - .env
     environment:
       DATABASE_URL: *database-url
+      # Blank out the Neon direct URL that env_file loads from .env.
+      DATABASE_URL_UNPOOLED: ""
     volumes:
       # Mount source code for hot reload. The `foresight` package is installed
       # editable in the image, so edits under ./backend/foresight are

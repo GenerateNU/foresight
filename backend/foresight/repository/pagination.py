@@ -1,10 +1,15 @@
-"""Shared paging helper for list queries."""
+"""Offset pagination shared by every `list_*` function."""
 
-from collections.abc import Sequence
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Select, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def fetch_page[T](

@@ -1,0 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+body {
+  margin: 0;
+  background: #0B0F14;
+  color: #E6EDF3;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}

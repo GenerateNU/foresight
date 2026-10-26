@@ -1,4 +1,25 @@
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def to_asyncpg_url(url: str) -> str:
+    """Normalize a libpq-style Postgres URL (e.g. from `neon env pull`) for asyncpg.
+
+    asyncpg rejects libpq-only query params: `sslmode` becomes asyncpg's `ssl`,
+    and `channel_binding` is dropped (asyncpg negotiates SCRAM itself).
+    """
+    if not url:
+        return url
+    parts = urlsplit(url)
+    is_pg = parts.scheme.startswith("postgres")
+    scheme = "postgresql+asyncpg" if is_pg else parts.scheme
+    query = []
+    for key, value in parse_qsl(parts.query):
+        if key == "channel_binding":
+            continue
+        query.append(("ssl" if key == "sslmode" else key, value))
+    return urlunsplit(parts._replace(scheme=scheme, query=urlencode(query)))
 
 
 class Settings(BaseSettings):
@@ -15,9 +36,22 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # Database
+    # App traffic. On Neon this is the pooled (-pooler) connection string.
     database_url: str = (
         "postgresql+asyncpg://foresight:foresight@localhost:5432/foresight_db"
     )
+    # Direct (non-pooled) connection for Alembic migrations. On Neon, PgBouncer
+    # runs in transaction mode, so migrations must bypass it. Falls back to
+    # database_url when unset (e.g. local Docker Postgres).
+    database_url_unpooled: str = ""
+
+    @property
+    def async_database_url(self) -> str:
+        return to_asyncpg_url(self.database_url)
+
+    @property
+    def async_migration_database_url(self) -> str:
+        return to_asyncpg_url(self.database_url_unpooled or self.database_url)
 
     # External event sources
     predicthq_token: str = ""

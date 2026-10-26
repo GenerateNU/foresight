@@ -29,7 +29,7 @@ def upgrade() -> None:
     sa.Column('is_sold_out', sa.Boolean(), nullable=False),
     sa.Column('source', sa.String(length=40), nullable=False),
     sa.Column('captured_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id', name='competitor_rates_pkey')
     )
     op.create_table('events',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -44,7 +44,7 @@ def upgrade() -> None:
     sa.Column('longitude', sa.Float(), nullable=True),
     sa.Column('source', sa.String(length=40), nullable=False),
     sa.Column('captured_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id', name='events_pkey')
     )
     op.create_table('flight_arrivals',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -54,7 +54,7 @@ def upgrade() -> None:
     sa.Column('avg_fare_eur', sa.Numeric(precision=10, scale=2), nullable=True),
     sa.Column('source', sa.String(length=40), nullable=False),
     sa.Column('captured_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id', name='flight_arrivals_pkey')
     )
     op.create_table('hotels',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -63,7 +63,7 @@ def upgrade() -> None:
     sa.Column('total_rooms', sa.Integer(), nullable=False),
     sa.Column('latitude', sa.Float(), nullable=True),
     sa.Column('longitude', sa.Float(), nullable=True),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id', name='hotels_pkey')
     )
     op.create_table('weather',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -77,7 +77,7 @@ def upgrade() -> None:
     sa.Column('is_forecast', sa.Boolean(), nullable=False),
     sa.Column('source', sa.String(length=40), nullable=False),
     sa.Column('captured_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id', name='weather_pkey')
     )
     op.create_table('room_types',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -85,8 +85,8 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=120), nullable=False),
     sa.Column('room_count', sa.Integer(), nullable=False),
     sa.Column('base_rate', sa.Numeric(precision=10, scale=2), nullable=False),
-    sa.ForeignKeyConstraint(['hotel_id'], ['hotels.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.ForeignKeyConstraint(['hotel_id'], ['hotels.id'], name='room_types_hotel_id_fkey'),
+    sa.PrimaryKeyConstraint('id', name='room_types_pkey')
     )
     op.create_table('daily_performance',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -96,9 +96,9 @@ def upgrade() -> None:
     sa.Column('rooms_available', sa.Integer(), nullable=False),
     sa.Column('rooms_sold', sa.Integer(), nullable=False),
     sa.Column('room_revenue', sa.Numeric(precision=10, scale=2), nullable=False),
-    sa.ForeignKeyConstraint(['room_type_id'], ['room_types.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('room_type_id', 'stay_date')
+    sa.ForeignKeyConstraint(['room_type_id'], ['room_types.id'], name='daily_performance_room_type_id_fkey'),
+    sa.PrimaryKeyConstraint('id', name='daily_performance_pkey'),
+    sa.UniqueConstraint('room_type_id', 'stay_date', name='daily_performance_room_type_id_stay_date_key')
     )
     # ### end Alembic commands ###
 
