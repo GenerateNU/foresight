@@ -53,3 +53,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0030](0030-schema-descriptions-and-examples.md) | Every field is described; examples are built from the fields | API |
 | [0031](0031-pms-reports-for-training.md) | Guestline reports used for training | data |
 | [0032](0032-events-on-a-night-follow-the-model.md) | The events shown for a night follow the model's rule | API |
+| [0032](0032-data-freshness-rules.md) | Freshness comes from jobs; the service decides what's stale | API |
