@@ -87,12 +87,12 @@ backend/foresight/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
     city.py hotel.py weather.py event.py flight.py ingest.py job.py
-    pricing_model.py health.py
+    pricing_model.py health.py freshness.py
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                city, hotel, weather, weather_coverage, event, flight,
-                           model_inputs, night, pricing_model, recommendation
+                           model_inputs, night, pricing_model, recommendation, freshness
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, asknews, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates
@@ -448,6 +448,7 @@ which version serves.
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/flight-arrivals` | paginated; one row per source per day |
 | GET | `/hotels/{id}/recommendations?date=` | active model; optional `room_type_id` |
+| GET | `/hotels/{id}/freshness` | last success per kind of data, the latest failure, and whether it's stale |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |
 | GET | `/hotels/{id}/models` | paginated, newest version first |
 | GET | `/models/{id}` | one version, no artifact |

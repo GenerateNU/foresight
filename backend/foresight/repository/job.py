@@ -83,3 +83,23 @@ async def last_succeeded_start(
             Job.params.contains(params),
         )
     )
+
+
+async def latest_finished_job(
+    session: AsyncSession,
+    *,
+    hotel_id: int,
+    kind: JobKind,
+    params: dict[str, Any],
+    status: JobStatus | None = None,
+) -> Job | None:
+    """The newest finished job of this kind whose params contain `params`."""
+    stmt = select(Job).where(
+        Job.hotel_id == hotel_id,
+        Job.kind == kind,
+        Job.finished_at.is_not(None),
+        Job.params.contains(params),
+    )
+    if status is not None:
+        stmt = stmt.where(Job.status == status)
+    return await session.scalar(stmt.order_by(Job.finished_at.desc()).limit(1))
