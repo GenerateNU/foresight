@@ -37,6 +37,9 @@ class FreshnessResponse(ResponseSchema):
     weather: KindFreshnessResponse = Field(description="Routine forecast refresh")
     hotel_data: KindFreshnessResponse = Field(description="Hotel data upload (CSV)")
     training: KindFreshnessResponse = Field(description="Pricing model training")
+    recommendations: KindFreshnessResponse | None = Field(
+        description="Recommendation snapshots; always null until they're stored"
+    )
 
 
 HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]

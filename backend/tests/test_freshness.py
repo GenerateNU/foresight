@@ -97,3 +97,12 @@ async def test_backfill_does_not_count_as_a_refresh(monkeypatch) -> None:
     events = await _events(monkeypatch, [backfill])
     assert events.last_success is None  # only routine refreshes count
     assert events.stale
+
+
+async def test_recommendations_are_not_tracked_yet(monkeypatch) -> None:
+    monkeypatch.setattr(freshness, "get_hotel", AsyncMock())
+    monkeypatch.setattr(
+        freshness.job_repo, "latest_finished_job", AsyncMock(return_value=None)
+    )
+    hotel = await freshness.get_freshness(None, 1)
+    assert hotel.recommendations is None

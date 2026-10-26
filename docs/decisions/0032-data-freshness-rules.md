@@ -18,6 +18,9 @@ for how old each kind of data may get.
 - Stale: events and weather after 1 day, hotel data after 7, training after
   30. Never succeeding is stale. The rules are constants (`KINDS`) in
   `services/domain/freshness.py`.
+- `recommendations` is always null until snapshots are stored (MVP B3); then
+  it gets a row in `KINDS`.
+
 
 ## Consequences
 - Changing a threshold is a one-line change, with no frontend release.
