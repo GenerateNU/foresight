@@ -208,3 +208,18 @@ async def list_events(
         stmt = stmt.where(Event.start_local_date <= end)
     stmt = stmt.order_by(Event.start_local_date, Event.id)
     return await fetch_page(session, stmt, limit=limit, offset=offset)
+
+
+async def list_events_overlapping(
+    session: AsyncSession, *, city_id: int, start: date, end: date
+) -> Sequence[Event]:
+    """Every event, whatever its status, whose inclusive local-date range
+    overlaps [start, end]."""
+    result = await session.scalars(
+        select(Event).where(
+            Event.city_id == city_id,
+            Event.end_local_date >= start,
+            Event.start_local_date <= end,
+        )
+    )
+    return result.all()
