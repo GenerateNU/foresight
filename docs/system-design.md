@@ -83,6 +83,7 @@ backend/foresight/
   main.py                  app, routers, error handlers, lifespan
   config.py                settings (pydantic-settings)
   worker.py                runs jobs; commits per chunk
+  cli.py                   operator commands (`just link-user`); commits once per command
   routes/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
@@ -91,7 +92,7 @@ backend/foresight/
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
-    domain/                city, hotel, weather, weather_coverage, event, flight,
+    domain/                city, hotel, user, weather, weather_coverage, event, flight,
                            model_inputs, night, pricing_model, recommendation, freshness
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, asknews, aerodatabox, opensky, cso,
@@ -99,11 +100,11 @@ backend/foresight/
     ml/                    base, ebm, features, weighting
   repository/
     upsert.py pagination.py
-    city.py hotel.py job.py pricing_model.py recommendation.py
+    city.py hotel.py job.py pricing_model.py recommendation.py user.py
     signals/               weather, event, flight, competitor_rate
   database/
     base.py enums.py session.py
-    models/                city, hotel, job, pricing_model, recommendation
+    models/                city, hotel, job, pricing_model, recommendation, user
       signals/             weather, event, flight, competitor_rate
     migrations/
 ```
@@ -117,12 +118,14 @@ pattern in this document.
 
 ### 3.1 Transactions
 
-Only two places commit ([0013](decisions/0013-one-transaction-per-unit-of-work.md)):
+Only three places commit ([0013](decisions/0013-one-transaction-per-unit-of-work.md),
+[0036](decisions/0036-operator-commands-in-cli.md)):
 
 | Caller | Session from | Commits |
 |---|---|---|
 | HTTP request | `database/session.get_session` | once, after the handler; rolls back on any error |
 | job | `worker.run_job` | after every chunk, then once for the final status |
+| operator command | `cli.py`, from `async_session_factory` | once, when the command succeeds; an error commits nothing |
 
 Repositories flush when they need a generated id. `update_hotel` and
 `update_city` run in a savepoint, so a rename that hits a unique constraint
@@ -247,6 +250,8 @@ cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hot
         ├─< events ─< event_observations                  │ outside signals,
         ├─< flight_arrivals                               │ shared by every hotel
         └─< competitor_rates                              ┘ in the city
+
+users ─< user_hotels >─ hotels                              (who works for which hotel)
 ```
 
 **Cities are the market** ([0017](decisions/0017-cities-are-the-market.md)).
@@ -255,10 +260,20 @@ centre coordinates and both airport codes. Weather is read and events are
 searched at the centre; "today" for a job is today in the city's timezone. A
 hotel keeps its own coordinates for distance to venues.
 
+**Users** ([0035](decisions/0035-users-keyed-on-google-id.md)) are Google
+accounts, identified by Google's account id and never by email (`users.email`
+is not unique). `user_hotels` links a user to a hotel, keyed on the pair so
+linking twice changes nothing; a hotel can have several users, a user can
+belong to several hotels, and a user with none is valid. Until the app can do
+it, `just link-user <email> <hotel_id>` links by email
+([0036](decisions/0036-operator-commands-in-cli.md)). Nothing signs anyone in
+yet.
+
 **Foreign keys** always state `ON DELETE`:
 
 - `CASCADE` from a city to its signals, and from a hotel to its room types,
-  nights, pricing models, jobs and recommendation snapshots.
+  nights, pricing models, jobs and recommendation snapshots, and from a user
+  or a hotel to its `user_hotels` links.
 - `RESTRICT` from a hotel to its city: a city with hotels can't be deleted.
 - `NO ACTION` from a snapshot to its pricing model: a model with snapshots
   can't be deleted, but deleting the hotel removes both

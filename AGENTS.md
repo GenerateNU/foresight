@@ -45,6 +45,7 @@ just dev --neon       # same, against Neon; `--neon` works on run/migrate*/test 
 just migrate          # apply migrations
 just migrate-create "msg"   # new Alembic migration after model changes
 just migrate-down     # roll back last migration
+just link-user <email> <hotel_id>   # link a user to a hotel (`--neon` works too)
 just lint             # ruff checks
 just format           # ruff format
 ```

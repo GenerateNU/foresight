@@ -85,6 +85,13 @@ migrate-down *flags: (_flags flags)
     @echo "Database: {{ if flags == "--neon" { "neon" } else { "local" } }}"
     cd backend && {{ if flags == "--neon" { "" } else { _env_local } }} uv run alembic downgrade -1
 
+# --- Users ---
+
+# Link a user to a hotel by email (`just link-user a@b.com 1 --neon` for Neon)
+link-user email hotel_id *flags: (_flags flags)
+    @echo "Database: {{ if flags == "--neon" { "neon" } else { "local" } }}"
+    cd backend && {{ if flags == "--neon" { "" } else { _env_local } }} uv run python -m foresight.cli link-user "{{email}}" {{hotel_id}}
+
 # --- Testing ---
 
 # Run the test suite
