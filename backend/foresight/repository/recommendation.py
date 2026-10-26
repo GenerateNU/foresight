@@ -12,6 +12,7 @@ from foresight.database.models.recommendation import RecommendationSnapshot
 if TYPE_CHECKING:
     from datetime import date
 
+    from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -55,25 +56,24 @@ async def get_latest_snapshot(
     session: AsyncSession, room_type_id: int, *, stay_date: date
 ) -> RecommendationSnapshot | None:
     """The newest snapshot for this room type and night, or None if there isn't one."""
-    stmt = (
-        select(RecommendationSnapshot)
-        .where(
-            RecommendationSnapshot.room_type_id == room_type_id,
-            RecommendationSnapshot.stay_date == stay_date,
-        )
-        .order_by(
-            RecommendationSnapshot.created_at.desc(), RecommendationSnapshot.id.desc()
-        )
-        .limit(1)
-    )
-    return await session.scalar(stmt)
+    return await session.scalar(_night_history(room_type_id, stay_date).limit(1))
 
 
 async def get_previous_snapshot(
     session: AsyncSession, room_type_id: int, *, stay_date: date
 ) -> RecommendationSnapshot | None:
-    """The snapshot before the newest one for this room type and night, or None if there isn't one."""
-    stmt = (
+    """The snapshot before the newest one for this room type and night, or None."""
+    return await session.scalar(
+        _night_history(room_type_id, stay_date).offset(1).limit(1)
+    )
+
+
+def _night_history(
+    room_type_id: int, stay_date: date
+) -> Select[tuple[RecommendationSnapshot]]:
+    """One night's snapshots, newest first. The id breaks ties: rows saved in
+    one transaction share the same `created_at`."""
+    return (
         select(RecommendationSnapshot)
         .where(
             RecommendationSnapshot.room_type_id == room_type_id,
@@ -82,7 +82,5 @@ async def get_previous_snapshot(
         .order_by(
             RecommendationSnapshot.created_at.desc(), RecommendationSnapshot.id.desc()
         )
-        .offset(1)
-        .limit(1)
     )
-    return await session.scalar(stmt)
+

@@ -10,13 +10,16 @@ Returns domain dataclasses; the route maps them to `RecommendationResponse`.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
+from foresight.repository import recommendation as snapshot_repo
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
     NO_EVENTS,
@@ -31,6 +34,10 @@ if TYPE_CHECKING:
     from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from foresight.database.models.city import City 
+    from foresight.database.models.recommendation import RecommendationSnapshot
+
 
 CURRENCY = "EUR"  # decision 0002
 # Terms worth naming in the explanation; smaller ones are summed as "other".
@@ -69,6 +76,7 @@ class Recommendation:
     hotel_id: int
     stay_date: date
     room_type: str
+    room_type_id: int
     recommended_rate: Decimal
     currency: str
     explanation: Explanation
@@ -127,6 +135,7 @@ async def get_recommendation(
         hotel_id=hotel.id,
         stay_date=stay_date,
         room_type=room_type.name,
+        room_type_id=room_type.id,
         recommended_rate=_money(pred),
         currency=CURRENCY,
         explanation=_explanation(model.intercept, contributions, row, pred),
@@ -138,6 +147,71 @@ async def get_recommendation(
         model_version=f"{stored.algorithm}-v{stored.version}",
         is_placeholder=False,
     )
+
+async def snapshot_recommendations(
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    days: int = 30,
+    room_type_id: int | None = None,
+) -> list[RecommendationSnapshot]:
+    """Recommend each night from today for `days` nights and save the ones
+    that changed since their latest snapshot. Every room type unless one is
+    given. Returns the snapshots saved."""
+    hotel = await get_hotel(session, hotel_id)
+    if room_type_id is None:
+        room_type_ids = [r.id for r in await hotel_repo.list_room_types(session, hotel.id)]
+    else:
+        room_type_ids = [room_type_id]
+
+    today = _today(hotel.city)
+    saved: list[RecommendationSnapshot] = []
+    for rt_id in room_type_ids:
+        for offset in range(days):
+            night = today + timedelta(days=offset)
+            rec = await get_recommendation(session, hotel.id, night, room_type_id=rt_id)
+            latest = await snapshot_repo.get_latest_snapshot(session, rt_id, stay_date=night)
+            if _changed(latest, rec):
+                saved.append(await _save(session, rec))
+    return saved
+
+
+async def get_snapshot(
+    session: AsyncSession,
+    hotel_id: int,
+    stay_date: date,
+    *,
+    room_type_id: int | None = None,
+) -> tuple[RecommendationSnapshot, RecommendationSnapshot | None]:
+    """The latest and previous snapshot for one night of one room type.
+
+    A future night with no snapshot gets one now. A past night is never
+    created after the fact, so it raises NotFoundError instead.
+    """
+    hotel = await get_hotel(session, hotel_id)
+    room_types = await hotel_repo.list_room_types(session, hotel.id)
+    if room_type_id is None:
+        room_type = room_types[0] if room_types else None
+    else:
+        room_type = next((r for r in room_types if r.id == room_type_id), None)
+    if room_type is None:
+        raise NotFoundError("Room type", room_type_id or "for hotel")
+
+    latest = await snapshot_repo.get_latest_snapshot(
+        session, room_type.id, stay_date=stay_date
+    )
+    if latest is None:
+        if stay_date < _today(hotel.city):
+            raise NotFoundError("Snapshot for night", stay_date)
+        rec = await get_recommendation(
+            session, hotel.id, stay_date, room_type_id=room_type.id
+        )
+        latest = await _save(session, rec)
+    previous = await snapshot_repo.get_previous_snapshot(
+        session, room_type.id, stay_date=stay_date
+    )
+    return latest, previous
+
 
 
 def _explanation(
@@ -202,3 +276,44 @@ def _signed(amount: float) -> str:
 
 def _money(value: float) -> Decimal:
     return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+def _changed(latest: RecommendationSnapshot | None, rec: Recommendation) -> bool:
+    """Whether the new answer differs from the latest snapshot (model, rate or range)."""
+    if latest is None:
+        return True
+    return (
+        latest.rate != rec.recommended_rate
+        or latest.model_id != rec.model_id
+        or latest.interval_low != rec.confidence_interval.lower
+        or latest.interval_high != rec.confidence_interval.upper
+    )
+
+def _factors(explanation: Explanation) -> dict[str, Any]:
+    """The explanation as JSON: amounts as strings so cents stay exact."""
+    return {
+        "summary": explanation.summary,
+        "baseline": str(explanation.baseline),
+        "factors": [
+            {"detail": f.detail, "amount": str(f.amount)}
+            for f in explanation.factors
+        ],
+    }
+
+async def _save(session: AsyncSession, rec: Recommendation) -> RecommendationSnapshot:
+    """Save the robot's answer as a new snapshot."""
+    return await snapshot_repo.create_recommendation_snapshot(
+        session,
+        hotel_id=rec.hotel_id,
+        room_type_id=rec.room_type_id,
+        stay_date=rec.stay_date,
+        model_id=rec.model_id,
+        model_version=rec.model_version,
+        rate=rec.recommended_rate,
+        interval_low=rec.confidence_interval.lower,
+        interval_high=rec.confidence_interval.upper,
+        uncertainty=rec.uncertainty,
+        factors=_factors(rec.explanation),
+    )
+def _today(city: City) -> date:
+    """Today where the city is: stay nights are local."""
+    return datetime.now(ZoneInfo(city.timezone)).date()
