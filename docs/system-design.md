@@ -92,7 +92,7 @@ backend/foresight/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                city, hotel, weather, weather_coverage, event, flight,
-                           model_inputs, pricing_model, recommendation
+                           model_inputs, night, pricing_model, recommendation
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, asknews, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates

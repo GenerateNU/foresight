@@ -7,13 +7,16 @@ whichever sighting ranks highest (see `_rank`).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from foresight.database.enums import EventStatus, Source
+from foresight.database.enums import EventCategory, EventStatus, Source
 from foresight.repository.signals import event as event_repo
 from foresight.repository.upsert import Outcome
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.errors import InvalidRequestError
+from foresight.services.ml.features import ATTENDED_CATEGORIES
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -29,6 +32,28 @@ _PRECEDENCE = {Source.PREDICTHQ: 2, Source.ASKNEWS: 1}
 # Withdrawn or called-off events don't count as demand.
 _WITHDRAWN = (EventStatus.DELETED, EventStatus.CANCELLED)
 _NEVER = datetime.min.replace(tzinfo=UTC)
+# The categories the model counts on a night: attended events, plus the two
+# holiday kinds it turns into flags (see `ml.features._event_features`).
+_COUNTED = frozenset(
+    {
+        *(EventCategory(c) for c in ATTENDED_CATEGORIES),
+        EventCategory.PUBLIC_HOLIDAYS,
+        EventCategory.SCHOOL_HOLIDAYS,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class NightEvent:
+    """An event as it falls on one night."""
+
+    event_id: int
+    title: str
+    venue: str | None
+    category: EventCategory
+    expected_attendance: int | None
+    day_number: int  # 1-based position of this night within the event
+    day_count: int  # nights the event spans; 1 for a single-day event
 
 
 async def save_event(
@@ -87,6 +112,68 @@ async def list_events(
         exclude_statuses=_WITHDRAWN,
         limit=limit,
         offset=offset,
+    )
+
+
+async def events_by_night(
+    session: AsyncSession, hotel_id: int, *, start: date, end: date
+) -> dict[date, list[NightEvent]]:
+    """The events affecting each night in [start, end], both inclusive.
+
+    Uses the model's rule: live events in the hotel's city, of a category the
+    model counts, on every night from their start to their end date. Every
+    night in the range is a key, with an empty list when nothing affects it.
+    Each night's events are largest first: expected attendance, then local
+    rank; unknown values last.
+
+    Raises:
+        NotFoundError: Unknown hotel.
+        InvalidRequestError: `end` is before `start`.
+    """
+    if end < start:
+        raise InvalidRequestError("end must not be before start")
+    hotel = await get_hotel(session, hotel_id)
+    events = await event_repo.list_events_overlapping(
+        session, city_id=hotel.city_id, start=start, end=end
+    )
+    return _by_night(events, start, end)
+
+
+def _by_night(
+    events: Sequence[Event], start: date, end: date
+) -> dict[date, list[NightEvent]]:
+    by_night: dict[date, list[NightEvent]] = {
+        start + timedelta(days=i): [] for i in range((end - start).days + 1)
+    }
+    # Largest first, so each night's list comes out in that order.
+    for event in sorted(events, key=_importance):
+        if event.status in _WITHDRAWN or event.category not in _COUNTED:
+            continue
+        day_count = (event.end_local_date - event.start_local_date).days + 1
+        first = max(event.start_local_date, start)
+        last = min(event.end_local_date, end)
+        for i in range((last - first).days + 1):
+            night = first + timedelta(days=i)
+            by_night[night].append(
+                NightEvent(
+                    event_id=event.id,
+                    title=event.title,
+                    venue=event.venue,
+                    category=event.category,
+                    expected_attendance=event.expected_attendance,
+                    day_number=(night - event.start_local_date).days + 1,
+                    day_count=day_count,
+                )
+            )
+    return by_night
+
+
+def _importance(event: Event) -> tuple[int, int, int]:
+    """Sort key putting the biggest event first; unknown values sort last."""
+    return (
+        -(event.expected_attendance if event.expected_attendance is not None else -1),
+        -(event.local_rank if event.local_rank is not None else -1),
+        event.id,
     )
 
 
