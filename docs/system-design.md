@@ -86,13 +86,13 @@ backend/foresight/
   routes/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
-    city.py hotel.py weather.py event.py flight.py ingest.py job.py
+    city.py hotel.py weather.py event.py night.py flight.py ingest.py job.py
     pricing_model.py health.py
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                city, hotel, weather, weather_coverage, event, flight,
-                           model_inputs, pricing_model, recommendation
+                           model_inputs, night, pricing_model, recommendation
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, asknews, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates
