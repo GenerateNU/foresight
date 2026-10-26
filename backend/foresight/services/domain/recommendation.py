@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.models.city import City 
+    from foresight.database.models.city import City
     from foresight.database.models.recommendation import RecommendationSnapshot
 
 
@@ -148,6 +148,7 @@ async def get_recommendation(
         is_placeholder=False,
     )
 
+
 async def snapshot_recommendations(
     session: AsyncSession,
     hotel_id: int,
@@ -160,7 +161,9 @@ async def snapshot_recommendations(
     given. Returns the snapshots saved."""
     hotel = await get_hotel(session, hotel_id)
     if room_type_id is None:
-        room_type_ids = [r.id for r in await hotel_repo.list_room_types(session, hotel.id)]
+        room_type_ids = [
+            r.id for r in await hotel_repo.list_room_types(session, hotel.id)
+        ]
     else:
         room_type_ids = [room_type_id]
 
@@ -170,7 +173,9 @@ async def snapshot_recommendations(
         for offset in range(days):
             night = today + timedelta(days=offset)
             rec = await get_recommendation(session, hotel.id, night, room_type_id=rt_id)
-            latest = await snapshot_repo.get_latest_snapshot(session, rt_id, stay_date=night)
+            latest = await snapshot_repo.get_latest_snapshot(
+                session, rt_id, stay_date=night
+            )
             if _changed(latest, rec):
                 saved.append(await _save(session, rec))
     return saved
@@ -211,7 +216,6 @@ async def get_snapshot(
         session, room_type.id, stay_date=stay_date
     )
     return latest, previous
-
 
 
 def _explanation(
@@ -277,8 +281,9 @@ def _signed(amount: float) -> str:
 def _money(value: float) -> Decimal:
     return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+
 def _changed(latest: RecommendationSnapshot | None, rec: Recommendation) -> bool:
-    """Whether the new answer differs from the latest snapshot (model, rate or range)."""
+    """Whether the answer changed since the latest snapshot (decision 0032)."""
     if latest is None:
         return True
     return (
@@ -288,16 +293,17 @@ def _changed(latest: RecommendationSnapshot | None, rec: Recommendation) -> bool
         or latest.interval_high != rec.confidence_interval.upper
     )
 
+
 def _factors(explanation: Explanation) -> dict[str, Any]:
     """The explanation as JSON: amounts as strings so cents stay exact."""
     return {
         "summary": explanation.summary,
         "baseline": str(explanation.baseline),
         "factors": [
-            {"detail": f.detail, "amount": str(f.amount)}
-            for f in explanation.factors
+            {"detail": f.detail, "amount": str(f.amount)} for f in explanation.factors
         ],
     }
+
 
 async def _save(session: AsyncSession, rec: Recommendation) -> RecommendationSnapshot:
     """Save the robot's answer as a new snapshot."""
@@ -314,6 +320,8 @@ async def _save(session: AsyncSession, rec: Recommendation) -> RecommendationSna
         uncertainty=rec.uncertainty,
         factors=_factors(rec.explanation),
     )
+
+
 def _today(city: City) -> date:
     """Today where the city is: stay nights are local."""
     return datetime.now(ZoneInfo(city.timezone)).date()

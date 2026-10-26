@@ -1,9 +1,8 @@
-"""Data access for `recommendation_snapshots`: recommended rates and associated metadata per hotel."""
+"""Data access for `recommendation_snapshots`: every rate recommended, per night."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from decimal import Decimal
 
 from sqlalchemy import select
 
@@ -11,6 +10,7 @@ from foresight.database.models.recommendation import RecommendationSnapshot
 
 if TYPE_CHECKING:
     from datetime import date
+    from decimal import Decimal
 
     from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +32,8 @@ async def create_recommendation_snapshot(
 ) -> RecommendationSnapshot:
     """Save a new recommendation snapshot for a hotel.
 
-    This captures the recommended rates and associated metadata at a specific point in time.
+    This captures the recommended rates and associated metadata at a specific
+    point in time.
     """
     snapshot = RecommendationSnapshot(
         hotel_id=hotel_id,
@@ -83,4 +84,3 @@ def _night_history(
             RecommendationSnapshot.created_at.desc(), RecommendationSnapshot.id.desc()
         )
     )
-
