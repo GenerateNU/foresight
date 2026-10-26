@@ -29,10 +29,13 @@ class RecommendationSnapshot(Base):
         ForeignKey("hotels.id", ondelete="CASCADE"), index=True
     )
     room_type_id: Mapped[int] = mapped_column(
-        ForeignKey("room_types.id", ondelete="CASCADE"))
+        ForeignKey("room_types.id", ondelete="CASCADE")
+    )
     stay_date: Mapped[date] = mapped_column(Date)
     model_id: Mapped[int] = mapped_column(
-        ForeignKey("pricing_models.id", ondelete="CASCADE"), index=True
+        # No cascade: a model with snapshots can't be deleted (history stays).
+        ForeignKey("pricing_models.id", ondelete="NO ACTION"),
+        index=True,
     )
     model_version: Mapped[str] = mapped_column(String(60))
     rate: Mapped[Decimal] = mapped_column(Numeric(10, 2))
