@@ -99,11 +99,11 @@ backend/foresight/
     ml/                    base, ebm, features, weighting
   repository/
     upsert.py pagination.py
-    city.py hotel.py job.py pricing_model.py
+    city.py hotel.py job.py pricing_model.py recommendation.py
     signals/               weather, event, flight, competitor_rate
   database/
     base.py enums.py session.py
-    models/                city, hotel, job, pricing_model
+    models/                city, hotel, job, pricing_model, recommendation
       signals/             weather, event, flight, competitor_rate
     migrations/
 ```
@@ -240,6 +240,7 @@ turns its source's quota responses into a named error:
 ```
 cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hotel's own history)
         │           ├─< pricing_models                    (trained models; one active)
+        │           ├─< recommendation_snapshots          (every rate recommended; 0034)
         │           └─< jobs                              (ingest runs)
         │
         ├─< weather                                       ┐
@@ -257,8 +258,11 @@ hotel keeps its own coordinates for distance to venues.
 **Foreign keys** always state `ON DELETE`:
 
 - `CASCADE` from a city to its signals, and from a hotel to its room types,
-  nights, pricing models and jobs.
+  nights, pricing models, jobs and recommendation snapshots.
 - `RESTRICT` from a hotel to its city: a city with hotels can't be deleted.
+- `NO ACTION` from a snapshot to its pricing model: a model with snapshots
+  can't be deleted, but deleting the hotel removes both
+  ([0034](decisions/0034-snapshot-only-when-changed.md)).
 - `SET NULL` from an observation to its event, so raw sightings survive.
 
 **Relationships are `lazy="raise"`.** An unloaded relationship fails at once
@@ -422,7 +426,22 @@ GET /hotels/7/recommendations?date=2026-10-24[&room_type_id=]
       domain/model_inputs.weather_for           recorded → forecast → typical week (0024)
       build_features → predict_interval, explain, predict_uncertainty
   ← rate, 80% interval, factors in € that sum to the rate
+
+GET /hotels/7/recommendations/snapshot?date=2026-10-24[&room_type_id=]
+  → domain/recommendation.get_snapshot
+      snapshot_repo.get_latest_snapshot         none: price and save now; past night → 404
+      snapshot_repo.get_previous_snapshot
+  ← latest, previous, change in €
+
+POST /hotels/7/recommendations/snapshots?days=30[&room_type_id=]
+  → domain/recommendation.snapshot_recommendations
+      every room type × night from today        get_recommendation for each
+      saved only if model, rate or range changed (0034)
+  ← only the snapshots saved
 ```
+
+`GET /recommendations` itself saves nothing; it's a preview. A night's history
+comes from the snapshot routes.
 
 Every training run is a new version
 ([0029](decisions/0029-every-training-run-is-a-new-version.md)):
@@ -448,6 +467,8 @@ which version serves.
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/flight-arrivals` | paginated; one row per source per day |
 | GET | `/hotels/{id}/recommendations?date=` | active model; optional `room_type_id` |
+| GET | `/hotels/{id}/recommendations/snapshot?date=` | latest, previous and change; a future night with none is saved now |
+| POST | `/hotels/{id}/recommendations/snapshots` | saves changed rates for the next `days` nights (default 30) |
 | GET | `/hotels/{id}/freshness` | last success per kind of data, the latest failure, and whether it's stale |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |
 | GET | `/hotels/{id}/models` | paginated, newest version first |
@@ -501,8 +522,8 @@ requested.
    Which flight source wins, and whether CSO's monthly totals are spread over
    days, isn't.
 3. **Flights ingest.** Waiting on the CSO table and the choice in question 2.
-4. **Scheduling.** The routine refreshes (forecast, recent events) only run
-   when called.
+4. **Scheduling.** The routine refreshes (forecast, recent events,
+   recommendation snapshots) only run when called.
 5. **Tests.** The suite predates this design and hasn't been updated. Nothing
    has been run against real PredictHQ, AskNews, AeroDataBox or OpenSky keys.
 6. **Booking-level PMS data.** [0031](decisions/0031-pms-reports-for-training.md)
