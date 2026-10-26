@@ -54,3 +54,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0031](0031-pms-reports-for-training.md) | Guestline reports used for training | data |
 | [0032](0032-events-on-a-night-follow-the-model.md) | The events shown for a night follow the model's rule | API |
 | [0033](0033-data-freshness-rules.md) | Freshness comes from jobs; the service decides what's stale | API |
+| [0034](0034-snapshot-only-when-changed.md) | A snapshot is saved only when the model, rate or range changed | data model |
