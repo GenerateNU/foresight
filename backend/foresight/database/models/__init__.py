@@ -11,6 +11,7 @@ from foresight.database.models.signals.competitor_rate import CompetitorRate
 from foresight.database.models.signals.event import Event, EventObservation
 from foresight.database.models.signals.flight import FlightArrival
 from foresight.database.models.signals.weather import Weather
+from foresight.database.models.user import User, UserHotel
 
 __all__ = [
     "Base",
@@ -24,6 +25,8 @@ __all__ = [
     "Job",
     "PricingModel",
     "RoomType",
+    "User",
+    "UserHotel",
     "Weather",
     "RecommendationSnapshot",
     "Widget",

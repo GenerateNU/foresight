@@ -20,3 +20,5 @@ hits a unique constraint).
 - Every request is all-or-nothing.
 - The session dependency runs with `scope="function"`, so the commit happens
   before the response is sent. A failed commit is a 500, never a false 200.
+- See also [0036](0036-operator-commands-in-cli.md): an operator command is a
+  third place that commits.
