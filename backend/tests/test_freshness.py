@@ -38,7 +38,6 @@ async def _events(monkeypatch, jobs: list[Job]) -> freshness.Freshness:
         ]
         return max(found, key=lambda j: j.finished_at, default=None)
 
-
     monkeypatch.setattr(freshness, "get_hotel", AsyncMock())
     monkeypatch.setattr(freshness.job_repo, "latest_finished_job", latest)
     return (await freshness.get_freshness(None, 1)).events
