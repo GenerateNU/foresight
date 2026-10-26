@@ -50,8 +50,3 @@ backend/data/
 
 # Personal developer journal (private, not for team repo)
 .journal-entries/
-
-# requests-cache store written by the Open-Meteo client
-.cache.sqlite
-.neon
-node_modules/

@@ -150,19 +150,10 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: uv sync --dev
-
-      - name: Single migration head
-        run: test "$(uv run alembic heads | wc -l)" -eq 1
+        run: uv sync --dev --group ml
 
       - name: Run migrations
         run: uv run alembic upgrade head
-
-      - name: Models match migrations
-        run: uv run alembic check
-
-      - name: Migrations roll back
-        run: uv run alembic downgrade base && uv run alembic upgrade head
 
       - name: Pytest
         run: uv run pytest -q

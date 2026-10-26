@@ -27,24 +27,6 @@ just logs
 just destroy
 ```
 
-### Local vs Neon database
-
-Recipes that touch the database take an optional `--neon` flag. Without it
-they use the local Docker Postgres; with it, the Neon `production` branch
-(URLs from `.env`).
-
-```bash
-just dev                  # local Docker Postgres
-just dev --neon           # same stack, pointed at Neon (local db container not started)
-just migrate --neon       # migrations against Neon (direct, non-pooled URL)
-just run --neon           # API on the host, outside Docker
-```
-
-`--neon` works on `dev`, `destroy`, `run`, `migrate`, `migrate-create`,
-`migrate-down` and `test`. Re-run `just dev` / `just dev --neon` to switch;
-Compose recreates the backend. Neon URLs come from `neon env pull`. See
-`docs/decisions/0027-neon-postgres.md`.
-
 The API will be available at [http://localhost:8000](http://localhost:8000)  
 API docs at [http://localhost:8000/docs](http://localhost:8000/docs)
 
@@ -93,25 +75,28 @@ Commit messages must follow [Conventional Commits](https://www.conventionalcommi
 ```
 foresight/
 ├── backend/
-│   ├── foresight/          # Installable package (see pyproject.toml)
-│   │   ├── main.py         # FastAPI app (foresight.main:app)
-│   │   ├── config.py       # Settings (pydantic-settings)
-│   │   ├── worker.py       # Runs background jobs
-│   │   ├── routes/         # HTTP: routers and their schemas
-│   │   ├── services/       # Business logic: domain, ingest, adapters, ml
-│   │   ├── repository/     # Data access
-│   │   └── database/       # Models, enums, session, Alembic migrations
-│   ├── tests/
+│   ├── foresight/               # Installable package (see pyproject.toml)
+│   │   ├── main.py              # FastAPI app entrypoint (foresight.main:app)
+│   │   ├── config.py            # Settings (pydantic-settings)
+│   │   ├── routes/              # API route handlers
+│   │   ├── schemas/             # Pydantic request/response models
+│   │   ├── services/            # Business logic
+│   │   │   ├── ml/              # ML models (regression, bayesian, ...)
+│   │   │   └── parsers/         # Client data ingestion
+│   │   ├── repository/          # Data-access layer
+│   │   └── database/            # SQLAlchemy + Alembic
+│   │       ├── base.py          # Declarative base
+│   │       ├── session.py       # Async session factory
+│   │       ├── models/          # SQLAlchemy models
+│   │       └── migrations/      # Alembic migrations
+│   ├── scripts/                 # Dev tooling (mock data, model comparison)
+│   ├── tests/                   # Pytest suite
+│   ├── alembic.ini
 │   ├── pyproject.toml
 │   └── Dockerfile
-├── docs/
-│   ├── system-design.md    # How the backend fits together
-│   └── decisions/          # One design decision per file
-├── frontend/               # TBD
+├── frontend/                    # TBD
 ├── docker-compose.yml
 ├── justfile
-└── .env.example
+├── .env.example
+└── .pre-commit-config.yaml
 ```
-
-See [`docs/system-design.md`](docs/system-design.md) for the layers, data
-model, jobs and API.
