@@ -157,12 +157,24 @@ async def snapshot_recommendations(
     room_type_id: int | None = None,
 ) -> list[RecommendationSnapshot]:
     """Recommend each night from today for `days` nights and save the ones
-    that changed since their latest snapshot. Every room type unless one is
-    given. Returns the snapshots saved."""
+    that changed since their latest snapshot. Every room type the active model
+    was trained on unless one is given; the others are skipped, so one new room
+    type doesn't stop the rest being saved. Returns the snapshots saved.
+
+    Raises:
+        NotFoundError: Unknown hotel or room type, or no active model.
+        InvalidRequestError: The given room type wasn't trained on.
+    """
     hotel = await get_hotel(session, hotel_id)
     if room_type_id is None:
+        stored = await model_repo.get_active_pricing_model(session, hotel.id)
+        if stored is None:
+            raise NotFoundError("Active pricing model for hotel", hotel.id)
+        trained_on = stored.training_summary.get("room_types", [])
         room_type_ids = [
-            r.id for r in await hotel_repo.list_room_types(session, hotel.id)
+            r.id
+            for r in await hotel_repo.list_room_types(session, hotel.id)
+            if not trained_on or r.name in trained_on
         ]
     else:
         room_type_ids = [room_type_id]
