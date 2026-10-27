@@ -87,7 +87,7 @@ backend/foresight/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
     city.py hotel.py weather.py event.py flight.py ingest.py job.py
-    pricing_model.py health.py freshness.py
+    pricing_model.py health.py
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
