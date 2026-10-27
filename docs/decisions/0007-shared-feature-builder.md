@@ -34,7 +34,7 @@ dates), `temp_min_c` and `is_weekend` (redundant).
 - Weather forecasts reach about 14 days ahead and future flight data may not
   exist; those features stay empty for far-out dates until data is backfilled.
 - Booking dates are coming from Guestline
-  ([0031](0031-pms-reports-for-training.md)); "% sold so far" and pickup
+  ([0037](0037-three-guestline-reports.md)); "% sold so far" and pickup
   features will be added here when built.
 - On mock data, MAE rose from €5.59 to €7.53 versus the mock CSV columns,
   because those included competitor and base rates the mock pricing formula

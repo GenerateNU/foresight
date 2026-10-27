@@ -1,8 +1,7 @@
 """Canonical event contract shared by every external source adapter.
 
-PredictHQ keys its records by event, AskNews keys them by article, and both must
-land on the same row for the same real-world event -- so the dedupe key and the
-field normalizers live here rather than in either adapter.
+Every source must land on the same row for the same real-world event, so the
+dedupe key and the field normalizers live here rather than in an adapter.
 """
 
 from __future__ import annotations

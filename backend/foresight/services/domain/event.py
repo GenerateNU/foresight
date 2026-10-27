@@ -1,8 +1,8 @@
 """Events: merging sightings from several sources onto one canonical row.
 
-PredictHQ and AskNews can describe the same real-world event. Each source's
-record is kept as an observation, and the `events` row carries the values of
-whichever sighting ranks highest (see `_rank`).
+PredictHQ is the only source today, but it can list the same real-world event
+more than once. Each record is kept as an observation, and the `events` row
+carries the values of whichever sighting ranks highest (see `_rank`).
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ if TYPE_CHECKING:
     from foresight.database.models.signals.event import Event
     from foresight.services.adapters.normalize import NormalizedEvent
 
-# Structured listings outrank dates and venues extracted from prose.
-_PRECEDENCE = {Source.PREDICTHQ: 2, Source.ASKNEWS: 1}
+# How much each source is trusted; a new source gets a rank here.
+_PRECEDENCE = {Source.PREDICTHQ: 1}
 # Withdrawn or called-off events don't count as demand.
 _WITHDRAWN = (EventStatus.DELETED, EventStatus.CANCELLED)
 _NEVER = datetime.min.replace(tzinfo=UTC)
