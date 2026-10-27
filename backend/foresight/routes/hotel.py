@@ -529,7 +529,8 @@ async def snapshot_recommendations(
     room_type_id: Annotated[
         int | None,
         Query(
-            description="The room type; omit for every room type",
+            description="The room type; omit for every room type the active "
+            "model was trained on",
             examples=[1],
         ),
     ] = None,
