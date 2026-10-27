@@ -1,14 +1,12 @@
-"""Which events affect each night, and the routes that serve them.
+"""Which events affect each night, and the recommendation range's limits.
 
-No database: the repository read and the hotel lookup are replaced, so the
-tests exercise the night rule and the HTTP mapping on their own.
+No database: the repository read is replaced by one that applies the same
+filters as the real query, so the tests exercise the night rule on its own.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
-from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -18,7 +16,6 @@ from foresight.database.models.signals.event import Event
 from foresight.database.session import get_session
 from foresight.main import app
 from foresight.services.domain import event as event_service
-from foresight.services.domain import recommendation as recommendation_service
 from foresight.services.errors import InvalidRequestError
 
 D = date
@@ -51,19 +48,22 @@ def make_event(
 
 @pytest.fixture
 def stored_events(monkeypatch: pytest.MonkeyPatch) -> list[Event]:
-    """Events the fake repository returns for any range, like the real query
-    does for ones overlapping it; tests append to it."""
+    """Events the fake repository filters like the real query does: overlapping
+    the range, not withdrawn, in a counted category. Tests append to it."""
     events: list[Event] = []
 
-    async def get_hotel(session, hotel_id):
-        return SimpleNamespace(id=hotel_id, city_id=1)
-
-    async def list_events_overlapping(session, *, city_id, start, end):
+    async def list_events_overlapping(
+        session, *, city_id, start, end, exclude_statuses, categories
+    ):
         return [
-            e for e in events if e.end_local_date >= start and e.start_local_date <= end
+            e
+            for e in events
+            if e.end_local_date >= start
+            and e.start_local_date <= end
+            and e.status not in exclude_statuses
+            and e.category in categories
         ]
 
-    monkeypatch.setattr(event_service, "get_hotel", get_hotel)
     monkeypatch.setattr(
         event_service.event_repo, "list_events_overlapping", list_events_overlapping
     )
@@ -218,84 +218,14 @@ async def client():
     app.dependency_overrides.clear()
 
 
-async def test_night_route_returns_full_details(client, stored_events) -> None:
-    stored_events += [
-        make_event(1, "Festival", D(2025, 6, 6), D(2025, 6, 8), attendance=9000),
-        make_event(2, "Gone", D(2025, 6, 7), status=EventStatus.CANCELLED),
-    ]
-
-    response = await client.get("/hotels/1/events/2025-06-07")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "hotel_id": 1,
-        "stay_date": "2025-06-07",
-        "events": [
-            {
-                "event_id": 1,
-                "title": "Festival",
-                "venue": "Example Hall",
-                "category": "festivals",
-                "expected_attendance": 9000,
-                "day_number": 2,
-                "day_count": 3,
-            }
-        ],
-    }
-
-
-async def test_range_route_returns_rates_with_event_names_only(
-    client, stored_events, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stored_events += [
-        make_event(1, "Small", D(2025, 6, 6), attendance=10),
-        make_event(2, "Big", D(2025, 6, 6), D(2025, 6, 7), attendance=1000),
-        make_event(3, "Gone", D(2025, 6, 6), status=EventStatus.DELETED),
-    ]
-
-    async def get_recommendation(session, hotel_id, stay_date, *, room_type_id):
-        return SimpleNamespace(recommended_rate=Decimal("150.00"), currency="EUR")
-
-    monkeypatch.setattr(
-        recommendation_service, "get_recommendation", get_recommendation
-    )
-
-    response = await client.get(
-        "/hotels/1/recommendations/range?start=2025-06-06&end=2025-06-08"
-    )
-
-    assert response.status_code == 200
-    assert response.json() == [
-        {
-            "stay_date": "2025-06-06",
-            "recommended_rate": "150.00",
-            "currency": "EUR",
-            "event_names": ["Big", "Small"],
-        },
-        {
-            "stay_date": "2025-06-07",
-            "recommended_rate": "150.00",
-            "currency": "EUR",
-            "event_names": ["Big"],
-        },
-        {
-            "stay_date": "2025-06-08",
-            "recommended_rate": "150.00",
-            "currency": "EUR",
-            "event_names": [],
-        },
-    ]
-
-
-async def test_range_route_rejects_an_oversized_or_reversed_range(
-    client, stored_events
-) -> None:
-    too_long = await client.get(
-        "/hotels/1/recommendations/range?start=2025-01-01&end=2025-12-31"
-    )
-    reversed_ = await client.get(
-        "/hotels/1/recommendations/range?start=2025-02-01&end=2025-01-01"
-    )
+async def test_recommendations_reject_a_bad_range(client) -> None:
+    base = "/hotels/1/recommendations"
+    too_long = await client.get(f"{base}?start=2025-01-01&end=2025-12-31")
+    reversed_ = await client.get(f"{base}?start=2025-02-01&end=2025-01-01")
+    both = await client.get(f"{base}?date=2025-01-01&start=2025-01-01")
+    neither = await client.get(base)
 
     assert too_long.status_code == 422
     assert reversed_.status_code == 422
+    assert both.status_code == 422
+    assert neither.status_code == 422

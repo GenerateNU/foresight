@@ -93,7 +93,7 @@ backend/foresight/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                city, hotel, user, weather, weather_coverage, event, flight,
-                           model_inputs, night, pricing_model, recommendation, freshness
+                           model_inputs, pricing_model, recommendation, freshness
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, asknews, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates
@@ -243,7 +243,7 @@ turns its source's quota responses into a named error:
 ```
 cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hotel's own history)
         │           ├─< pricing_models                    (trained models; one active)
-        │           ├─< recommendation_snapshots          (every rate recommended; 0034)
+        │           ├─< recommendation_snapshots          (every rate recommended; 0038)
         │           └─< jobs                              (ingest runs)
         │
         ├─< weather                                       ┐
@@ -277,7 +277,7 @@ yet.
 - `RESTRICT` from a hotel to its city: a city with hotels can't be deleted.
 - `NO ACTION` from a snapshot to its pricing model: a model with snapshots
   can't be deleted, but deleting the hotel removes both
-  ([0034](decisions/0034-snapshot-only-when-changed.md)).
+  ([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)).
 - `SET NULL` from an observation to its event, so raw sightings survive.
 
 **Relationships are `lazy="raise"`.** An unloaded relationship fails at once
@@ -435,28 +435,22 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}
 
-GET /hotels/7/recommendations?date=2026-10-24[&room_type_id=]
-  → domain/recommendation.get_recommendation
-      model_repo.get_active_pricing_model       404 if none
-      domain/model_inputs.weather_for           recorded → forecast → typical week (0024)
-      build_features → predict_interval, explain, predict_uncertainty
-  ← rate, 80% interval, factors in € that sum to the rate
-
-GET /hotels/7/recommendations/snapshot?date=2026-10-24[&room_type_id=]
-  → domain/recommendation.get_snapshot
-      snapshot_repo.get_latest_snapshot         none: price and save now; past night → 404
-      snapshot_repo.get_previous_snapshot
-  ← latest, previous, change in €
-
-POST /hotels/7/recommendations/snapshots?days=30[&room_type_id=]
-  → domain/recommendation.snapshot_recommendations
-      every room type × night from today        get_recommendation for each
-      saved only if model, rate or range changed (0034)
-  ← only the snapshots saved
+GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
+  → domain/recommendation.get_recommendations             at most 90 nights
+      model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
+      per night: build_features row, events_by_night (0032), weather source (0024)
+      fingerprint = sha256(model id + those inputs)
+      snapshot_repo.latest_snapshots            one query for the range
+      fingerprint matches → reuse the snapshot; the model doesn't run
+      otherwise → load the model once, score every such night in one batch,
+                  store a new snapshot (from today on; past nights aren't stored)
+  ← one per night: rate, 80% interval, factors in €, events, weather source
 ```
 
-`GET /recommendations` itself saves nothing; it's a preview. A night's history
-comes from the snapshot routes.
+A recommendation is stored when it's made and reused while its inputs hold
+([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)). Asking
+for a night again returns its stored snapshot while nothing it reads has
+changed, so there's no separate route for a night's factors.
 
 Every training run is a new version
 ([0029](decisions/0029-every-training-run-is-a-new-version.md)):
@@ -481,9 +475,7 @@ which version serves.
 | GET | `/hotels/{id}/coverage/weather` | recorded-weather gaps in a window |
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/flight-arrivals` | paginated; one row per source per day |
-| GET | `/hotels/{id}/recommendations?date=` | active model; optional `room_type_id` |
-| GET | `/hotels/{id}/recommendations/snapshot?date=` | latest, previous and change; a future night with none is saved now |
-| POST | `/hotels/{id}/recommendations/snapshots` | saves changed rates for the next `days` nights (default 30) |
+| GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
 | GET | `/hotels/{id}/freshness` | last success per kind of data, the latest failure, and whether it's stale |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |
 | GET | `/hotels/{id}/models` | paginated, newest version first |
@@ -537,8 +529,8 @@ requested.
    Which flight source wins, and whether CSO's monthly totals are spread over
    days, isn't.
 3. **Flights ingest.** Waiting on the CSO table and the choice in question 2.
-4. **Scheduling.** The routine refreshes (forecast, recent events,
-   recommendation snapshots) only run when called.
+4. **Scheduling.** The routine refreshes (forecast, recent events) only run
+   when called. Recommendations are stored as they're requested.
 5. **Tests.** The suite predates this design and hasn't been updated. Nothing
    has been run against real PredictHQ, AskNews, AeroDataBox or OpenSky keys.
 6. **Booking-level PMS data.** [0037](decisions/0037-three-guestline-reports.md)

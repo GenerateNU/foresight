@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from foresight.repository import city as city_repo
 from foresight.services.adapters.normalize import slugify_city
@@ -10,6 +12,7 @@ from foresight.services.errors import ConflictError, InvalidRequestError, NotFou
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +60,11 @@ async def update_city(
     if updated is None:
         raise ConflictError(f"City {changes['name']!r} already exists")
     return updated
+
+
+def local_today(city: City) -> date:
+    """Today where the city is: stay nights are local (decision 0023)."""
+    return datetime.now(ZoneInfo(city.timezone)).date()
 
 
 def _slug(name: str) -> str:

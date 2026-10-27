@@ -79,11 +79,19 @@ async def list_pricing_models(
 async def get_active_pricing_model(
     session: AsyncSession, hotel_id: int
 ) -> PricingModel | None:
-    """The model currently serving the hotel, if any, artifact included."""
+    """The model currently serving the hotel, if any, without its artifact;
+    `get_artifact` loads that when the model has to run."""
     return await session.scalar(
-        select(PricingModel).where(
-            PricingModel.hotel_id == hotel_id, PricingModel.is_active
-        )
+        select(PricingModel)
+        .options(defer(PricingModel.artifact))
+        .where(PricingModel.hotel_id == hotel_id, PricingModel.is_active)
+    )
+
+
+async def get_artifact(session: AsyncSession, model_id: int) -> bytes | None:
+    """The model's serialized artifact (megabytes), or None if it doesn't exist."""
+    return await session.scalar(
+        select(PricingModel.artifact).where(PricingModel.id == model_id)
     )
 
 
