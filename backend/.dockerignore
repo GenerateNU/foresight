@@ -22,6 +22,9 @@ htmlcov/
 .env.*
 !.env.example
 
+# Real client exports (gitignored); never bake them into the image
+hidden_data/
+
 # Docs and Docker plumbing don't belong inside the image
 *.md
 Dockerfile
