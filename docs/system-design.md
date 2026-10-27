@@ -476,7 +476,7 @@ which version serves.
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/flight-arrivals` | paginated; one row per source per day |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
-| GET | `/hotels/{id}/freshness` | last success per kind of data, the latest failure, and whether it's stale |
+| GET | `/hotels/{id}/freshness` | when each kind of data last succeeded (recommendations: last rate change), and the latest failure ([0039](decisions/0039-freshness-reports-dates-only.md)) |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |
 | GET | `/hotels/{id}/models` | paginated, newest version first |
 | GET | `/models/{id}` | one version, no artifact |

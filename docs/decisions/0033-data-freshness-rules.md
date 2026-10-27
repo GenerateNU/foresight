@@ -1,6 +1,6 @@
 # 0033. Freshness comes from jobs; the service decides what's stale
 
-**Status:** Accepted · **Date:** 2026-10-26
+**Status:** Superseded by [0039](0039-freshness-reports-dates-only.md) · **Date:** 2026-10-26
 
 ## Context
 A manager can't tell whether rates are fresh. If an events refresh or an
