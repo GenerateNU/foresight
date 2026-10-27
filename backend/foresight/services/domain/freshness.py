@@ -42,7 +42,7 @@ class HotelFreshness:
     weather: Freshness
     hotel_data: Freshness
     training: Freshness
-    recommendations: Freshness | None = None  # not stored until snapshots (B3)
+    recommendations: Freshness | None = None  # null until snapshots are stored
 
 
 async def get_freshness(session: AsyncSession, hotel_id: int) -> HotelFreshness:

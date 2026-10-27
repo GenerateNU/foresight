@@ -1,4 +1,4 @@
-# 0032. Freshness comes from jobs; the service decides what's stale
+# 0033. Freshness comes from jobs; the service decides what's stale
 
 **Status:** Accepted · **Date:** 2026-10-26
 
@@ -18,7 +18,7 @@ for how old each kind of data may get.
 - Stale: events and weather after 1 day, hotel data after 7, training after
   30. Never succeeding is stale. The rules are constants (`KINDS`) in
   `services/domain/freshness.py`.
-- `recommendations` is always null until snapshots are stored (MVP B3); then
+- `recommendations` is always null until recommendation snapshots are stored; then
   it gets a row in `KINDS`.
 
 
