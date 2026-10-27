@@ -95,7 +95,7 @@ backend/foresight/
     domain/                city, hotel, user, weather, weather_coverage, event, flight,
                            model_inputs, pricing_model, recommendation, freshness
     ingest/                weather, event, performance, window
-    adapters/              open_meteo, predicthq, asknews, aerodatabox, opensky, cso,
+    adapters/              open_meteo, predicthq, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates
     ml/                    base, ebm, features, weighting
   repository/
@@ -234,7 +234,7 @@ turns its source's quota responses into a named error:
 | PredictHQ | 402/403 → `OutOfCreditsError`; 429 → `RateLimitedError` |
 | AeroDataBox | 429 → `RateLimitedError`; paces requests 1.1s apart |
 | OpenSky | 429 → `CreditsExhaustedError`; refreshes its token on 401 |
-| Open-Meteo, AskNews, CSO | none; any failure raises |
+| Open-Meteo, CSO | none; any failure raises |
 
 ---
 
@@ -501,7 +501,6 @@ setting is listed in `.env.example`.
 |---|---|
 | `DATABASE_URL`, `DEBUG` | `database/session.py` (`DEBUG` echoes SQL) |
 | `PREDICTHQ_TOKEN` | events job |
-| `ASKNEWS_CLIENT_ID`, `_SECRET` | AskNews adapter (no job yet) |
 | `XRAPIDAPI_KEY` | AeroDataBox adapter (no job yet) |
 | `OPENSKY_CLIENT_ID`, `_SECRET` | OpenSky adapter (no job yet) |
 
@@ -516,7 +515,6 @@ requested.
 |---|---|
 | `adapters/aerodatabox.py`, `opensky.py` | work; no flights job yet, so `flight_arrivals` stays empty |
 | `adapters/cso.py` | monthly airport passengers; needs a monthly table before it can be stored |
-| `adapters/asknews.py` | news-extracted events; no job yet |
 | `competitor_rates` | table and upsert; no source |
 
 ---
@@ -531,8 +529,9 @@ requested.
 3. **Flights ingest.** Waiting on the CSO table and the choice in question 2.
 4. **Scheduling.** The routine refreshes (forecast, recent events) only run
    when called. Recommendations are stored as they're requested.
-5. **Tests.** The suite predates this design and hasn't been updated. Nothing
-   has been run against real PredictHQ, AskNews, AeroDataBox or OpenSky keys.
+5. **Tests.** The suite covers recommendations, events on a night, freshness
+   and users, but not ingest or training. Nothing has been run against real
+   PredictHQ, AeroDataBox or OpenSky keys.
 6. **Booking-level PMS data.** [0037](decisions/0037-three-guestline-reports.md)
    picks the Guestline reports to import, but the table, parsers and the
    rebuild of how full each night was before arrival aren't designed yet.

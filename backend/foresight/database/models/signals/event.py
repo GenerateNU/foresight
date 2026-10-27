@@ -24,7 +24,7 @@ class Event(Base):
     """One real-world event occurrence, merged across sources.
 
     Identified by `dedupe_key` (normalized title + city + local start date) so
-    the same festival seen by PredictHQ and by AskNews lands on one row.
+    the same festival listed twice lands on one row.
     """
 
     __tablename__ = "events"
@@ -90,12 +90,11 @@ class Event(Base):
 class EventObservation(Base):
     """One source's raw sighting of an event, kept verbatim.
 
-    Append-only and keyed on (source, source_ref) -- the PredictHQ event id or
-    the AskNews article URL. This is what makes re-runs idempotent and lets a
-    revised upstream record be recognised rather than duplicated.
+    Append-only and keyed on (source, source_ref) -- the PredictHQ event id.
+    This is what makes re-runs idempotent and lets a revised upstream record be
+    recognised rather than duplicated.
 
-    `event_id` is null when a sighting cannot be resolved to a dated event, e.g.
-    an article that announces a festival without saying when it is.
+    `event_id` is null when a sighting cannot be resolved to a dated event.
     """
 
     __tablename__ = "event_observations"

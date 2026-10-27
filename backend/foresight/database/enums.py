@@ -10,12 +10,11 @@ from enum import StrEnum
 
 class Source(StrEnum):
     PREDICTHQ = "predicthq"
-    ASKNEWS = "asknews"
 
 
 class EventStatus(StrEnum):
     ACTIVE = "active"
-    PROVISIONAL = "provisional"  # extracted from text, not yet corroborated
+    PROVISIONAL = "provisional"  # predicted upstream, not yet confirmed
     CANCELLED = "cancelled"
     DELETED = "deleted"  # withdrawn upstream
 
