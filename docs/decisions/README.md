@@ -53,9 +53,10 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0030](0030-schema-descriptions-and-examples.md) | Every field is described; examples are built from the fields | API |
 | [0031](0031-pms-reports-for-training.md) | ~~Guestline reports used for training~~ (superseded by 0037) | data |
 | [0032](0032-events-on-a-night-follow-the-model.md) | The events shown for a night follow the model's rule | API |
-| [0033](0033-data-freshness-rules.md) | Freshness comes from jobs; the service decides what's stale | API |
+| [0033](0033-data-freshness-rules.md) | ~~Freshness comes from jobs; the service decides what's stale~~ (superseded by 0039) | API |
 | [0034](0034-snapshot-only-when-changed.md) | ~~A snapshot is saved only when the model, rate or range changed~~ (superseded by 0038) | data model |
 | [0035](0035-users-keyed-on-google-id.md) | Users are identified by their Google account id | data model |
 | [0036](0036-operator-commands-in-cli.md) | Operator commands live in `cli.py` and commit once | architecture |
 | [0037](0037-three-guestline-reports.md) | Three Guestline reports, uploaded daily | data |
 | [0038](0038-recommendations-reused-while-inputs-hold.md) | A recommendation is stored when made, and reused while its inputs hold | data model |
+| [0039](0039-freshness-reports-dates-only.md) | Freshness reports dates only, recommendations included | API |

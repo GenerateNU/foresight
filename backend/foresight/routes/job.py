@@ -5,7 +5,7 @@ part-way, `resume_from` says where to pick up: send it to the same ingest
 endpoint as `start` again (or as `end` for a run walking backwards).
 
 `GET /hotels/{id}/freshness` reads the same jobs to say when each kind of data
-last refreshed and whether it's stale.
+last refreshed.
 """
 
 from datetime import date, datetime
@@ -65,10 +65,6 @@ class KindFreshnessResponse(ResponseSchema):
         "the latest attempt succeeded or it never ran"
     )
     error: str | None = Field(description="Why the latest attempt failed; null if not")
-    stale: bool = Field(
-        description="Never succeeded, or the last success is too old: 1 day for "
-        "events and weather, 7 for hotel data, 30 for training"
-    )
 
 
 class FreshnessResponse(ResponseSchema):
@@ -76,8 +72,10 @@ class FreshnessResponse(ResponseSchema):
     weather: KindFreshnessResponse = Field(description="Routine forecast refresh")
     hotel_data: KindFreshnessResponse = Field(description="Hotel data upload (CSV)")
     training: KindFreshnessResponse = Field(description="Pricing model training")
-    recommendations: KindFreshnessResponse | None = Field(
-        description="Recommendation snapshots; always null until they're stored"
+    recommendations: KindFreshnessResponse = Field(
+        description="When a recommended rate last changed (its newest snapshot). "
+        "A rate whose inputs hold isn't stored again, so this can be older than "
+        "the last request; `last_failure` is always null"
     )
 
 
@@ -109,6 +107,7 @@ async def list_jobs(
 
 @router.get("/hotels/{hotel_id}/freshness", response_model=FreshnessResponse)
 async def get_freshness(hotel_id: HotelId, session: SessionDep) -> FreshnessResponse:
-    """When each kind of data last refreshed, and whether it's stale."""
+    """When each kind of data last refreshed, and whether the latest attempt
+    failed. Events and weather count routine refreshes only, not backfills."""
     result = await freshness_service.get_freshness(session, hotel_id)
     return FreshnessResponse.model_validate(result)

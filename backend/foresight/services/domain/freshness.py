@@ -1,28 +1,31 @@
-"""When each kind of data last refreshed for a hotel, and whether it's stale.
+"""When each kind of data last refreshed for a hotel (decision 0039).
 
-Read from `jobs`; nothing is stored. Only routine refreshes count for events
-and weather: a backfill of last year doesn't make upcoming rates fresh.
+Read from `jobs` and `recommendation_snapshots`; nothing is stored. Only
+routine refreshes count for events and weather: a backfill of last year doesn't
+make upcoming rates fresh. Whether a date is too old is for the reader to judge.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
+from foresight.repository import recommendation as snapshot_repo
 from foresight.services.domain.hotel import get_hotel
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
-# name: (job kind, params a run must have, how old it may get)
+# name: (job kind, params a run must have)
 KINDS = {
-    "events": (JobKind.EVENTS, {"mode": "recent"}, timedelta(days=1)),
-    "weather": (JobKind.WEATHER, {"mode": "forecast"}, timedelta(days=1)),
-    "hotel_data": (JobKind.PERFORMANCE, {}, timedelta(days=7)),
-    "training": (JobKind.TRAIN, {}, timedelta(days=30)),
+    "events": (JobKind.EVENTS, {"mode": "recent"}),
+    "weather": (JobKind.WEATHER, {"mode": "forecast"}),
+    "hotel_data": (JobKind.PERFORMANCE, {}),
+    "training": (JobKind.TRAIN, {}),
 }
 
 
@@ -31,26 +34,26 @@ class Freshness:
     last_success: datetime | None  # None if it never succeeded
     last_failure: datetime | None  # set only if the latest attempt failed
     error: str | None  # why the latest attempt failed
-    stale: bool
 
 
 @dataclass(frozen=True, slots=True)
 class HotelFreshness:
-    """One hotel: every kind of data, keyed as in `KINDS`."""
+    """One hotel: every kind of data in `KINDS`, plus its recommendations."""
 
     events: Freshness
     weather: Freshness
     hotel_data: Freshness
     training: Freshness
-    recommendations: Freshness | None = None  # null until snapshots are stored
+    # When a rate last changed. Recommendations aren't a job, so this never
+    # has a failure: a request that fails stores nothing.
+    recommendations: Freshness
 
 
 async def get_freshness(session: AsyncSession, hotel_id: int) -> HotelFreshness:
     """Raises NotFoundError for an unknown hotel."""
     await get_hotel(session, hotel_id)
-    now = datetime.now(UTC)
     result: dict[str, Freshness] = {}
-    for name, (kind, params, max_age) in KINDS.items():
+    for name, (kind, params) in KINDS.items():
         latest = await job_repo.latest_finished_job(
             session, hotel_id=hotel_id, kind=kind, params=params
         )
@@ -68,6 +71,11 @@ async def get_freshness(session: AsyncSession, hotel_id: int) -> HotelFreshness:
             last_success=success.finished_at if success else None,
             last_failure=latest.finished_at if failed else None,
             error=latest.error if failed else None,
-            stale=success is None or now - success.finished_at > max_age,
         )
-    return HotelFreshness(**result)
+    snapshot_at = await snapshot_repo.latest_snapshot_at(session, hotel_id)
+    return HotelFreshness(
+        **result,
+        recommendations=Freshness(
+            last_success=snapshot_at, last_failure=None, error=None
+        ),
+    )

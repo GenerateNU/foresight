@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from foresight.database.models.recommendation import RecommendationSnapshot
 
 if TYPE_CHECKING:
-    from datetime import date
+    from datetime import date, datetime
     from decimal import Decimal
 
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,3 +73,12 @@ async def latest_snapshots(
         )
     )
     return {s.stay_date: s for s in await session.scalars(stmt)}
+
+
+async def latest_snapshot_at(session: AsyncSession, hotel_id: int) -> datetime | None:
+    """When the hotel's newest snapshot was saved, or None if it has none."""
+    return await session.scalar(
+        select(func.max(RecommendationSnapshot.created_at)).where(
+            RecommendationSnapshot.hotel_id == hotel_id
+        )
+    )
