@@ -1,25 +1,44 @@
 """Nightly rate recommendations from the hotel's active pricing model.
 
 Reads only what's already ingested; it never fetches. If data is missing for
-the night, the model gets an empty value (it learned an effect for that)
-rather than this call pulling the data in.
+a night, the model gets an empty value (it learned an effect for that) rather
+than this call pulling the data in.
 
-Returns domain dataclasses; the route maps them to `RecommendationResponse`.
+Every night priced from today on is saved as a snapshot, and reused while its
+inputs don't change (decision 0038):
+
+1. Load each night's inputs: the model's input row, the events on the night
+   and where its weather came from. Database reads only.
+2. Fingerprint them with the active model's id.
+3. A night whose fingerprint matches its latest snapshot returns that snapshot;
+   the model doesn't run. The rest are scored together, in one batch, and each
+   is saved as a new snapshot.
+
+Past nights are never saved after the fact: one with a snapshot returns its
+latest, as it was; one without is priced and returned unsaved.
+
+Returns domain dataclasses; the route maps them to its response schemas.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+import hashlib
+import json
+import math
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, cast
-from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from foresight.database.enums import EventCategory
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
+from foresight.services.domain import event as event_service
+from foresight.services.domain.city import local_today
+from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
     NO_EVENTS,
@@ -35,11 +54,14 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.models.city import City
+    from foresight.database.models.hotel import Hotel, RoomType
+    from foresight.database.models.pricing_model import PricingModel
     from foresight.database.models.recommendation import RecommendationSnapshot
 
 
 CURRENCY = "EUR"  # decision 0002
+# One request scores its changed nights in one batch; this bounds the batch.
+MAX_NIGHTS = 90
 # Terms worth naming in the explanation; smaller ones are summed as "other".
 _MIN_FACTOR_EUR = 1.0
 _DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -73,6 +95,8 @@ class ConfidenceInterval:
 
 @dataclass(frozen=True, slots=True)
 class Recommendation:
+    """One night's rate, why, and what it was priced from."""
+
     hotel_id: int
     stay_date: date
     room_type: str
@@ -84,35 +108,62 @@ class Recommendation:
     uncertainty: Decimal  # sub-model disagreement; high = review (decision 0006)
     model_id: int
     model_version: str
-    is_placeholder: bool  # kept for clients written against the placeholder
+    events: list[NightEvent]  # the events on the night, largest first
+    weather_source: str | None  # "recorded", "forecast", "typical week …"
+    snapshot_id: int | None  # None for a past night priced but not saved
+    priced_at: datetime  # when the model produced this rate
 
 
-async def get_recommendation(
+@dataclass(frozen=True, slots=True)
+class _Night:
+    """A night's inputs, before any model runs."""
+
+    stay_date: date
+    features: pd.DataFrame  # the model's input, one row
+    events: list[NightEvent]
+    weather_source: str
+    inputs: dict[str, Any]  # what's stored with the snapshot
+    inputs_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Scored:
+    """What the model said about one night."""
+
+    rate: Decimal
+    interval: ConfidenceInterval
+    uncertainty: Decimal
+    explanation: Explanation
+
+
+async def get_recommendations(
     session: AsyncSession,
     hotel_id: int,
-    stay_date: date,
     *,
+    start: date,
+    end: date,
     room_type_id: int | None = None,
-) -> Recommendation:
-    """The recommended rate for one night of one room type.
+) -> list[Recommendation]:
+    """The recommended rate for each night in [start, end], oldest first.
+
+    Reuses a night's latest snapshot while its inputs are unchanged; otherwise
+    prices it and, from today on, saves a new snapshot.
 
     Raises:
         NotFoundError: Unknown hotel or room type, or no active model.
-        InvalidRequestError: The room type belongs to another hotel or the
-            model wasn't trained on it.
+        InvalidRequestError: `end` before `start`, more than `MAX_NIGHTS`
+            nights, or the model wasn't trained on the room type.
     """
+    if end < start:
+        raise InvalidRequestError("end must not be before start")
+    if (end - start).days + 1 > MAX_NIGHTS:
+        raise InvalidRequestError(f"at most {MAX_NIGHTS} nights at a time")
+
     hotel = await get_hotel(session, hotel_id)
     stored = await model_repo.get_active_pricing_model(session, hotel.id)
     if stored is None:
         raise NotFoundError("Active pricing model for hotel", hotel.id)
-
-    room_types = await hotel_repo.list_room_types(session, hotel.id)
-    if room_type_id is None:
-        room_type = room_types[0] if room_types else None
-    else:
-        room_type = next((r for r in room_types if r.id == room_type_id), None)
-    if room_type is None:
-        raise NotFoundError("Room type", room_type_id or "for hotel")
+    room_type = await _room_type(session, hotel, room_type_id)
     trained_on = stored.training_summary.get("room_types", [])
     if trained_on and room_type.name not in trained_on:
         raise InvalidRequestError(
@@ -120,92 +171,41 @@ async def get_recommendation(
             f"{room_type.name!r}; train a new version"
         )
 
-    model = EBMModel.from_bytes(stored.artifact)
-    weather = await weather_for(session, hotel.city, [stay_date], fallback=True)
-    nights = pd.DataFrame({"stay_date": [stay_date], "room_type": [room_type.name]})
-    x = build_features(nights, NO_EVENTS, weather.frame, NO_FLIGHTS)
-    # A single row can't infer the trained category set; give it the model's.
-    x["room_type"] = pd.Categorical(x["room_type"], categories=trained_on or None)
-
-    pred, lower, upper = (float(v[0]) for v in model.predict_interval(x))
-    contributions = model.explain(x).iloc[0]
-    row = x.iloc[0]
-
-    return Recommendation(
-        hotel_id=hotel.id,
-        stay_date=stay_date,
-        room_type=room_type.name,
-        room_type_id=room_type.id,
-        recommended_rate=_money(pred),
-        currency=CURRENCY,
-        explanation=_explanation(model.intercept, contributions, row, pred),
-        confidence_interval=ConfidenceInterval(
-            _money(max(lower, 0.0)), _money(upper), round(1 - model.alpha, 2)
-        ),
-        uncertainty=_money(float(model.predict_uncertainty(x)[0])),
-        model_id=stored.id,
-        model_version=f"{stored.algorithm}-v{stored.version}",
-        is_placeholder=False,
+    nights = await _load_nights(session, hotel, room_type, stored, start, end)
+    latest = await snapshot_repo.latest_snapshots(
+        session, room_type.id, start=start, end=end
     )
+    today = local_today(hotel.city)
+
+    # A past night keeps the snapshot it has, whatever changed since.
+    to_score = [
+        n
+        for n in nights
+        if (snap := latest.get(n.stay_date)) is None
+        or (n.stay_date >= today and snap.inputs_hash != n.inputs_hash)
+    ]
+    scored = await _score(session, stored, to_score, trained_on)
+
+    out = []
+    for night in nights:
+        result = scored.get(night.stay_date)
+        if result is None:
+            out.append(_from_snapshot(latest[night.stay_date], hotel, room_type))
+        elif night.stay_date >= today:
+            snap = await _save(session, hotel, room_type, stored, night, result)
+            out.append(_from_snapshot(snap, hotel, room_type))
+        else:
+            out.append(_unsaved(hotel, room_type, stored, night, result))
+    return out
 
 
-async def snapshot_recommendations(
-    session: AsyncSession,
-    hotel_id: int,
-    *,
-    days: int = 30,
-    room_type_id: int | None = None,
-) -> list[RecommendationSnapshot]:
-    """Recommend each night from today for `days` nights and save the ones
-    that changed since their latest snapshot. Every room type the active model
-    was trained on unless one is given; the others are skipped, so one new room
-    type doesn't stop the rest being saved. Returns the snapshots saved.
-
-    Raises:
-        NotFoundError: Unknown hotel or room type, or no active model.
-        InvalidRequestError: The given room type wasn't trained on.
-    """
-    hotel = await get_hotel(session, hotel_id)
-    if room_type_id is None:
-        stored = await model_repo.get_active_pricing_model(session, hotel.id)
-        if stored is None:
-            raise NotFoundError("Active pricing model for hotel", hotel.id)
-        trained_on = stored.training_summary.get("room_types", [])
-        room_type_ids = [
-            r.id
-            for r in await hotel_repo.list_room_types(session, hotel.id)
-            if not trained_on or r.name in trained_on
-        ]
-    else:
-        room_type_ids = [room_type_id]
-
-    today = _today(hotel.city)
-    saved: list[RecommendationSnapshot] = []
-    for rt_id in room_type_ids:
-        for offset in range(days):
-            night = today + timedelta(days=offset)
-            rec = await get_recommendation(session, hotel.id, night, room_type_id=rt_id)
-            latest = await snapshot_repo.get_latest_snapshot(
-                session, rt_id, stay_date=night
-            )
-            if _changed(latest, rec):
-                saved.append(await _save(session, rec))
-    return saved
+# --- inputs -----------------------------------------------------------------
 
 
-async def get_snapshot(
-    session: AsyncSession,
-    hotel_id: int,
-    stay_date: date,
-    *,
-    room_type_id: int | None = None,
-) -> tuple[RecommendationSnapshot, RecommendationSnapshot | None]:
-    """The latest and previous snapshot for one night of one room type.
-
-    A future night with no snapshot gets one now. A past night is never
-    created after the fact, so it raises NotFoundError instead.
-    """
-    hotel = await get_hotel(session, hotel_id)
+async def _room_type(
+    session: AsyncSession, hotel: Hotel, room_type_id: int | None
+) -> RoomType:
+    """The given room type, or the hotel's first. NotFoundError if neither."""
     room_types = await hotel_repo.list_room_types(session, hotel.id)
     if room_type_id is None:
         room_type = room_types[0] if room_types else None
@@ -213,21 +213,115 @@ async def get_snapshot(
         room_type = next((r for r in room_types if r.id == room_type_id), None)
     if room_type is None:
         raise NotFoundError("Room type", room_type_id or "for hotel")
+    return room_type
 
-    latest = await snapshot_repo.get_latest_snapshot(
-        session, room_type.id, stay_date=stay_date
+
+async def _load_nights(
+    session: AsyncSession,
+    hotel: Hotel,
+    room_type: RoomType,
+    stored: PricingModel,
+    start: date,
+    end: date,
+) -> list[_Night]:
+    """Every night's inputs and their fingerprint, from the database only."""
+    days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    events = await event_service.events_by_night(
+        session, hotel.city_id, start=start, end=end
     )
-    if latest is None:
-        if stay_date < _today(hotel.city):
-            raise NotFoundError("Snapshot for night", stay_date)
-        rec = await get_recommendation(
-            session, hotel.id, stay_date, room_type_id=room_type.id
+    weather = await weather_for(session, hotel.city, days, fallback=True)
+    frame = pd.DataFrame({"stay_date": days, "room_type": room_type.name})
+    x = build_features(frame, NO_EVENTS, weather.frame, NO_FLIGHTS)
+
+    nights = []
+    for i, day in enumerate(days):
+        features = x.iloc[[i]]  # a one-row frame keeps each column's dtype
+        inputs = {
+            "features": {k: _plain(v) for k, v in features.iloc[0].items()},
+            "events": [_event_json(e) for e in events[day]],
+            "weather_source": weather.sources[day],
+        }
+        nights.append(
+            _Night(
+                stay_date=day,
+                features=features,
+                events=events[day],
+                weather_source=weather.sources[day],
+                inputs=inputs,
+                inputs_hash=_fingerprint(stored.id, inputs),
+            )
         )
-        latest = await _save(session, rec)
-    previous = await snapshot_repo.get_previous_snapshot(
-        session, room_type.id, stay_date=stay_date
+    return nights
+
+
+def _fingerprint(model_id: int, inputs: dict[str, Any]) -> str:
+    """SHA-256 of the model and everything it reads or shows for the night."""
+    payload = json.dumps(
+        {"model_id": model_id, "inputs": inputs},
+        sort_keys=True,
+        separators=(",", ":"),
     )
-    return latest, previous
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _plain(value: Any) -> Any:
+    """A feature value as plain JSON: numpy scalars unwrapped, NaN as None."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return None
+    if hasattr(value, "item"):  # numpy scalar
+        return _plain(value.item())
+    if isinstance(value, bool | int | float):
+        return value
+    return None if pd.isna(value) else str(value)
+
+
+def _event_json(event: NightEvent) -> dict[str, Any]:
+    return {**asdict(event), "category": event.category.value}
+
+
+def _event_from_json(data: dict[str, Any]) -> NightEvent:
+    return NightEvent(**{**data, "category": EventCategory(data["category"])})
+
+
+# --- scoring ----------------------------------------------------------------
+
+
+async def _score(
+    session: AsyncSession,
+    stored: PricingModel,
+    nights: list[_Night],
+    trained_on: list[str],
+) -> dict[date, _Scored]:
+    """Run the model once over every night given. Loads the model only if
+    there is something to score."""
+    if not nights:
+        return {}
+    artifact = await model_repo.get_artifact(session, stored.id)
+    if artifact is None:
+        raise NotFoundError("Pricing model", stored.id)
+    model = EBMModel.from_bytes(artifact)
+
+    x = pd.concat([n.features for n in nights], ignore_index=True)
+    # A partial batch can't infer the trained category set; give it the model's.
+    x["room_type"] = pd.Categorical(x["room_type"], categories=trained_on or None)
+    pred, lower, upper = model.predict_interval(x)
+    uncertainty = model.predict_uncertainty(x)
+    contributions = model.explain(x)
+    level = round(1 - model.alpha, 2)
+
+    return {
+        night.stay_date: _Scored(
+            rate=_money(float(pred[i])),
+            interval=ConfidenceInterval(
+                _money(max(float(lower[i]), 0.0)), _money(float(upper[i])), level
+            ),
+            uncertainty=_money(float(uncertainty[i])),
+            explanation=_explanation(
+                model.intercept, contributions.iloc[i], x.iloc[i], float(pred[i])
+            ),
+        )
+        for i, night in enumerate(nights)
+    }
 
 
 def _explanation(
@@ -294,19 +388,94 @@ def _money(value: float) -> Decimal:
     return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _changed(latest: RecommendationSnapshot | None, rec: Recommendation) -> bool:
-    """Whether the answer changed since the latest snapshot (decision 0032)."""
-    if latest is None:
-        return True
-    return (
-        latest.rate != rec.recommended_rate
-        or latest.model_id != rec.model_id
-        or latest.interval_low != rec.confidence_interval.lower
-        or latest.interval_high != rec.confidence_interval.upper
+# --- snapshots --------------------------------------------------------------
+
+
+async def _save(
+    session: AsyncSession,
+    hotel: Hotel,
+    room_type: RoomType,
+    stored: PricingModel,
+    night: _Night,
+    scored: _Scored,
+) -> RecommendationSnapshot:
+    """Store a freshly priced night as a new snapshot."""
+    return await snapshot_repo.create_recommendation_snapshot(
+        session,
+        hotel_id=hotel.id,
+        room_type_id=room_type.id,
+        stay_date=night.stay_date,
+        model_id=stored.id,
+        model_version=_version(stored),
+        rate=scored.rate,
+        interval_low=scored.interval.lower,
+        interval_high=scored.interval.upper,
+        interval_level=scored.interval.level,
+        uncertainty=scored.uncertainty,
+        factors=_explanation_json(scored.explanation),
+        inputs=night.inputs,
+        inputs_hash=night.inputs_hash,
     )
 
 
-def _factors(explanation: Explanation) -> dict[str, Any]:
+def _from_snapshot(
+    snap: RecommendationSnapshot, hotel: Hotel, room_type: RoomType
+) -> Recommendation:
+    """A stored snapshot, read back as a recommendation."""
+    inputs = snap.inputs or {}  # empty on snapshots from before decision 0038
+    return Recommendation(
+        hotel_id=hotel.id,
+        stay_date=snap.stay_date,
+        room_type=room_type.name,
+        room_type_id=room_type.id,
+        recommended_rate=snap.rate,
+        currency=CURRENCY,
+        explanation=_explanation_from_json(snap.factors),
+        confidence_interval=ConfidenceInterval(
+            snap.interval_low, snap.interval_high, snap.interval_level
+        ),
+        uncertainty=snap.uncertainty,
+        model_id=snap.model_id,
+        model_version=snap.model_version,
+        events=[_event_from_json(e) for e in inputs.get("events", [])],
+        weather_source=inputs.get("weather_source"),
+        snapshot_id=snap.id,
+        priced_at=snap.created_at,
+    )
+
+
+def _unsaved(
+    hotel: Hotel,
+    room_type: RoomType,
+    stored: PricingModel,
+    night: _Night,
+    scored: _Scored,
+) -> Recommendation:
+    """A past night priced now; returned but never stored."""
+    return Recommendation(
+        hotel_id=hotel.id,
+        stay_date=night.stay_date,
+        room_type=room_type.name,
+        room_type_id=room_type.id,
+        recommended_rate=scored.rate,
+        currency=CURRENCY,
+        explanation=scored.explanation,
+        confidence_interval=scored.interval,
+        uncertainty=scored.uncertainty,
+        model_id=stored.id,
+        model_version=_version(stored),
+        events=night.events,
+        weather_source=night.weather_source,
+        snapshot_id=None,
+        priced_at=datetime.now(UTC),
+    )
+
+
+def _version(stored: PricingModel) -> str:
+    return f"{stored.algorithm}-v{stored.version}"
+
+
+def _explanation_json(explanation: Explanation) -> dict[str, Any]:
     """The explanation as JSON: amounts as strings so cents stay exact."""
     return {
         "summary": explanation.summary,
@@ -317,23 +486,9 @@ def _factors(explanation: Explanation) -> dict[str, Any]:
     }
 
 
-async def _save(session: AsyncSession, rec: Recommendation) -> RecommendationSnapshot:
-    """Save the robot's answer as a new snapshot."""
-    return await snapshot_repo.create_recommendation_snapshot(
-        session,
-        hotel_id=rec.hotel_id,
-        room_type_id=rec.room_type_id,
-        stay_date=rec.stay_date,
-        model_id=rec.model_id,
-        model_version=rec.model_version,
-        rate=rec.recommended_rate,
-        interval_low=rec.confidence_interval.lower,
-        interval_high=rec.confidence_interval.upper,
-        uncertainty=rec.uncertainty,
-        factors=_factors(rec.explanation),
+def _explanation_from_json(data: dict[str, Any]) -> Explanation:
+    return Explanation(
+        summary=data["summary"],
+        baseline=Decimal(data["baseline"]),
+        factors=[Factor(f["detail"], Decimal(f["amount"])) for f in data["factors"]],
     )
-
-
-def _today(city: City) -> date:
-    """Today where the city is: stay nights are local."""
-    return datetime.now(ZoneInfo(city.timezone)).date()

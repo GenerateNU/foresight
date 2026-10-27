@@ -1,6 +1,6 @@
 # 0034. A snapshot is saved only when the model, rate or range changed
 
-**Status:** Accepted · **Date:** 2026-10-26
+**Status:** Superseded by [0038](0038-recommendations-reused-while-inputs-hold.md) · **Date:** 2026-10-26
 
 ## Context
 Recommendations are saved as snapshots, one row per room type and night, so

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from sqlalchemy import Row
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.enums import EventStatus, Source
+    from foresight.database.enums import EventCategory, EventStatus, Source
 
 _EVENTS = Event.__table__
 _OBSERVATIONS = EventObservation.__table__
@@ -211,15 +211,23 @@ async def list_events(
 
 
 async def list_events_overlapping(
-    session: AsyncSession, *, city_id: int, start: date, end: date
+    session: AsyncSession,
+    *,
+    city_id: int,
+    start: date,
+    end: date,
+    exclude_statuses: Collection[EventStatus],
+    categories: Collection[EventCategory],
 ) -> Sequence[Event]:
-    """Every event, whatever its status, whose inclusive local-date range
-    overlaps [start, end]."""
+    """Events in `categories`, not in `exclude_statuses`, whose inclusive
+    local-date range overlaps [start, end]."""
     result = await session.scalars(
         select(Event).where(
             Event.city_id == city_id,
             Event.end_local_date >= start,
             Event.start_local_date <= end,
+            Event.status.not_in(exclude_statuses),
+            Event.category.in_(categories),
         )
     )
     return result.all()

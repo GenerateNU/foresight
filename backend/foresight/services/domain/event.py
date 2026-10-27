@@ -116,25 +116,28 @@ async def list_events(
 
 
 async def events_by_night(
-    session: AsyncSession, hotel_id: int, *, start: date, end: date
+    session: AsyncSession, city_id: int, *, start: date, end: date
 ) -> dict[date, list[NightEvent]]:
     """The events affecting each night in [start, end], both inclusive.
 
-    Uses the model's rule: live events in the hotel's city, of a category the
-    model counts, on every night from their start to their end date. Every
-    night in the range is a key, with an empty list when nothing affects it.
-    Each night's events are largest first: expected attendance, then local
-    rank; unknown values last.
+    Uses the model's rule (decision 0032): live events in the city, of a
+    category the model counts, on every night from their start to their end
+    date. Every night in the range is a key, with an empty list when nothing
+    affects it. Each night's events are largest first: expected attendance,
+    then local rank; unknown values last.
 
     Raises:
-        NotFoundError: Unknown hotel.
         InvalidRequestError: `end` is before `start`.
     """
     if end < start:
         raise InvalidRequestError("end must not be before start")
-    hotel = await get_hotel(session, hotel_id)
     events = await event_repo.list_events_overlapping(
-        session, city_id=hotel.city_id, start=start, end=end
+        session,
+        city_id=city_id,
+        start=start,
+        end=end,
+        exclude_statuses=_WITHDRAWN,
+        categories=_COUNTED,
     )
     return _by_night(events, start, end)
 
@@ -147,8 +150,6 @@ def _by_night(
     }
     # Largest first, so each night's list comes out in that order.
     for event in sorted(events, key=_importance):
-        if event.status in _WITHDRAWN or event.category not in _COUNTED:
-            continue
         day_count = (event.end_local_date - event.start_local_date).days + 1
         first = max(event.start_local_date, start)
         last = min(event.end_local_date, end)

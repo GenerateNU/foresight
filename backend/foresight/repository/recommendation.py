@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from datetime import date
     from decimal import Decimal
 
-    from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -27,14 +26,13 @@ async def create_recommendation_snapshot(
     rate: Decimal,
     interval_low: Decimal,
     interval_high: Decimal,
+    interval_level: float,
     uncertainty: Decimal,
     factors: dict[str, Any],
+    inputs: dict[str, Any],
+    inputs_hash: str,
 ) -> RecommendationSnapshot:
-    """Save a new recommendation snapshot for a hotel.
-
-    This captures the recommended rates and associated metadata at a specific
-    point in time.
-    """
+    """Add a snapshot: one night's rate, as priced now. Never updates a row."""
     snapshot = RecommendationSnapshot(
         hotel_id=hotel_id,
         room_type_id=room_type_id,
@@ -44,8 +42,11 @@ async def create_recommendation_snapshot(
         rate=rate,
         interval_low=interval_low,
         interval_high=interval_high,
+        interval_level=interval_level,
         uncertainty=uncertainty,
         factors=factors,
+        inputs=inputs,
+        inputs_hash=inputs_hash,
     )
     session.add(snapshot)
     await session.flush()
@@ -53,34 +54,22 @@ async def create_recommendation_snapshot(
     return snapshot
 
 
-async def get_latest_snapshot(
-    session: AsyncSession, room_type_id: int, *, stay_date: date
-) -> RecommendationSnapshot | None:
-    """The newest snapshot for this room type and night, or None if there isn't one."""
-    return await session.scalar(_night_history(room_type_id, stay_date).limit(1))
-
-
-async def get_previous_snapshot(
-    session: AsyncSession, room_type_id: int, *, stay_date: date
-) -> RecommendationSnapshot | None:
-    """The snapshot before the newest one for this room type and night, or None."""
-    return await session.scalar(
-        _night_history(room_type_id, stay_date).offset(1).limit(1)
-    )
-
-
-def _night_history(
-    room_type_id: int, stay_date: date
-) -> Select[tuple[RecommendationSnapshot]]:
-    """One night's snapshots, newest first. The id breaks ties: rows saved in
-    one transaction share the same `created_at`."""
-    return (
+async def latest_snapshots(
+    session: AsyncSession, room_type_id: int, *, start: date, end: date
+) -> dict[date, RecommendationSnapshot]:
+    """The newest snapshot for each night in [start, end] that has one."""
+    stmt = (
         select(RecommendationSnapshot)
+        .distinct(RecommendationSnapshot.stay_date)
         .where(
             RecommendationSnapshot.room_type_id == room_type_id,
-            RecommendationSnapshot.stay_date == stay_date,
+            RecommendationSnapshot.stay_date.between(start, end),
         )
+        # The id breaks ties: rows saved in one transaction share `created_at`.
         .order_by(
-            RecommendationSnapshot.created_at.desc(), RecommendationSnapshot.id.desc()
+            RecommendationSnapshot.stay_date,
+            RecommendationSnapshot.created_at.desc(),
+            RecommendationSnapshot.id.desc(),
         )
     )
+    return {s.stay_date: s for s in await session.scalars(stmt)}

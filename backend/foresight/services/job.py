@@ -19,7 +19,6 @@ from datetime import UTC, datetime, timedelta
 from datetime import date as date_cls
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
@@ -27,6 +26,7 @@ from foresight.repository import job as job_repo
 from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
+from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.errors import (
     ConflictError,
@@ -44,7 +44,6 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.models.city import City
     from foresight.database.models.hotel import Hotel
     from foresight.database.models.job import Job
     from foresight.repository.upsert import Outcome
@@ -86,7 +85,7 @@ async def start_weather_job(
     hotel = await get_hotel(session, hotel_id)
     params: dict[str, Any] = {"mode": "forecast"}
     if start is not None or end is not None:
-        today = _today(hotel.city)
+        today = local_today(hotel.city)
         window = await resolve_window(session, hotel.id, start, end, today=today)
         if window.start > _forecast_end(today):
             raise InvalidWindowError(
@@ -119,7 +118,7 @@ async def start_events_job(
         params = {"mode": "recent", "updated_since": since.isoformat()}
     else:
         window = await resolve_window(
-            session, hotel.id, start, end, today=_today(hotel.city)
+            session, hotel.id, start, end, today=local_today(hotel.city)
         )
         params = {"mode": "window", **window.as_params()}
     return await _queue(session, hotel, JobKind.EVENTS, params)
@@ -285,7 +284,7 @@ async def _weather(
         return
 
     window = Window.from_params(params)
-    today = _today(city)
+    today = local_today(city)
     past = window.clip(window.start, today - timedelta(days=1))
     future = window.clip(today, _forecast_end(today))
     pieces = [
@@ -441,11 +440,6 @@ def _date_or_none(value: str | None) -> date | None:
 
 def _forecast_end(today: date) -> date:
     return today + timedelta(days=FORECAST_DAYS - 1)
-
-
-def _today(city: City) -> date:
-    """Today where the city is: stay nights are local."""
-    return datetime.now(ZoneInfo(city.timezone)).date()
 
 
 def _counts(outcomes: Mapping[Outcome, int]) -> dict[str, int]:

@@ -1,5 +1,4 @@
-"""Hotels, their room types, nightly performance, the events on each night, and
-recommendations."""
+"""Hotels, their room types, nightly performance, and recommendations."""
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -19,8 +18,8 @@ from foresight.routes.helpers import (
     paginate,
 )
 from foresight.services.domain import hotel as hotel_service
-from foresight.services.domain import night as night_service
 from foresight.services.domain import recommendation as recommendation_service
+from foresight.services.errors import InvalidRequestError
 
 router = APIRouter(tags=["Hotels"])
 
@@ -180,64 +179,6 @@ class ConfidenceIntervalResponse(ResponseSchema):
     )
 
 
-class RecommendationResponse(ResponseSchema):
-    hotel_id: int = Field(description="The hotel priced")
-    stay_date: date = Field(description="The night priced, local to the city")
-    room_type: str = Field(description="The room type priced")
-    recommended_rate: Decimal = Field(description="The rate to list, in `currency`")
-    currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
-    explanation: ExplanationResponse = Field(description="Why the rate is what it is")
-    confidence_interval: ConfidenceIntervalResponse = Field(
-        description="The range the rate is likely to fall in"
-    )
-    uncertainty: Decimal = Field(
-        description="How much the model's sub-models disagree, in EUR. High "
-        "means an unusual night: review the rate"
-    )
-    model_id: int = Field(description="The model version that priced it")
-    model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])
-    is_placeholder: bool = Field(description="Always false; kept for older clients")
-
-
-class SnapshotResponse(ResponseSchema):
-    """One saved recommendation: what the model said for a night, and when."""
-
-    id: int = Field(description="The snapshot's id")
-    room_type_id: int = Field(description="The room type priced")
-    stay_date: date = Field(description="The night priced, local to the city")
-    rate: Decimal = Field(description="The recommended rate, in EUR")
-    interval_low: Decimal = Field(description="Low end of the 80% range, in EUR")
-    interval_high: Decimal = Field(description="High end of the 80% range, in EUR")
-    uncertainty: Decimal = Field(
-        description="How much the model's sub-models disagree, in EUR. High "
-        "means an unusual night: review the rate"
-    )
-    model_id: int = Field(description="The model version that priced it")
-    model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])
-    factors: dict[str, Any] = Field(
-        description="Summary, baseline and each factor's pull on the rate; "
-        "amounts in EUR, as strings"
-    )
-    created_at: datetime = Field(description="When the model produced this rate")
-
-
-class NightSnapshotResponse(ResponseSchema):
-    """A night's latest recommendation and how it moved since the one before."""
-
-    latest: SnapshotResponse = Field(description="The newest snapshot for the night")
-    previous: SnapshotResponse | None = Field(
-        description="The snapshot before it; null if the night has only one"
-    )
-
-    @computed_field
-    @property
-    def change(self) -> Decimal | None:
-        """Latest rate minus previous rate, in EUR; null without a previous one."""
-        if self.previous is None:
-            return None
-        return self.latest.rate - self.previous.rate
-
-
 class NightEventResponse(ResponseSchema):
     """An event as it falls on one night."""
 
@@ -259,27 +200,51 @@ class NightEventResponse(ResponseSchema):
     )
 
 
-class NightResponse(ResponseSchema):
-    hotel_id: int = Field(description="The hotel")
-    stay_date: date = Field(description="The night, local to the city")
-    events: list[NightEventResponse] = Field(
-        description="Events affecting the night, largest first: expected "
-        "attendance, then local rank, unknown values last. Withdrawn events "
-        "are left out"
-    )
-
-
-class NightRateResponse(ResponseSchema):
+class RecommendationResponse(ResponseSchema):
+    hotel_id: int = Field(description="The hotel priced")
     stay_date: date = Field(description="The night priced, local to the city")
+    room_type: str = Field(description="The room type priced")
+    room_type_id: int = Field(description="The room type's id")
     recommended_rate: Decimal = Field(description="The rate to list, in `currency`")
     currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
-    event_names: list[str] = Field(
-        description="Names of the events affecting the night, largest first"
+    explanation: ExplanationResponse = Field(description="Why the rate is what it is")
+    confidence_interval: ConfidenceIntervalResponse = Field(
+        description="The range the rate is likely to fall in"
+    )
+    uncertainty: Decimal = Field(
+        description="How much the model's sub-models disagree, in EUR. High "
+        "means an unusual night: review the rate"
+    )
+    model_id: int = Field(description="The model version that priced it")
+    model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])
+    events: list[NightEventResponse] = Field(
+        description="Events on the night that the model counts, largest first: "
+        "expected attendance, then local rank. Withdrawn events are left out"
+    )
+    weather_source: str | None = Field(
+        description="Where the night's weather came from: recorded, forecast, "
+        "a typical week, or missing; null on snapshots older than this field",
+        examples=["forecast"],
+    )
+    snapshot_id: int | None = Field(
+        description="The snapshot this rate is stored as; null for a past night "
+        "priced now, since past nights aren't saved after the fact"
+    )
+    priced_at: datetime = Field(
+        description="When the model produced this rate, UTC. Older than the "
+        "request when the night's inputs haven't changed since"
     )
 
 
 HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
 RoomTypeId = Annotated[int, Path(description="The room type's id", examples=[1])]
+RecommendRoomType = Annotated[
+    int | None,
+    Query(
+        description="The room type to price; omit for the hotel's first",
+        examples=[1],
+    ),
+]
 
 
 #          ╭──────────────────────────────────────────────────────────╮
@@ -396,151 +361,53 @@ async def list_performance(
     return paginate(DailyPerformanceResponse, nights, total, page)
 
 
-@router.get("/hotels/{hotel_id}/events/{stay_date}", response_model=NightResponse)
-async def get_events(
-    hotel_id: HotelId,
-    session: SessionDep,
-    stay_date: Annotated[
-        date,
-        Path(description="The night. YYYY-MM-DD", examples=["2025-01-01"]),
-    ],
-) -> NightResponse:
-    """The events affecting one night, with full details. A multi-day event
-    shows on each of its nights as day N of M."""
-    night = await night_service.get_events(session, hotel_id, stay_date)
-    return NightResponse.model_validate(night)
-
-
-@router.get("/hotels/{hotel_id}/recommendations", response_model=RecommendationResponse)
-async def get_recommendation(
+@router.get(
+    "/hotels/{hotel_id}/recommendations",
+    response_model=list[RecommendationResponse],
+)
+async def get_recommendations(
     hotel_id: HotelId,
     session: SessionDep,
     # Named `stay_date` in code because `date` is the type; the query key stays `date`.
     stay_date: Annotated[
-        date,
+        date | None,
         Query(
             alias="date",
-            description="The night to price. YYYY-MM-DD",
+            description="One night. YYYY-MM-DD. Send this, or `start` (and `end`)",
             examples=["2025-01-01"],
         ),
-    ],
-    room_type_id: Annotated[
-        int | None,
-        Query(
-            description="The room type to price; omit for the hotel's first",
-            examples=[1],
-        ),
     ] = None,
-) -> RecommendationResponse:
-    """The active model's rate for one night, with its explanation.
-
-    Uses only ingested data: recorded weather, else the forecast, else the
-    typical weather for that week. 404 if the hotel has no active model.
-    """
-    recommendation = await recommendation_service.get_recommendation(
-        session, hotel_id, stay_date, room_type_id=room_type_id
-    )
-    return RecommendationResponse.model_validate(recommendation)
-
-
-@router.get(
-    "/hotels/{hotel_id}/recommendations/range",
-    response_model=list[NightRateResponse],
-)
-async def get_recommendation_range(
-    hotel_id: HotelId,
-    session: SessionDep,
     start: Annotated[
-        date,
+        date | None,
         Query(
             description="First night, inclusive. YYYY-MM-DD", examples=["2025-01-01"]
         ),
-    ],
+    ] = None,
     end: Annotated[
-        date,
-        Query(description="Last night, inclusive. YYYY-MM-DD", examples=["2025-01-31"]),
-    ],
-    room_type_id: Annotated[
-        int | None,
+        date | None,
         Query(
-            description="The room type to price; omit for the hotel's first",
-            examples=[1],
+            description="Last night, inclusive; omit for `start` alone. YYYY-MM-DD",
+            examples=["2025-01-31"],
         ),
     ] = None,
-) -> list[NightRateResponse]:
-    """The recommended rate for every night in the range, with the names of the
-    events affecting each. Limited to 62 nights; 404 if the hotel has no active
-    model."""
-    rates = await night_service.recommendation_range(
-        session, hotel_id, start=start, end=end, room_type_id=room_type_id
-    )
-    return [NightRateResponse.model_validate(rate) for rate in rates]
+    room_type_id: RecommendRoomType = None,
+) -> list[RecommendationResponse]:
+    """The active model's rate for each night, oldest first, with its
+    explanation, events and weather source. At most 90 nights.
 
-
-@router.get(
-    "/hotels/{hotel_id}/recommendations/snapshot",
-    response_model=NightSnapshotResponse,
-)
-async def get_recommendation_snapshot(
-    hotel_id: HotelId,
-    session: SessionDep,
-    # Named `stay_date` in code because `date` is the type; the query key stays `date`.
-    stay_date: Annotated[
-        date,
-        Query(
-            alias="date",
-            description="The night. YYYY-MM-DD",
-            examples=["2025-01-01"],
-        ),
-    ],
-    room_type_id: Annotated[
-        int | None,
-        Query(
-            description="The room type; omit for the hotel's first",
-            examples=[1],
-        ),
-    ] = None,
-) -> NightSnapshotResponse:
-    """The night's latest saved rate, the one before it, and the change.
-
-    A future night with no snapshot is priced and saved now. 404 for a past
-    night with none, since history isn't created after the fact.
+    Each night from today on is stored as a snapshot. A night whose inputs
+    (model, weather, events) haven't changed since its latest snapshot returns
+    that snapshot without running the model; one whose inputs changed is priced
+    again and stored. Past nights are never stored after the fact: one with a
+    snapshot returns it as it was, one without is priced and returned unsaved.
+    404 if the hotel has no active model.
     """
-    latest, previous = await recommendation_service.get_snapshot(
-        session, hotel_id, stay_date, room_type_id=room_type_id
+    if stay_date is not None and (start is not None or end is not None):
+        raise InvalidRequestError("send `date`, or `start` and `end`, not both")
+    first = stay_date or start
+    if first is None:
+        raise InvalidRequestError("send `date`, or `start` and `end`")
+    recommendations = await recommendation_service.get_recommendations(
+        session, hotel_id, start=first, end=end or first, room_type_id=room_type_id
     )
-    return NightSnapshotResponse(
-        latest=SnapshotResponse.model_validate(latest),
-        previous=SnapshotResponse.model_validate(previous) if previous else None,
-    )
-
-
-@router.post(
-    "/hotels/{hotel_id}/recommendations/snapshots",
-    response_model=list[SnapshotResponse],
-)
-async def snapshot_recommendations(
-    hotel_id: HotelId,
-    session: SessionDep,
-    days: Annotated[
-        int,
-        Query(ge=1, le=90, description="How many nights to price, starting today"),
-    ] = 30,
-    room_type_id: Annotated[
-        int | None,
-        Query(
-            description="The room type; omit for every room type the active "
-            "model was trained on",
-            examples=[1],
-        ),
-    ] = None,
-) -> list[SnapshotResponse]:
-    """Price each night from today and save the rates that changed.
-
-    Returns only the snapshots saved by this call; a night whose rate didn't
-    change since its latest snapshot is skipped.
-    """
-    saved = await recommendation_service.snapshot_recommendations(
-        session, hotel_id, days=days, room_type_id=room_type_id
-    )
-    return [SnapshotResponse.model_validate(s) for s in saved]
+    return [RecommendationResponse.model_validate(r) for r in recommendations]
