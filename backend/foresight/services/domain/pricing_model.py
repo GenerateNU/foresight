@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.services.domain.hotel import get_hotel
@@ -29,6 +30,7 @@ from foresight.services.domain.model_inputs import (
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import FEATURES, build_features
+from foresight.services.ml.feedback import apply_feedback
 from foresight.services.ml.weighting import sample_weights, training_mask
 
 if TYPE_CHECKING:
@@ -47,6 +49,7 @@ MIN_TRAINING_NIGHTS = 120
 # calibration share (decision 0005), so metrics describe unseen nights.
 HOLDOUT_FRAC = 0.15
 _NIGHT_COLUMNS = ["stay_date", "room_type", "rate", "rooms_sold", "rooms_available"]
+_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "verdict", "rate"]
 _LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
@@ -56,6 +59,7 @@ class TrainingResult:
     activated: bool
     seconds: float
     nights_used: int
+    feedback_used: int  # nights whose rate or weight the manager's feedback changed
 
 
 async def check_trainable(
@@ -119,12 +123,22 @@ async def train(
     days = sorted(set(nights["stay_date"]))
     weather = await weather_for(session, hotel.city, days, fallback=False)
     x = build_features(nights, NO_EVENTS, weather.frame, NO_FLIGHTS)
-    y = nights["rate"]
     occupancy = nights["rooms_sold"] / nights["rooms_available"]
     weights = sample_weights(occupancy.clip(0, 1))
 
+    # Decision 0044: what the manager said after a night changes how it trains.
+    feedback_rows = await feedback_repo.training_feedback(
+        session, hotel.id, start=start, end=end
+    )
+    feedback = pd.DataFrame(feedback_rows, columns=pd.Index(_FEEDBACK_COLUMNS))
+    feedback["rate"] = pd.to_numeric(feedback["rate"], errors="coerce")  # None -> NaN
+    effect = apply_feedback(nights, feedback, nights["rate"], weights)
+    y, weights = effect.rate, effect.weights
+
     # CPU-bound for seconds; a thread keeps the API answering meanwhile.
     metrics, artifact = await asyncio.to_thread(_fit, x, y, weights, nights, params)
+    metrics["feedback_nights"] = len(effect.used)
+    metrics["feedback_rates_replaced"] = int(effect.used["rate_replaced"].sum())
 
     saved = await model_repo.create_pricing_model(
         session,
@@ -138,12 +152,19 @@ async def train(
         data_start=nights["stay_date"].min(),
         data_end=nights["stay_date"].max(),
     )
+    await model_repo.link_feedback(
+        session, saved.id, effect.used.to_dict(orient="records")
+    )
     if activate:
         activated = await model_repo.activate_pricing_model(session, saved.id)
         assert activated is not None  # saved just above, in this transaction
         saved = activated
     return TrainingResult(
-        saved, activate, round(time.monotonic() - began, 1), len(nights)
+        saved,
+        activate,
+        round(time.monotonic() - began, 1),
+        len(nights),
+        len(effect.used),
     )
 
 

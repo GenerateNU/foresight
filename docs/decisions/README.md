@@ -62,3 +62,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0039](0039-freshness-reports-dates-only.md) | Freshness reports dates only, recommendations included | API |
 | [0040](0040-google-sign-in-cookie-sessions.md) | Google sign-in, with a signed session cookie | API / auth |
 | [0043](0043-manager-feedback-is-versioned.md) | Manager feedback is added to, never changed | data model |
+| [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight | ML |

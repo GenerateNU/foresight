@@ -252,7 +252,9 @@ turns its source's quota responses into a named error:
 
 ```
 cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hotel's own history)
-        │           ├─< pricing_models                    (trained models; one active)
+        │           ├─< pricing_models ─< pricing_model_feedback >─ feedback
+        │           │                                     (trained models; one active; the
+        │           │                                      feedback each one used; 0044)
         │           ├─< recommendation_snapshots          (every rate recommended; 0038)
         │           ├─< feedback (also > room_types)      (the manager's view of a night; 0043)
         │           └─< jobs                              (ingest runs)
@@ -454,8 +456,11 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       domain/model_inputs.weather_for           recorded weather only
       ml/features.build_features                events and flights empty (0007)
       ml/weighting.sample_weights               occupancy (0003)
+      feedback_repo.training_feedback           current version per night, after the night only
+      ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
       EBMModel.fit in a thread                  calibrates on the newest 15% (0005)
       model_repo.create_pricing_model           new version, inactive (0008, 0009)
+      model_repo.link_feedback                  records which feedback this version used
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}
 
@@ -475,6 +480,15 @@ A recommendation is stored when it's made and reused while its inputs hold
 ([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)). Asking
 for a night again returns its stored snapshot while nothing it reads has
 changed, so there's no separate route for a night's factors.
+
+Training learns from the manager's feedback
+([0044](decisions/0044-train-on-feedback-given-after-the-night.md)): for each
+night, the current version of its feedback, if it was given after the night.
+A rate on the right side of the verdict replaces the night's training rate
+(within 30% of what was recorded); a verdict with no rate halves the night's
+weight and "about right" doubles it. Feedback from before the night isn't
+used. Each model version records the feedback it used in
+`pricing_model_feedback`, and its `metrics` count it.
 
 Every training run is a new version
 ([0029](decisions/0029-every-training-run-is-a-new-version.md)):
