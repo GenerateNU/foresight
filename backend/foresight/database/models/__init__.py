@@ -6,7 +6,7 @@ from foresight.database.models.example_widget import Widget
 from foresight.database.models.feedback import Feedback
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
 from foresight.database.models.job import Job
-from foresight.database.models.pricing_model import PricingModel
+from foresight.database.models.pricing_model import PricingModel, PricingModelFeedback
 from foresight.database.models.recommendation import RecommendationSnapshot
 from foresight.database.models.signals.competitor_rate import CompetitorRate
 from foresight.database.models.signals.event import Event, EventObservation
@@ -26,6 +26,7 @@ __all__ = [
     "Hotel",
     "Job",
     "PricingModel",
+    "PricingModelFeedback",
     "RoomType",
     "User",
     "UserHotel",

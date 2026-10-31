@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import defer
 
-from foresight.database.models.pricing_model import PricingModel
+from foresight.database.models.pricing_model import PricingModel, PricingModelFeedback
 from foresight.repository.pagination import fetch_page
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +51,21 @@ async def create_pricing_model(
     await session.flush()
     await session.refresh(model)
     return model
+
+
+async def link_feedback(
+    session: AsyncSession, pricing_model_id: int, used: Sequence[Mapping[str, Any]]
+) -> None:
+    """Record the feedback a model version was trained with.
+
+    Each row carries feedback_id, rate_replaced, weight_factor and
+    training_rate. Does nothing for an empty list.
+    """
+    if used:
+        await session.execute(
+            insert(PricingModelFeedback),
+            [{"pricing_model_id": pricing_model_id, **row} for row in used],
+        )
 
 
 async def get_pricing_model(
