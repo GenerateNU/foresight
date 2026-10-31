@@ -82,3 +82,9 @@ async def latest_snapshot_at(session: AsyncSession, hotel_id: int) -> datetime |
             RecommendationSnapshot.hotel_id == hotel_id
         )
     )
+
+
+async def get_snapshot(
+    session: AsyncSession, snapshot_id: int
+) -> RecommendationSnapshot | None:
+    return await session.get(RecommendationSnapshot, snapshot_id)
