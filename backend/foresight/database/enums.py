@@ -74,3 +74,37 @@ class JobStatus(StrEnum):
     SUCCEEDED = "succeeded"
     STOPPED = "stopped"  # a source's quota or rate limit; resume from `resume_from`
     FAILED = "failed"  # any other error; `resume_from` says where to pick up
+
+
+class FeedbackVerdict(StrEnum):
+    """What the manager thinks of the recommended rate for a night."""
+
+    TOO_HIGH = "too_high"
+    TOO_LOW = "too_low"
+    ABOUT_RIGHT = "about_right"
+
+
+class FeedbackTiming(StrEnum):
+    """Whether feedback came before or after the night it is about.
+
+    Set by the server from the stay date, never sent by the client. Training
+    uses what was said before a night (a prediction) and after it (a
+    judgement with the result known) separately.
+    """
+
+    BEFORE = "before"
+    AFTER = "after"
+
+
+class FeedbackReasonTag(StrEnum):
+    """Why a manager disagrees with the rate, picked from a fixed list.
+
+    Several can apply to one piece of feedback. They sit beside the free-text
+    reason, which captures what no tag does.
+    """
+
+    GROUP_OR_WEDDING_BLOCK = "group_or_wedding_block"
+    VENUE_SOLD_OUT = "venue_sold_out"
+    COMPETITOR_PRICING = "competitor_pricing"
+    LOCAL_KNOWLEDGE = "local_knowledge"
+    OTHER = "other"

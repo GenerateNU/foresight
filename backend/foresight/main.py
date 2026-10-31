@@ -17,6 +17,7 @@ from foresight.routes import (
     city,
     event,
     example_widget,
+    feedback,
     flight,
     health,
     hotel,
@@ -75,6 +76,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(city.router, **login_required)
 app.include_router(hotel.router, **login_required)
+app.include_router(feedback.router, **login_required)
 app.include_router(weather.router, **login_required)
 app.include_router(event.router, **login_required)
 app.include_router(flight.router, **login_required)

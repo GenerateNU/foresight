@@ -91,7 +91,7 @@ backend/foresight/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
     city.py hotel.py weather.py event.py flight.py ingest.py job.py
-    pricing_model.py health.py
+    pricing_model.py feedback.py health.py
     auth.py                Google sign-in, logout, /auth/me
     access.py              CurrentUserDep
   services/
@@ -99,18 +99,20 @@ backend/foresight/
                            NotSignedIn / Forbidden
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                city, hotel, user, weather, weather_coverage, event, flight,
-                           model_inputs, pricing_model, recommendation, freshness
+                           model_inputs, pricing_model, recommendation, feedback, freshness
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates
     ml/                    base, ebm, features, weighting
   repository/
     upsert.py pagination.py
-    city.py hotel.py job.py pricing_model.py recommendation.py user.py
+    city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
+    user.py
     signals/               weather, event, flight, competitor_rate
   database/
     base.py enums.py session.py
-    models/                city, hotel, job, pricing_model, recommendation, user
+    models/                city, hotel, job, pricing_model, recommendation, feedback,
+                           user
       signals/             weather, event, flight, competitor_rate
     migrations/
 ```
@@ -252,6 +254,7 @@ turns its source's quota responses into a named error:
 cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hotel's own history)
         │           ├─< pricing_models                    (trained models; one active)
         │           ├─< recommendation_snapshots          (every rate recommended; 0038)
+        │           ├─< feedback (also > room_types)      (the manager's view of a night; 0043)
         │           └─< jobs                              (ingest runs)
         │
         ├─< weather                                       ┐
@@ -260,6 +263,7 @@ cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hot
         └─< competitor_rates                              ┘ in the city
 
 users ─< user_hotels >─ hotels                              (who works for which hotel)
+users ─< feedback >─ recommendation_snapshots               (who said it; the rate they saw)
 ```
 
 **Cities are the market** ([0017](decisions/0017-cities-are-the-market.md)).
@@ -279,16 +283,26 @@ Creating a hotel links its creator, and any member can link a colleague with
 `POST /hotels/{id}/users` ([0042](decisions/0042-link-users-through-the-api.md)).
 A hotel is reachable only through its link ([0041](decisions/0041-login-required-hotels-by-link.md)).
 
+**Feedback** ([0043](decisions/0043-manager-feedback-is-versioned.md)) is what
+the manager says about a night's rate: a required verdict, an optional rate,
+and a reason as tags from a fixed list, free text, or both. Rows are only added;
+a change is the next `version` for that room type and night, the highest is
+current, and earlier ones keep their times. It records the snapshot the manager
+saw (null for a past night never saved), whether it came before or after the
+night (set by the server), and who gave it (null until sign-in is required).
+
 **Foreign keys** always state `ON DELETE`:
 
 - `CASCADE` from a city to its signals, and from a hotel to its room types,
-  nights, pricing models, jobs and recommendation snapshots, and from a user
-  or a hotel to its `user_hotels` links.
+  nights, pricing models, jobs, recommendation snapshots and feedback, from a
+  room type to its feedback, and from a user or a hotel to its `user_hotels`
+  links.
 - `RESTRICT` from a hotel to its city: a city with hotels can't be deleted.
 - `NO ACTION` from a snapshot to its pricing model: a model with snapshots
   can't be deleted, but deleting the hotel removes both
   ([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)).
-- `SET NULL` from an observation to its event, so raw sightings survive.
+- `SET NULL` from an observation to its event, so raw sightings survive, and
+  from feedback to its snapshot and its user, so what the manager said survives.
 
 **Relationships are `lazy="raise"`.** An unloaded relationship fails at once
 rather than at some later point in async code. The hotel repository always
@@ -556,6 +570,8 @@ user ([0041](decisions/0041-login-required-hotels-by-link.md)).
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/flight-arrivals` | paginated; one row per source per day |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
+| POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)) |
+| GET | `/hotels/{id}/feedback?start=&end=` | current feedback per night (≤ 366); `include_history=true` adds earlier versions |
 | GET | `/hotels/{id}/freshness` | when each kind of data last succeeded (recommendations: last rate change), and the latest failure ([0039](decisions/0039-freshness-reports-dates-only.md)) |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |
 | GET | `/hotels/{id}/models` | paginated, newest version first |
