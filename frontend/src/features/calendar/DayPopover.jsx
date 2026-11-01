@@ -4,7 +4,8 @@ import { daysOut, longDate } from './calendarUtils.js'
 
 /**
  * The hover card: why this night costs what it does. Always in the DOM and shown by CSS
- * (group-hover), so there's no hover state to manage.
+ * on hover or keyboard focus, so there's no hover state to manage. Keyboard focus only
+ * (focus-visible): a mouse click also focuses the night, and would pin its card open.
  */
 export default function DayPopover({ rec, className }) {
   const out = daysOut(rec.date)
@@ -13,7 +14,7 @@ export default function DayPopover({ rec, className }) {
   return (
     <div
       role="tooltip"
-      className={`invisible absolute z-20 w-80 rounded-card border border-stone-100 bg-white p-4 text-left opacity-0 shadow-xl transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100 ${className}`}
+      className={`invisible absolute z-20 w-80 rounded-card border border-stone-100 bg-white p-4 text-left opacity-0 shadow-xl transition-opacity group-focus-visible:visible group-focus-visible:opacity-100 group-hover:visible group-hover:opacity-100 ${className}`}
     >
       <p className="text-base font-medium">{longDate(rec.date)}</p>
       <p className="text-xs text-stone-500">
@@ -39,7 +40,7 @@ export default function DayPopover({ rec, className }) {
           {topFactors.map((f) => (
             <li key={f.detail} className="flex justify-between gap-4">
               <span className="truncate">{f.detail}</span>
-              <span className={f.amount >= 0 ? 'text-price-up' : 'text-price-down'}>
+              <span className={f.amount > 0 ? 'text-price-up' : f.amount < 0 ? 'text-price-down' : 'text-stone-500'}>
                 {formatSignedEuro(f.amount)}
               </span>
             </li>
