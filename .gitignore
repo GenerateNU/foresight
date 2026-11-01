@@ -32,6 +32,9 @@ postgres_data/
 # Client data
 backend/hidden_data/
 
+# Backtest plots
+backend/backtest-out/
+
 # Testing
 .pytest_cache/
 .coverage
