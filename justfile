@@ -85,6 +85,13 @@ migrate-down *flags: (_flags flags)
     @echo "Database: {{ if flags == "--neon" { "neon" } else { "local" } }}"
     cd backend && {{ if flags == "--neon" { "" } else { _env_local } }} uv run alembic downgrade -1
 
+# --- Model ---
+
+# Backtest the pricing model for a hotel; saves a plot to backend/backtest-out/
+backtest hotel_id *flags: (_flags flags)
+    @echo "Database: {{ if flags == "--neon" { "neon" } else { "local" } }}"
+    cd backend && {{ if flags == "--neon" { "" } else { _env_local } }} uv run python -m foresight.cli backtest {{hotel_id}}
+
 # --- Testing ---
 
 # Run the test suite

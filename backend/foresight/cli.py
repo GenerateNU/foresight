@@ -3,7 +3,7 @@
 For jobs that can't wait for the app to offer them. Like `worker.run_job`, a
 command opens its own session and commits, once, when it succeeds; everything it
 does goes through `services/`. A `DomainError` is printed and exits 1, with
-nothing committed.
+nothing committed. `backtest` only reads, so it never commits.
 """
 
 from __future__ import annotations
@@ -11,10 +11,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from datetime import date
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from foresight.database.session import async_session_factory, engine
+from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
 from foresight.services.errors import DomainError
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 async def link_user(email: str, hotel_id: int) -> None:
@@ -30,10 +37,66 @@ async def link_user(email: str, hotel_id: int) -> None:
         print(f"{user.email} is already linked to hotel {hotel_id}")
 
 
+async def backtest(hotel_id: int, test_days: int, out: Path) -> None:
+    async with async_session_factory() as session:
+        result = await backtest_service.run_backtest(
+            session, hotel_id, test_days=test_days
+        )
+    nights = result.nights
+    print(
+        f"{len(nights)} test nights, "
+        f"{nights['stay_date'].min()} to {nights['stay_date'].max()}"
+    )
+    print(f"MAE  €{result.metrics['mae']:.2f}")
+    print(f"RMSE €{result.metrics['rmse']:.2f}")
+
+    path = out / f"hotel-{hotel_id}-{date.today()}.png"
+    _save_plot(nights, path, title=f"Hotel {hotel_id}: last {test_days} nights")
+    print(f"Plot saved to {path}")
+
+
+def _save_plot(nights: pd.DataFrame, path: Path, *, title: str) -> None:
+    """Actual vs predicted rate per night, as a PNG."""
+    # Imported here so only this command needs matplotlib, not the API.
+    import matplotlib
+
+    matplotlib.use("Agg")  # write files; no window
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(11, 4.5))
+    ax.plot(
+        nights["stay_date"],
+        nights["actual"],
+        color="#2a78d6",
+        linewidth=2,
+        label="Actual",
+    )
+    ax.plot(
+        nights["stay_date"],
+        nights["predicted"],
+        color="#eb6834",
+        linewidth=2,
+        label="Predicted",
+    )
+    ax.set_title(title, loc="left")
+    ax.set_ylabel("Rate (€)")
+    ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(frameon=False, loc="upper left")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 async def _run(args: argparse.Namespace) -> None:
     try:
         if args.command == "link-user":
             await link_user(args.email, args.hotel_id)
+        elif args.command == "backtest":
+            await backtest(args.hotel_id, args.test_days, args.out)
     finally:
         await engine.dispose()
 
@@ -45,6 +108,15 @@ def main(argv: list[str] | None = None) -> int:
     link = commands.add_parser("link-user", help="Link a user to a hotel by email")
     link.add_argument("email", help="The user's email, as Google reports it")
     link.add_argument("hotel_id", type=int, help="The hotel's id")
+
+    bt = commands.add_parser("backtest", help="Score the model on its newest nights")
+    bt.add_argument("hotel_id", type=int, help="The hotel's id")
+    bt.add_argument(
+        "--test-days", type=int, default=90, help="How many recent nights to predict"
+    )
+    bt.add_argument(
+        "--out", type=Path, default=Path("backtest-out"), help="Folder for the plot"
+    )
 
     args = parser.parse_args(argv)
     try:
