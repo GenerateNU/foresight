@@ -1,6 +1,7 @@
 import Chip from '../../components/ui/Chip.jsx'
 import { COLOR_MODES } from './colorModes.js'
 
+/** The "Color by" row: one chip per mode in COLOR_MODES; disabled ones say why on hover. */
 export default function ColorByChips({ value, onChange }) {
   return (
     <div className="flex flex-wrap items-center gap-2">

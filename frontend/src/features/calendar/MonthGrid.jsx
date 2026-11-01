@@ -1,7 +1,7 @@
 import DayCell from './DayCell.jsx'
 import { WEEKDAY_HEADERS, demandLevel } from './calendarUtils.js'
 
-// Lays the weeks out as a 7-column grid and hands each cell its night's recommendation.
+/** Lays the weeks out as a 7-column grid and hands each cell its night's recommendation. */
 export default function MonthGrid({ weeks, byDate, mode }) {
   const rates = [...byDate.values()].map((r) => r.rate)
   const min = Math.min(...rates)

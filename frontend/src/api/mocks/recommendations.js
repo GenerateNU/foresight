@@ -1,18 +1,19 @@
-// Shape of RecommendationResponse (backend/foresight/routes/hotel.py): one row per night
-// per room type. Rates are made up but stable: the same night always gets the same price.
-
 const ROOM_TYPES = [
   { id: 1, name: 'Double', base: 180 },
   { id: 2, name: 'Suite', base: 290 },
 ]
 
-// Each runs for three nights, on the 1st-3rd, 10th-12th, 19th-21st and 28th-30th.
+/** Each runs for three nights, on the 1st-3rd, 10th-12th, 19th-21st and 28th-30th. */
 const EVENTS = [
   { event_id: 1, title: 'Dublin Theatre Festival', venue: 'Gaiety Theatre', category: 'festivals', expected_attendance: 8000 },
   { event_id: 2, title: 'Web Summit', venue: 'RDS Arena', category: 'conferences', expected_attendance: 70000 },
   { event_id: 3, title: 'Dublin Marathon', venue: null, category: 'sports', expected_attendance: 25000 },
 ]
 
+/**
+ * Made-up rates in the shape of RecommendationResponse (backend/foresight/routes/hotel.py),
+ * one row per night per room type. Stable: the same night always gets the same price.
+ */
 export function mockRecommendations(hotelId, { start, end }) {
   const rows = []
   for (const date of eachNight(start, end)) {
@@ -56,7 +57,7 @@ function night(hotelId, room, date) {
   }
 }
 
-// Decimals arrive from the API as strings like "279.00".
+/** Decimals arrive from the API as strings like "279.00". */
 function money(amount) {
   return amount.toFixed(2)
 }
