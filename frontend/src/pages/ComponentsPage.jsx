@@ -1,5 +1,3 @@
-// Every shared component on one page, to check how they look and to copy usage from.
-// Only routed in development (see App.jsx). Add a section when you add a component.
 import { useState } from 'react'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -21,6 +19,10 @@ function Section({ title, children }) {
   )
 }
 
+/**
+ * Every shared component on one page, to check how they look and to copy usage from.
+ * Only routed in development (see App.jsx). Add a section when you add a component.
+ */
 export default function ComponentsPage() {
   const [chip, setChip] = useState('demand')
 

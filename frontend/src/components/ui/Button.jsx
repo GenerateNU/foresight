@@ -1,7 +1,5 @@
 import { cx } from '../../lib/cx.js'
 
-// The one button. Pick a `variant` for its weight and a `size`; `size="icon"` is a square
-// for a single glyph and needs an `aria-label`. Any other prop goes to the <button>.
 const VARIANTS = {
   primary: 'bg-pine-600 text-white hover:bg-pine-700',
   secondary: 'bg-stone-50 text-stone-900 hover:bg-stone-100',
@@ -15,6 +13,10 @@ const SIZES = {
   icon: 'size-9',
 }
 
+/**
+ * The one button. Pick a `variant` for its weight and a `size`; `size="icon"` is a square
+ * for a single glyph and needs an `aria-label`. Any other prop goes to the <button>.
+ */
 export default function Button({
   variant = 'secondary',
   size = 'md',

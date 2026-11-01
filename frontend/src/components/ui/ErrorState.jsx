@@ -1,6 +1,6 @@
 import Button from './Button.jsx'
 
-// What a page or panel shows when loading failed. Pass `onRetry` to offer a retry button.
+/** What a page or panel shows when loading failed. Pass `onRetry` to offer a retry button. */
 export default function ErrorState({ title = 'Something went wrong', error, onRetry }) {
   return (
     <div role="alert" className="flex flex-col items-start gap-2 rounded-card border border-error-200 bg-error-50 p-4">

@@ -9,6 +9,7 @@ const VIEWS = [
   { to: '/calendar', label: 'Calendar' },
 ]
 
+/** The bar above every signed-in page: the hotel's name and size, and the Today / Calendar switch. */
 export default function TopBar() {
   const { data: hotel } = useAsync(`hotel:${HOTEL_ID}`, () => getHotel(HOTEL_ID))
 

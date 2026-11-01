@@ -12,6 +12,7 @@ const NAV = [
   { to: '/settings', label: 'Settings' },
 ]
 
+/** The main navigation down the left of every signed-in page. Hidden on small screens. */
 export default function Sidebar() {
   return (
     <aside className="hidden w-58 shrink-0 flex-col border-r border-stone-100 bg-white p-4 md:flex">
