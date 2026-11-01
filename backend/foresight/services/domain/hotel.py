@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from foresight.repository import hotel as hotel_repo
+from foresight.repository import user as user_repo
 from foresight.services.domain.city import get_city
 from foresight.services.errors import ConflictError, NotFoundError
 
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
+    from foresight.database.models.user import User
 
 
 async def create_hotel(
@@ -40,6 +42,30 @@ async def create_hotel(
     )
     if hotel is None:
         raise ConflictError(f"Hotel {name!r} already exists in {city.name}")
+    return hotel
+
+
+async def create_hotel_for_user(
+    session: AsyncSession,
+    user: User,
+    *,
+    name: str,
+    city_id: int,
+    total_rooms: int,
+    latitude: float | None,
+    longitude: float | None,
+) -> Hotel:
+    """`create_hotel`, then link the creator so the hotel isn't unreachable.
+    Raises the same errors."""
+    hotel = await create_hotel(
+        session,
+        name=name,
+        city_id=city_id,
+        total_rooms=total_rooms,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    await user_repo.link_hotel(session, user_id=user.id, hotel_id=hotel.id)
     return hotel
 
 

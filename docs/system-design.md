@@ -45,8 +45,9 @@ Two kinds of work enter the system:
   the background in the same process and commits after every chunk.
 
 Everything is async: FastAPI handlers, SQLAlchemy sessions and every outside
-HTTP call. People can sign in with Google ([0040](decisions/0040-google-sign-in-cookie-sessions.md)),
-but no route requires it yet ([0026](decisions/0026-no-authentication.md)).
+HTTP call. People sign in with Google ([0040](decisions/0040-google-sign-in-cookie-sessions.md)),
+every route but `/health` and `/auth/*` needs a signed-in user, and a hotel is
+reachable only by a user linked to it ([0041](decisions/0041-login-required-hotels-by-link.md)).
 
 ---
 
@@ -91,7 +92,8 @@ backend/foresight/
     errors.py              domain error → status code
     city.py hotel.py weather.py event.py flight.py ingest.py job.py
     pricing_model.py health.py
-    auth.py                Google sign-in, logout, /auth/me, CurrentUserDep
+    auth.py                Google sign-in, logout, /auth/me
+    access.py              CurrentUserDep
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured /
                            NotSignedIn / Forbidden
@@ -122,14 +124,12 @@ pattern in this document.
 
 ### 3.1 Transactions
 
-Only three places commit ([0013](decisions/0013-one-transaction-per-unit-of-work.md),
-[0036](decisions/0036-operator-commands-in-cli.md)):
+Only two places commit ([0013](decisions/0013-one-transaction-per-unit-of-work.md)):
 
 | Caller | Session from | Commits |
 |---|---|---|
 | HTTP request | `database/session.get_session` | once, after the handler; rolls back on any error |
 | job | `worker.run_job` | after every chunk, then once for the final status |
-| operator command | `cli.py`, from `async_session_factory` | once, when the command succeeds; an error commits nothing |
 
 Repositories flush when they need a generated id. `update_hotel` and
 `update_city` run in a savepoint, so a rename that hits a unique constraint
@@ -275,8 +275,9 @@ linking twice changes nothing; a hotel can have several users, a user can
 belong to several hotels, and a user with none is valid. Signing in with Google
 creates the user, or refreshes the existing one's email, name and
 `last_signed_in_at` ([0040](decisions/0040-google-sign-in-cookie-sessions.md)).
-Until the app can do it, `just link-user <email> <hotel_id>` links by email
-([0036](decisions/0036-operator-commands-in-cli.md)).
+Creating a hotel links its creator, and any member can link a colleague with
+`POST /hotels/{id}/users` ([0042](decisions/0042-link-users-through-the-api.md)).
+A hotel is reachable only through its link ([0041](decisions/0041-login-required-hotels-by-link.md)).
 
 **Foreign keys** always state `ON DELETE`:
 
@@ -489,7 +490,7 @@ GET /auth/google/callback?code=…&state=…        Google sends the browser bac
   ← 302 to FRONTEND_URL, with the session cookie
 
 GET /auth/me
-  routes/auth.get_current_user
+  routes/access.get_current_user
     user_service.get_signed_in_user(session["user_id"])    401 if none, or the user is gone
   → hotel_service.list_hotels_for_user                     [] until a hotel is linked
 ```
@@ -500,6 +501,35 @@ re-issued on every response, so a session ends 14 days after the last request.
 A missing, expired or tampered cookie is an empty session, so all three are the
 same 401. Logout deletes the browser's cookie; a copied one stays valid until it
 expires. CORS allows `FRONTEND_URL` only, with credentials.
+
+### 6.6 Reaching a hotel's data
+
+([0041](decisions/0041-login-required-hotels-by-link.md),
+[0042](decisions/0042-link-users-through-the-api.md))
+
+```
+GET /jobs/12                                    a job, by its own id
+  main.py: router has dependencies=[get_current_user]       401 if no session
+  routes/access.JobId  (the handler's job_id type)
+    access_service.require_job(session, user, 12)
+      job_repo.get_job → job.hotel_id
+      user_repo.has_hotel(user.id, job.hotel_id)
+      missing, or not the user's hotel          → NotFoundError → 404, same as unknown
+  handler runs only after that
+
+POST /hotels/7/users {"email": "colleague@example.com"}
+  HotelId: the caller must be linked to hotel 7             404 if not
+  user_service.link_user_by_email
+    get_user_by_email                           none → 404 (hasn't signed in), several → 409
+    link_user_to_hotel                          idempotent
+  ← 204
+```
+
+`HotelId`, `JobId`, `ModelId` and `RoomTypeId` replace a bare path parameter, so
+using one in a handler is what checks access. Tests list every route from
+OpenAPI and assert the 401 and the cross-hotel 404 for each. The scheduler, when
+it exists, runs in the API process and calls the job services directly with no
+user ([0041](decisions/0041-login-required-hotels-by-link.md)).
 
 ---
 
@@ -512,10 +542,12 @@ expires. CORS allows `FRONTEND_URL` only, with credentials.
 | GET | `/auth/google/callback` | Google's return: starts the session, 302 to the frontend |
 | POST | `/auth/logout` | 204; ends the session |
 | GET | `/auth/me` | the signed-in user and their hotels; 401 if not signed in |
-| POST, GET | `/cities` | |
-| GET, PATCH | `/cities/{id}` | |
-| POST, GET | `/hotels` | a hotel includes its city |
+| POST, GET | `/cities` | any signed-in user |
+| GET | `/cities/{id}` | any signed-in user |
+| PATCH | `/cities/{id}` | only someone linked to a hotel in the city |
+| POST, GET | `/hotels` | a hotel includes its city; POST links its creator; GET lists only your hotels |
 | GET, PATCH | `/hotels/{id}` | |
+| POST | `/hotels/{id}/users` | `{email}`; links a colleague who has signed in; 204 |
 | POST, GET | `/hotels/{id}/room-types` | |
 | GET | `/room-types/{id}` | |
 | GET | `/hotels/{id}/performance` | paginated |
@@ -536,8 +568,9 @@ expires. CORS allows `FRONTEND_URL` only, with credentials.
 | POST, GET | `/example/widgets`, `/example/widgets/{id}` | reference slice |
 
 Status codes: `201` create, `202` job queued, `302` sign-in redirects, `204`
-logout, `200` otherwise, and the error codes in 3.2. No route other than
-`/auth/me` requires a session yet.
+logout, `200` otherwise, and the error codes in 3.2. Every route except
+`/health` and `/auth/google/*`, `/auth/logout` needs a session (401). A hotel,
+or a job, model or room type of one, that isn't yours is a 404.
 
 ---
 

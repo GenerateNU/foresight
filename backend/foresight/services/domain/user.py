@@ -124,6 +124,19 @@ async def link_user_to_hotel(
     return await user_repo.link_hotel(session, user_id=user_id, hotel_id=hotel_id)
 
 
+async def link_user_by_email(
+    session: AsyncSession, *, hotel_id: int, email: str
+) -> bool:
+    """Link the user who has this email to a hotel. True if the link is new.
+
+    Raises NotFoundError if nobody with this email has signed in yet (or the
+    hotel is unknown), ConflictError if several users share it. The caller has
+    checked that whoever is linking may reach the hotel.
+    """
+    user = await get_user_by_email(session, email)
+    return await link_user_to_hotel(session, user_id=user.id, hotel_id=hotel_id)
+
+
 async def list_hotel_ids(session: AsyncSession, user_id: int) -> Sequence[int]:
     """The hotels a user is linked to. Raises NotFoundError for an unknown user."""
     await get_user(session, user_id)

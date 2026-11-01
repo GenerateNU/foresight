@@ -3,9 +3,10 @@
 from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Query
 from pydantic import Field
 
+from foresight.routes.access import HotelId
 from foresight.routes.helpers import (
     PageDep,
     PageResponse,
@@ -59,9 +60,6 @@ class WeatherCoverageResponse(ResponseSchema):
     empty: list[DateSpanResponse] = Field(
         description="Rows saved without values, usually the archive's lag"
     )
-
-
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
 
 
 #          ╭──────────────────────────────────────────────────────────╮

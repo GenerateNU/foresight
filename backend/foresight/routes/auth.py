@@ -9,17 +9,15 @@ Nothing else requires a session yet: `CurrentUserDep` is what routes use once
 they do.
 """
 
-from typing import Annotated
-
 from authlib.common.errors import AuthlibBaseError
 from authlib.integrations.starlette_client import OAuth
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from joserfc.errors import JoseError
 from pydantic import Field
 
 from foresight.config import settings
-from foresight.database.models.user import User
+from foresight.routes.access import CurrentUserDep
 from foresight.routes.helpers import ResponseSchema, SessionDep
 from foresight.routes.hotel import HotelResponse
 from foresight.services.domain import hotel as hotel_service
@@ -52,20 +50,6 @@ class MeResponse(ResponseSchema):
     hotels: list[HotelResponse] = Field(
         description="The hotels they work for; empty until an operator links one"
     )
-
-
-# Dependencies
-
-
-async def get_current_user(request: Request, session: SessionDep) -> User:
-    """The signed-in user. A missing, expired or tampered cookie arrives here as
-    an empty session, so every case is the same 401."""
-    return await user_service.get_signed_in_user(
-        session, request.session.get("user_id")
-    )
-
-
-CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
 # Endpoints

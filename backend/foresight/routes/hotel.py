@@ -4,10 +4,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Query, status
 from pydantic import Field, computed_field, field_validator
 
 from foresight.database.enums import EventCategory
+from foresight.routes.access import CurrentUserDep, HotelId, RoomTypeId
 from foresight.routes.city import CityResponse
 from foresight.routes.helpers import (
     PageDep,
@@ -19,6 +20,7 @@ from foresight.routes.helpers import (
 )
 from foresight.services.domain import hotel as hotel_service
 from foresight.services.domain import recommendation as recommendation_service
+from foresight.services.domain import user as user_service
 from foresight.services.errors import InvalidRequestError
 
 router = APIRouter(tags=["Hotels"])
@@ -90,6 +92,14 @@ class HotelResponse(ResponseSchema):
     total_rooms: int = Field(description="Rooms across every room type")
     latitude: float | None = Field(description="The hotel itself, in degrees")
     longitude: float | None = Field(description="The hotel itself, in degrees")
+
+
+class LinkUserRequest(RequestSchema):
+    email: str = Field(
+        max_length=320,
+        description="The Google email of someone who has signed in at least once",
+        examples=["colleague@example.com"],
+    )
 
 
 class RoomTypeRequest(RequestSchema):
@@ -236,8 +246,6 @@ class RecommendationResponse(ResponseSchema):
     )
 
 
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
-RoomTypeId = Annotated[int, Path(description="The room type's id", examples=[1])]
 RecommendRoomType = Annotated[
     int | None,
     Query(
@@ -255,16 +263,20 @@ RecommendRoomType = Annotated[
 @router.post(
     "/hotels", response_model=HotelResponse, status_code=status.HTTP_201_CREATED
 )
-async def create_hotel(data: HotelRequest, session: SessionDep) -> HotelResponse:
-    """Add a hotel to a city. Names are unique per city."""
-    hotel = await hotel_service.create_hotel(session, **data.model_dump())
+async def create_hotel(
+    data: HotelRequest, user: CurrentUserDep, session: SessionDep
+) -> HotelResponse:
+    """Add a hotel to a city, and link yourself to it. Names are unique per city."""
+    hotel = await hotel_service.create_hotel_for_user(
+        session, user, **data.model_dump()
+    )
     return HotelResponse.model_validate(hotel)
 
 
 @router.get("/hotels", response_model=list[HotelResponse])
-async def list_hotels(session: SessionDep) -> list[HotelResponse]:
-    """Every hotel, oldest first."""
-    hotels = await hotel_service.list_hotels(session)
+async def list_hotels(user: CurrentUserDep, session: SessionDep) -> list[HotelResponse]:
+    """The hotels you're linked to, oldest first; empty if you have none."""
+    hotels = await hotel_service.list_hotels_for_user(session, user.id)
     return [HotelResponse.model_validate(hotel) for hotel in hotels]
 
 
@@ -285,6 +297,15 @@ async def update_hotel(
         session, hotel_id, data.model_dump(exclude_unset=True)
     )
     return HotelResponse.model_validate(hotel)
+
+
+@router.post("/hotels/{hotel_id}/users", status_code=status.HTTP_204_NO_CONTENT)
+async def link_user(
+    hotel_id: HotelId, data: LinkUserRequest, session: SessionDep
+) -> None:
+    """Give a colleague access to this hotel, by the email of their Google
+    account. They must have signed in once. Linking twice changes nothing."""
+    await user_service.link_user_by_email(session, hotel_id=hotel_id, email=data.email)
 
 
 @router.post(
