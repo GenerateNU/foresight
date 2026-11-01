@@ -1,7 +1,8 @@
 """Data access for `users` and `user_hotels`.
 
 `create_user` returns None when the Google account already has a user.
-`link_hotel` is idempotent: it reports whether it added a link or one was
+`upsert_user` is what signing in uses: it creates the user or refreshes the one
+that exists. `link_hotel` is idempotent: it reports whether it added a link or one was
 already there.
 """
 
@@ -30,6 +31,32 @@ async def create_user(
         .on_conflict_do_nothing(constraint="uq_users_google_id")
         .returning(User)
     )
+
+
+async def upsert_user(
+    session: AsyncSession, *, google_id: str, email: str, name: str | None
+) -> User:
+    """Create the user for this Google account, or update the one that exists.
+
+    A sign-in refreshes email and name and
+    stamps `last_signed_in_at`. A single statement, so two sign-ins at once
+    can't both insert.
+    """
+    stmt = insert(User).values(google_id=google_id, email=email, name=name)
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_users_google_id",
+        set_={
+            "email": stmt.excluded.email,
+            "name": stmt.excluded.name,
+            "last_signed_in_at": func.now(),
+        },
+    )
+
+    user = await session.scalar(
+        stmt.returning(User).execution_options(populate_existing=True)
+    )
+    assert user is not None
+    return user
 
 
 async def get_user(session: AsyncSession, user_id: int) -> User | None:

@@ -60,3 +60,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0037](0037-three-guestline-reports.md) | Three Guestline reports, uploaded daily | data |
 | [0038](0038-recommendations-reused-while-inputs-hold.md) | A recommendation is stored when made, and reused while its inputs hold | data model |
 | [0039](0039-freshness-reports-dates-only.md) | Freshness reports dates only, recommendations included | API |
+| [0040](0040-google-sign-in-cookie-sessions.md) | Google sign-in, with a signed session cookie | API / auth |

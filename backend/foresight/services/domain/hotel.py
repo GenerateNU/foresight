@@ -76,6 +76,12 @@ async def list_hotels(session: AsyncSession) -> Sequence[Hotel]:
     return await hotel_repo.list_hotels(session)
 
 
+async def list_hotels_for_user(session: AsyncSession, user_id: int) -> Sequence[Hotel]:
+    """The hotels this user works for, with their cities loaded. A user linked to
+    none gets an empty list; the caller has already established the user exists."""
+    return await hotel_repo.list_hotels_for_user(session, user_id)
+
+
 async def create_room_type(
     session: AsyncSession,
     hotel_id: int,

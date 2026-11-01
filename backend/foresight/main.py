@@ -1,14 +1,18 @@
 """App setup: routers, error handling, lifespan, and the API reference."""
 
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import Theme, get_scalar_api_reference
+from starlette.middleware.sessions import SessionMiddleware
 
 from foresight import worker
 from foresight.config import settings
 from foresight.routes import (
+    auth,
     city,
     event,
     example_widget,
@@ -41,7 +45,26 @@ app = FastAPI(
 
 register_error_handlers(app)
 
+# The session cookie
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret or secrets.token_urlsafe(32),
+    session_cookie="foresight_session",
+    max_age=settings.session_max_age_seconds,
+    same_site=settings.session_cookie_samesite,
+    https_only=settings.session_cookie_secure,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_origin],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Content-Type"],
+)
+
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(city.router)
 app.include_router(hotel.router)
 app.include_router(weather.router)
