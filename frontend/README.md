@@ -34,7 +34,7 @@ src/
   api/                the ONLY code that talks to the backend
     client.js           fetch wrapper: base URL, cookies, errors, 401 -> sign in, mocks
     auth.js             the Google sign-in link, and the page to return to after it
-    hotels.js           one function per endpoint, returns clean data
+    hotels.js, recommendations.js   one function per endpoint, returns clean data
     mocks/              fake responses, same shapes as the real API
   lib/                small helpers with no React in them (config, cx)
   hooks/              reusable React logic (useAsync: load data, track loading/error, retry)
@@ -42,6 +42,8 @@ src/
     layout/             the shell (sidebar, top bar) and PageHeader
     ui/                 shared building blocks: Button, Card, Input, Badge, Chip, states
   features/           one folder per built screen; everything for it lives together
+    auth/               the sign-in page and the return to the saved page after it
+    calendar/           the month calendar: page, grid, hover card, colour modes
   pages/              placeholder, not-found and the dev component gallery
 ```
 
@@ -74,3 +76,4 @@ or to the calendar.
 
 - The designed sign-in page, logout and the signed-in user in the top bar (issue #108).
 - Every screen behind a placeholder route.
+- Calendar: the occupancy, comp set gap and weather colour modes (waiting on booking data and competitor rates), and the up/down price badge, which shows once the API returns `previous_rate` (issue #96).
