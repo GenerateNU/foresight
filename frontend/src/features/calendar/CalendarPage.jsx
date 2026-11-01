@@ -11,8 +11,10 @@ import ColorByChips from './ColorByChips.jsx'
 import MonthGrid from './MonthGrid.jsx'
 import { buildMonthGrid, lowestRatePerNight, monthLabel } from './calendarUtils.js'
 
-// The Calendar screen: owns "which month" and "color by", fetches that month's prices,
-// and passes everything down. The pieces below it only draw what they are given.
+/**
+ * The Calendar screen: owns "which month" and "color by", fetches that month's prices,
+ * and passes everything down. The pieces below it only draw what they are given.
+ */
 export default function CalendarPage() {
   const today = new Date()
   const [{ year, month }, setMonth] = useState({ year: today.getFullYear(), month: today.getMonth() })

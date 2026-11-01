@@ -3,8 +3,10 @@ import { formatEuro } from '../../lib/format.js'
 import DayPopover from './DayPopover.jsx'
 import { nightStyle } from './colorModes.js'
 
-// One night in the grid. `rec` is undefined for days outside the month or with no price.
-// `row` / `col` only decide which way the hover card opens so it never leaves the screen.
+/**
+ * One night in the grid. `rec` is undefined for days outside the month or with no price.
+ * `row` / `col` only decide which way the hover card opens so it never leaves the screen.
+ */
 export default function DayCell({ day, rec, mode, context, row, col }) {
   if (!day.inMonth || !rec) {
     return (

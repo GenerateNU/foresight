@@ -1,15 +1,16 @@
 import { apiGet } from './client.js'
 
-// GET /hotels/{id}/recommendations?start=YYYY-MM-DD&end=YYYY-MM-DD  (max 90 nights)
-// Returns one entry per night per room type. See docs/decisions/0038 in the repo.
-//
-// The API sends money as strings ("279.00"), so we convert to numbers here once
-// and the rest of the app never has to think about it.
+/**
+ * GET /hotels/{id}/recommendations?start=YYYY-MM-DD&end=YYYY-MM-DD (max 90 nights).
+ * Returns one entry per night per room type; see docs/decisions/0038 in the repo.
+ * The API sends money as strings ("279.00"), so they become numbers here, once.
+ */
 export async function getRecommendations(hotelId, { start, end }) {
   const rows = await apiGet(`/hotels/${hotelId}/recommendations`, { start, end })
   return rows.map(toRecommendation)
 }
 
+/** One API row in the shape the screens use: numbers for money, camelCase names. */
 function toRecommendation(row) {
   const rate = Number(row.recommended_rate)
   // `previous_rate` isn't in the API yet (issue #96). Until it ships it's undefined,
