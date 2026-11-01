@@ -1,5 +1,6 @@
 import { ApiError } from '../client.js'
 import { mockHotel } from './hotels.js'
+import { mockRecommendations } from './recommendations.js'
 
 /**
  * One entry per endpoint: `[path pattern, (path params, query params) => response body]`.
@@ -8,6 +9,7 @@ import { mockHotel } from './hotels.js'
  */
 const ROUTES = [
   [/^\/hotels\/(\d+)$/, ([id]) => mockHotel(Number(id))],
+  [/^\/hotels\/(\d+)\/recommendations$/, ([id], query) => mockRecommendations(Number(id), query)],
 ]
 
 /** The fake `apiGet` behind VITE_USE_MOCKS=true, so screens work before the backend does. */
