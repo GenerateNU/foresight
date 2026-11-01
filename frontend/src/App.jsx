@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import AppShell from './components/layout/AppShell.jsx'
+import CalendarPage from './features/calendar/CalendarPage.jsx'
 import ReturnAfterSignIn from './features/auth/ReturnAfterSignIn.jsx'
 import SignInPage from './features/auth/SignInPage.jsx'
 import ComponentsPage from './pages/ComponentsPage.jsx'
@@ -16,7 +17,7 @@ export default function App() {
 
       <Route element={<AppShell />}>
         <Route index element={<ReturnAfterSignIn />} />
-        <Route path="calendar" element={<PlaceholderPage title="Calendar" />} />
+        <Route path="calendar" element={<CalendarPage />} />
         <Route path="calendar/:date" element={<PlaceholderPage title="Night detail" />} />
         <Route path="today" element={<PlaceholderPage title="Today" />} />
         <Route path="inbox" element={<PlaceholderPage title="Inbox" />} />
