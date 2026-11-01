@@ -118,6 +118,18 @@
   /* Semantic tokens: what a color MEANS. Components use these, not the raw scales. */
   --color-price-up: var(--color-success-500);
   --color-price-down: var(--color-error-500);
+
+  /* Calendar heat map: cell background (demand-N) and the little dot (demand-dot-N). */
+  --color-demand-1: #fafbfb;
+  --color-demand-2: #f3f8fa;
+  --color-demand-3: #fbf7f1;
+  --color-demand-4: #fcf5e8;
+  --color-demand-5: #fbf0ea;
+  --color-demand-dot-1: #b7c0bc;
+  --color-demand-dot-2: #76a8b9;
+  --color-demand-dot-3: #c4a077;
+  --color-demand-dot-4: #d09e4f;
+  --color-demand-dot-5: #b4532a;
 }
 
 @layer base {
