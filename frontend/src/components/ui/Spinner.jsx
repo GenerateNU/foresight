@@ -1,6 +1,6 @@
 import { cx } from '../../lib/cx.js'
 
-// A spinning ring. Decorative: pair it with visible text, as LoadingState does.
+/** A spinning ring. Decorative: pair it with visible text, as LoadingState does. */
 export default function Spinner({ className }) {
   return (
     <span

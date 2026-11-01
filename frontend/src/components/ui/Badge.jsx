@@ -1,6 +1,5 @@
 import { cx } from '../../lib/cx.js'
 
-// A small coloured label for a status. `tone` says what it means, not what colour it is.
 const TONES = {
   neutral: 'bg-stone-50 text-stone-700',
   info: 'bg-sky-50 text-sky-700',
@@ -9,6 +8,7 @@ const TONES = {
   error: 'bg-error-50 text-error-700',
 }
 
+/** A small coloured label for a status. `tone` says what it means, not what colour it is. */
 export default function Badge({ tone = 'neutral', className, ...props }) {
   return (
     <span

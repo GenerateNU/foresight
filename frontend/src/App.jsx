@@ -1,10 +1,10 @@
-// The route table: which URL shows which page. Add a page by adding a line here.
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from './components/layout/AppShell.jsx'
 import ComponentsPage from './pages/ComponentsPage.jsx'
 import NotFoundPage from './pages/NotFoundPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
 
+/** The route table: which URL shows which page. Add a page by adding a line here. */
 export default function App() {
   return (
     <Routes>

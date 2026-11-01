@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 
+/** Shown for any address that doesn't match a route. */
 export default function NotFoundPage() {
   const navigate = useNavigate()
   return (
