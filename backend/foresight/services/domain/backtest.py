@@ -25,13 +25,18 @@ from foresight.services.ml.weighting import sample_weights, training_mask
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+# The model's prediction interval is (1 - ALPHA); `coverage` is scored against it.
+ALPHA = 0.2
+
 
 @dataclass(frozen=True, slots=True)
 class BacktestResult:
     """Each test night's actual and predicted rate, and how far off they were."""
 
-    nights: pd.DataFrame  # stay_date, actual, predicted
-    metrics: dict[str, float | None]  # mae, rmse, mape, r2, coverage
+    hotel_name: str
+    # stay_date, actual, predicted, low, high (the (1 - ALPHA) interval)
+    nights: pd.DataFrame
+    metrics: dict[str, float | None]  # mae, rmse, mape, r2, bias, coverage
 
 
 async def run_backtest(
@@ -63,16 +68,20 @@ async def run_backtest(
     # Train on nights up to the cutoff, test on the ones after it.
     cutoff = nights["stay_date"].max() - timedelta(days=test_days)
     seen = (nights["stay_date"] <= cutoff).to_numpy()
-    model = EBMModel(alpha=0.2, calibration_frac=HOLDOUT_FRAC)
+    model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
     # CPU-bound for seconds; a thread keeps the event loop free.
     await asyncio.to_thread(model.fit, x[seen], y[seen], sample_weight=weights[seen])
 
+    predicted, low, high = model.predict_interval(x[~seen])
     return BacktestResult(
+        hotel_name=hotel.name,
         nights=pd.DataFrame(
             {
                 "stay_date": nights.loc[~seen, "stay_date"],
                 "actual": y[~seen],
-                "predicted": model.predict(x[~seen]),
+                "predicted": predicted,
+                "low": low,
+                "high": high,
             }
         ),
         metrics=model.evaluate(x[~seen], y[~seen]),
