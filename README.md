@@ -78,8 +78,9 @@ SESSION_SECRET=   # openssl rand -hex 32
 ```
 
 3. Open <http://localhost:8000/auth/google/login>, then check
-   <http://localhost:8000/auth/me>. A new user has no hotel until you run
-   `just link-user <email> <hotel_id>`.
+   <http://localhost:8000/auth/me>. Every other route needs this login, and you
+   only see hotels you're linked to: create one with `POST /hotels` (you're linked
+   automatically), and add a colleague with `POST /hotels/{id}/users`.
 
 For production, register `https://<api-domain>/auth/google/callback` too and
 set `GOOGLE_REDIRECT_URI`, `FRONTEND_URL` and the `SESSION_*` settings (see

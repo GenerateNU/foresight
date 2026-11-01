@@ -24,13 +24,13 @@ from fastapi import (
     Body,
     File,
     Form,
-    Path,
     UploadFile,
     status,
 )
 from pydantic import Field
 
 from foresight import worker
+from foresight.routes.access import HotelId
 from foresight.routes.helpers import RequestSchema, SessionDep, example_body
 from foresight.routes.job import JobResponse
 from foresight.services import job as job_service
@@ -87,8 +87,6 @@ _DATE_EXAMPLES: dict[str, Any] = {
 IngestBody = Annotated[IngestRequest | None, Body(openapi_examples=_DATE_EXAMPLES)]
 
 _ACCEPTED = {"status_code": status.HTTP_202_ACCEPTED, "response_model": JobResponse}
-
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
 
 
 #          ╭──────────────────────────────────────────────────────────╮

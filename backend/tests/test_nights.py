@@ -9,14 +9,13 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 from foresight.database.enums import EventCategory, EventStatus
 from foresight.database.models.signals.event import Event
-from foresight.database.session import get_session
-from foresight.main import app
 from foresight.services.domain import event as event_service
+from foresight.services.domain import user as user_service
 from foresight.services.errors import InvalidRequestError
+from tests.test_user import make_hotel, unique, unique_email
 
 D = date
 
@@ -206,20 +205,19 @@ async def test_end_before_start_is_invalid(stored_events) -> None:
 # Routes
 
 
-@pytest.fixture
-async def client():
-    async def no_session():
-        return None
+async def test_recommendations_reject_a_bad_range(client, session, sign_in_as) -> None:
+    user = await user_service.sign_in(
+        session,
+        google_id=unique("google"),
+        email=unique_email(),
+        email_verified=True,
+        name=None,
+    )
+    hotel = await make_hotel(session)
+    await user_service.link_user_to_hotel(session, user_id=user.id, hotel_id=hotel.id)
+    sign_in_as(user)
 
-    app.dependency_overrides[get_session] = no_session
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
-    app.dependency_overrides.clear()
-
-
-async def test_recommendations_reject_a_bad_range(client) -> None:
-    base = "/hotels/1/recommendations"
+    base = f"/hotels/{hotel.id}/recommendations"
     too_long = await client.get(f"{base}?start=2025-01-01&end=2025-12-31")
     reversed_ = await client.get(f"{base}?start=2025-02-01&end=2025-01-01")
     both = await client.get(f"{base}?date=2025-01-01&start=2025-01-01")

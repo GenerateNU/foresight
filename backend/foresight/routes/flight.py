@@ -4,9 +4,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Query
 from pydantic import Field
 
+from foresight.routes.access import HotelId
 from foresight.routes.helpers import (
     PageDep,
     PageResponse,
@@ -35,9 +36,6 @@ class FlightArrivalResponse(ResponseSchema):
     )
     source: str = Field(description="Each source keeps its own row per day")
     captured_at: datetime = Field(description="When this row was last fetched, UTC")
-
-
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
 
 
 #          ╭──────────────────────────────────────────────────────────╮

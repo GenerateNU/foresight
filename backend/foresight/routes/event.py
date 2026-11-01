@@ -3,10 +3,11 @@
 from datetime import date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Query
 from pydantic import Field
 
 from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
+from foresight.routes.access import HotelId
 from foresight.routes.helpers import (
     PageDep,
     PageResponse,
@@ -60,9 +61,6 @@ class EventResponse(ResponseSchema):
         description="When any source first reported it, UTC"
     )
     last_seen_at: datetime = Field(description="When a source last reported it, UTC")
-
-
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
 
 
 #          ╭──────────────────────────────────────────────────────────╮

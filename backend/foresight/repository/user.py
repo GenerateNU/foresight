@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
+from foresight.database.models.hotel import Hotel
 from foresight.database.models.user import User, UserHotel
 
 if TYPE_CHECKING:
@@ -93,3 +94,21 @@ async def list_hotel_ids(session: AsyncSession, user_id: int) -> Sequence[int]:
         .order_by(UserHotel.hotel_id)
     )
     return (await session.scalars(stmt)).all()
+
+
+async def has_hotel(session: AsyncSession, user_id: int, hotel_id: int) -> bool:
+    stmt = select(UserHotel.user_id).where(
+        UserHotel.user_id == user_id, UserHotel.hotel_id == hotel_id
+    )
+    return await session.scalar(stmt) is not None
+
+
+async def has_hotel_in_city(session: AsyncSession, user_id: int, city_id: int) -> bool:
+    """Whether the user is linked to at least one hotel in this city."""
+    stmt = (
+        select(UserHotel.user_id)
+        .join(Hotel, Hotel.id == UserHotel.hotel_id)
+        .where(UserHotel.user_id == user_id, Hotel.city_id == city_id)
+        .limit(1)
+    )
+    return await session.scalar(stmt) is not None

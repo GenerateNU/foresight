@@ -8,10 +8,11 @@ Every run makes a new version, so earlier ones stay for comparison. Poll
 from datetime import date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, Path, status
+from fastapi import APIRouter, BackgroundTasks, Body, status
 from pydantic import Field
 
 from foresight import worker
+from foresight.routes.access import HotelId, ModelId
 from foresight.routes.helpers import (
     PageDep,
     PageResponse,
@@ -147,10 +148,6 @@ class PricingModelResponse(ResponseSchema):
     data_start: date = Field(description="First night trained on, inclusive")
     data_end: date = Field(description="Last night trained on, inclusive")
     trained_at: datetime = Field(description="When it was saved, UTC")
-
-
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
-ModelId = Annotated[int, Path(description="The model's id", examples=[1])]
 
 
 #          ╭──────────────────────────────────────────────────────────╮

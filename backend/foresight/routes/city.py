@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Path, status
 from pydantic import Field, field_validator
 
+from foresight.routes.access import EditableCityId
 from foresight.routes.helpers import RequestSchema, ResponseSchema, SessionDep
 from foresight.services.domain import city as city_service
 
@@ -147,9 +148,10 @@ async def get_city(city_id: CityId, session: SessionDep) -> CityResponse:
 
 @router.patch("/cities/{city_id}", response_model=CityResponse)
 async def update_city(
-    city_id: CityId, data: CityUpdateRequest, session: SessionDep
+    city_id: EditableCityId, data: CityUpdateRequest, session: SessionDep
 ) -> CityResponse:
-    """Change the fields sent; omitted fields are left alone."""
+    """Change the fields sent; omitted fields are left alone. Only people linked
+    to a hotel in the city can: every hotel there shares it."""
     city = await city_service.update_city(
         session, city_id, data.model_dump(exclude_unset=True)
     )

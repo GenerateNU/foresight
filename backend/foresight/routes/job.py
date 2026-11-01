@@ -9,12 +9,13 @@ last refreshed.
 """
 
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Path
+from fastapi import APIRouter
 from pydantic import Field
 
 from foresight.database.enums import JobKind, JobStatus
+from foresight.routes.access import HotelId, JobId
 from foresight.routes.helpers import (
     PageDep,
     PageResponse,
@@ -77,10 +78,6 @@ class FreshnessResponse(ResponseSchema):
         "A rate whose inputs hold isn't stored again, so this can be older than "
         "the last request; `last_failure` is always null"
     )
-
-
-JobId = Annotated[int, Path(description="The job's id", examples=[1])]
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
 
 
 #          ╭──────────────────────────────────────────────────────────╮
