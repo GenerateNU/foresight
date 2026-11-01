@@ -1,6 +1,6 @@
 import { formatChange } from '../../lib/format.js'
 
-// The small "↑ €20" next to a rate. Green for up, red for down, nothing for no change.
+/** The small "↑ €20" next to a rate. Green for up, red for down, nothing for no change. */
 export default function ChangeBadge({ change }) {
   const label = formatChange(change)
   if (!label) return null

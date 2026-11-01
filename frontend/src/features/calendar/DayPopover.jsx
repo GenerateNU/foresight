@@ -2,8 +2,10 @@ import { formatEuro, formatSignedEuro } from '../../lib/format.js'
 import ChangeBadge from './ChangeBadge.jsx'
 import { daysOut, longDate } from './calendarUtils.js'
 
-// The hover card: why this night costs what it does.
-// It is always in the DOM and shown by CSS (group-hover), so there is no hover state to manage.
+/**
+ * The hover card: why this night costs what it does. Always in the DOM and shown by CSS
+ * (group-hover), so there's no hover state to manage.
+ */
 export default function DayPopover({ rec, className }) {
   const out = daysOut(rec.date)
   const topFactors = rec.factors.slice(0, 4)
