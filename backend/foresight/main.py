@@ -43,6 +43,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    # The frontend sends the session cookie; browsers drop credentialed
+    # responses without this, and it's why origins are listed, never "*".
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
