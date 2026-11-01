@@ -1,5 +1,7 @@
-// The title block at the top of every page: an optional line above, the title, and
-// optional controls (buttons, pickers) on the right.
+/**
+ * The title block at the top of every page: an optional `eyebrow` line above the `title`,
+ * and optional `actions` (buttons, pickers) on the right.
+ */
 export default function PageHeader({ eyebrow, title, actions }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">

@@ -1,8 +1,10 @@
 import { useId } from 'react'
 import { cx } from '../../lib/cx.js'
 
-// A labelled text field. `hint` shows under it; `error` replaces the hint and turns it red.
-// Any other prop goes to the <input>.
+/**
+ * A labelled text field. `hint` shows under it; `error` replaces the hint and turns it red.
+ * Any other prop goes to the <input>.
+ */
 export default function Input({ label, hint, error, className, ...props }) {
   const id = useId()
   const note = error ?? hint

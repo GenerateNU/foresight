@@ -1,4 +1,4 @@
-// Shape of HotelResponse (backend/foresight/routes/hotel.py).
+/** A made-up hotel in the shape of HotelResponse (backend/foresight/routes/hotel.py). */
 export function mockHotel(id) {
   return {
     id,

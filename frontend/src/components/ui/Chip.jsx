@@ -1,6 +1,6 @@
 import { cx } from '../../lib/cx.js'
 
-// A pill-shaped toggle, e.g. a filter. `selected` fills it in.
+/** A pill-shaped toggle, e.g. a filter. `selected` fills it in. */
 export default function Chip({ selected = false, className, ...props }) {
   return (
     <button
