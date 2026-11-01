@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
+from foresight.database.models.user import UserHotel
 from foresight.repository.pagination import fetch_page
 from foresight.repository.upsert import Outcome, upsert_rows
 
@@ -141,6 +142,18 @@ async def create_room_type(
 
 async def list_hotels(session: AsyncSession) -> Sequence[Hotel]:
     stmt = select(Hotel).options(joinedload(Hotel.city)).order_by(Hotel.id)
+    return (await session.scalars(stmt)).all()
+
+
+async def list_hotels_for_user(session: AsyncSession, user_id: int) -> Sequence[Hotel]:
+    """The hotels a user is linked to; empty for a user with none."""
+    stmt = (
+        select(Hotel)
+        .join(UserHotel, UserHotel.hotel_id == Hotel.id)
+        .where(UserHotel.user_id == user_id)
+        .options(joinedload(Hotel.city))
+        .order_by(Hotel.id)
+    )
     return (await session.scalars(stmt)).all()
 
 

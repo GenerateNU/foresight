@@ -10,12 +10,16 @@ from fastapi.responses import JSONResponse
 from foresight.services.errors import (
     ConflictError,
     DomainError,
+    ForbiddenError,
     InvalidRequestError,
     NotConfiguredError,
     NotFoundError,
+    NotSignedInError,
 )
 
 _STATUS: dict[type[DomainError], int] = {
+    NotSignedInError: status.HTTP_401_UNAUTHORIZED,
+    ForbiddenError: status.HTTP_403_FORBIDDEN,
     NotFoundError: status.HTTP_404_NOT_FOUND,
     ConflictError: status.HTTP_409_CONFLICT,
     InvalidRequestError: status.HTTP_422_UNPROCESSABLE_CONTENT,

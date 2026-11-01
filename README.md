@@ -63,6 +63,28 @@ just migrate
 just migrate-down
 ```
 
+## Google sign-in
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create an
+   OAuth client of type **Web application** with the redirect URI
+   `http://localhost:8000/auth/google/callback`. While the consent screen is in
+   *Testing*, add your Google account as a test user.
+2. Set these in `.env`:
+
+```bash
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+SESSION_SECRET=   # openssl rand -hex 32
+```
+
+3. Open <http://localhost:8000/auth/google/login>, then check
+   <http://localhost:8000/auth/me>. A new user has no hotel until you run
+   `just link-user <email> <hotel_id>`.
+
+For production, register `https://<api-domain>/auth/google/callback` too and
+set `GOOGLE_REDIRECT_URI`, `FRONTEND_URL` and the `SESSION_*` settings (see
+`.env.example`). The frontend must call the API with `credentials: "include"`.
+
 ## Code Quality
 
 ```bash

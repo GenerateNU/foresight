@@ -24,6 +24,8 @@ dependencies = [
     "interpret-core>=0.7.8",
     "numpy>=2.0",
     "joblib>=1.4",
+    "authlib>=1.6",
+    "itsdangerous>=2.2",
 ]
 
 [dependency-groups]

@@ -45,7 +45,8 @@ Two kinds of work enter the system:
   the background in the same process and commits after every chunk.
 
 Everything is async: FastAPI handlers, SQLAlchemy sessions and every outside
-HTTP call. The API has no authentication ([0026](decisions/0026-no-authentication.md)).
+HTTP call. People can sign in with Google ([0040](decisions/0040-google-sign-in-cookie-sessions.md)),
+but no route requires it yet ([0026](decisions/0026-no-authentication.md)).
 
 ---
 
@@ -64,8 +65,9 @@ A layer calls only the layer directly below it
 Actual imports:
 
 ```
-routes      → services, database.enums, worker (to schedule a job)
-services    → repository, database.models/enums, config (job.py only)
+routes      → services, database.enums, database.models.user (the signed-in
+              user's type), worker (to schedule a job)
+services    → repository, database.models/enums, config (job.py, domain/user.py)
 repository  → database
 worker      → services.job, database.session
 ```
@@ -80,7 +82,7 @@ signals are grouped under `signals/` in both the database and the repository.
 
 ```
 backend/foresight/
-  main.py                  app, routers, error handlers, lifespan
+  main.py                  app, routers, session and CORS middleware, error handlers, lifespan
   config.py                settings (pydantic-settings)
   worker.py                runs jobs; commits per chunk
   cli.py                   operator commands (`just link-user`); commits once per command
@@ -89,8 +91,10 @@ backend/foresight/
     errors.py              domain error → status code
     city.py hotel.py weather.py event.py flight.py ingest.py job.py
     pricing_model.py health.py
+    auth.py                Google sign-in, logout, /auth/me, CurrentUserDep
   services/
-    errors.py              NotFound / Conflict / InvalidRequest / NotConfigured
+    errors.py              NotFound / Conflict / InvalidRequest / NotConfigured /
+                           NotSignedIn / Forbidden
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                city, hotel, user, weather, weather_coverage, event, flight,
                            model_inputs, pricing_model, recommendation, freshness
@@ -143,7 +147,9 @@ DomainError
  ├─ ConflictError         ─────────▶   409
  ├─ InvalidRequestError   ─────────▶   422
  │   └─ InvalidWindowError  (services/ingest/window.py)
- └─ NotConfiguredError    ─────────▶   503   (an API key isn't set)
+ ├─ NotConfiguredError    ─────────▶   503   (an API key or secret isn't set)
+ ├─ NotSignedInError      ─────────▶   401   (no valid session)
+ └─ ForbiddenError        ─────────▶   403   (known, but not allowed)
 ```
 
 - Every `get_x(id)` in a service raises `NotFoundError`; nothing returns None
@@ -153,6 +159,8 @@ DomainError
 - Every error body is `{"detail": "..."}`.
 - Adapter errors (`OutOfCreditsError`, `RateLimitedError`, ...) never reach
   HTTP. They end a job as `stopped` or `failed` (section 5).
+- A failed Google callback (bad state, Google refused, bad ID token) is a 400
+  raised in `routes/auth.py`: it comes from the OAuth library, not a service.
 
 ### 3.3 Naming
 
@@ -264,10 +272,11 @@ hotel keeps its own coordinates for distance to venues.
 accounts, identified by Google's account id and never by email (`users.email`
 is not unique). `user_hotels` links a user to a hotel, keyed on the pair so
 linking twice changes nothing; a hotel can have several users, a user can
-belong to several hotels, and a user with none is valid. Until the app can do
-it, `just link-user <email> <hotel_id>` links by email
-([0036](decisions/0036-operator-commands-in-cli.md)). Nothing signs anyone in
-yet.
+belong to several hotels, and a user with none is valid. Signing in with Google
+creates the user, or refreshes the existing one's email, name and
+`last_signed_in_at` ([0040](decisions/0040-google-sign-in-cookie-sessions.md)).
+Until the app can do it, `just link-user <email> <hotel_id>` links by email
+([0036](decisions/0036-operator-commands-in-cli.md)).
 
 **Foreign keys** always state `ON DELETE`:
 
@@ -457,6 +466,41 @@ Every training run is a new version
 `description` says what it tried, and `POST /models/{id}/activate` chooses
 which version serves.
 
+### 6.5 Signing in
+
+([0040](decisions/0040-google-sign-in-cookie-sessions.md))
+
+```
+GET /auth/google/login
+  routes/auth.google_login
+    user_service.require_sign_in_configured     503 if a Google setting or SESSION_SECRET is blank
+    Authlib saves state, nonce and PKCE verifier in the session cookie
+  ← 302 to accounts.google.com
+
+GET /auth/google/callback?code=…&state=…        Google sends the browser back
+  routes/auth.google_callback
+    Authlib: state matches the cookie's?        no  → 400
+             exchange the code, with the verifier
+             check the ID token: signature, issuer, audience, expiry, nonce   → 400
+    user_service.sign_in(google_id=sub, email, email_verified, name)
+      email missing or unverified               → 403
+      user_repo.upsert_user                     INSERT … ON CONFLICT DO UPDATE
+    session cleared, then {"user_id": id}; get_session commits
+  ← 302 to FRONTEND_URL, with the session cookie
+
+GET /auth/me
+  routes/auth.get_current_user
+    user_service.get_signed_in_user(session["user_id"])    401 if none, or the user is gone
+  → hotel_service.list_hotels_for_user                     [] until a hotel is linked
+```
+
+The cookie is signed, not encrypted, and holds only the user's id. It is
+HTTP-only, Secure (a setting) and carries a `SameSite` (a setting). It is
+re-issued on every response, so a session ends 14 days after the last request.
+A missing, expired or tampered cookie is an empty session, so all three are the
+same 401. Logout deletes the browser's cookie; a copied one stays valid until it
+expires. CORS allows `FRONTEND_URL` only, with credentials.
+
 ---
 
 ## 7. API
@@ -464,6 +508,10 @@ which version serves.
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/health` | |
+| GET | `/auth/google/login` | 302 to Google; open it as a page |
+| GET | `/auth/google/callback` | Google's return: starts the session, 302 to the frontend |
+| POST | `/auth/logout` | 204; ends the session |
+| GET | `/auth/me` | the signed-in user and their hotels; 401 if not signed in |
 | POST, GET | `/cities` | |
 | GET, PATCH | `/cities/{id}` | |
 | POST, GET | `/hotels` | a hotel includes its city |
@@ -487,8 +535,9 @@ which version serves.
 | GET | `/hotels/{id}/jobs` | paginated, newest first |
 | POST, GET | `/example/widgets`, `/example/widgets/{id}` | reference slice |
 
-Status codes: `201` create, `202` job queued, `200` otherwise, and the error
-codes in 3.2.
+Status codes: `201` create, `202` job queued, `302` sign-in redirects, `204`
+logout, `200` otherwise, and the error codes in 3.2. No route other than
+`/auth/me` requires a session yet.
 
 ---
 
@@ -503,9 +552,13 @@ setting is listed in `.env.example`.
 | `PREDICTHQ_TOKEN` | events job |
 | `XRAPIDAPI_KEY` | AeroDataBox adapter (no job yet) |
 | `OPENSKY_CLIENT_ID`, `_SECRET` | OpenSky adapter (no job yet) |
+| `GOOGLE_CLIENT_ID`, `_SECRET`, `GOOGLE_REDIRECT_URI` | the OAuth client in `routes/auth.py`; the 503 check in `services/domain/user.py` |
+| `SESSION_SECRET`, `SESSION_MAX_AGE_SECONDS`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE` | the session middleware in `main.py` (the secret also in the 503 check) |
+| `FRONTEND_URL` | the CORS origin in `main.py`, and where the callback redirects |
 
-Only `services/job.py` reads settings. A missing key is a 503 when the job is
-requested.
+`services/job.py` and `services/domain/user.py` read settings; `main.py` reads
+them to build the middleware. A missing key is a 503 when the job or the
+sign-in is requested.
 
 ---
 

@@ -29,3 +29,13 @@ class InvalidRequestError(DomainError):
 
 class NotConfiguredError(DomainError):
     """A server-side setting the operation needs (an API key) is missing."""
+
+
+class NotSignedInError(DomainError):
+    """The caller has no valid session: none was sent, it expired, or its user
+    no longer exists."""
+
+
+class ForbiddenError(DomainError):
+    """The caller is known but isn't allowed to do this, e.g. a Google account
+    whose email Google hasn't verified."""
