@@ -91,8 +91,9 @@ class Model(ABC):
                 check. None uses the model's own default.
 
         Returns:
-            dict[str, float | None]: mae, rmse, mape, r2, and coverage
-                (share of y inside the (1 - alpha) interval. None if the model
+            dict[str, float | None]: mae, rmse, mape, r2, bias (mean of
+                predicted - true; positive means it predicts too high), and
+                coverage (share of y inside the (1 - alpha) interval. None if the model
                 has no intervals).
         """
         y_true = np.asarray(y, dtype=float)
@@ -115,5 +116,6 @@ class Model(ABC):
             "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
             "mape": float(mape),
             "r2": r2_score(y_true, y_pred),
+            "bias": float(np.mean(y_pred - y_true)),
             "coverage": coverage,
         }

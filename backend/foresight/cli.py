@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -43,27 +43,65 @@ async def backtest(hotel_id: int, test_days: int, out: Path) -> None:
             session, hotel_id, test_days=test_days
         )
     nights = result.nights
-    print(
-        f"{len(nights)} test nights, "
-        f"{nights['stay_date'].min()} to {nights['stay_date'].max()}"
-    )
-    print(f"MAE  €{result.metrics['mae']:.2f}")
-    print(f"RMSE €{result.metrics['rmse']:.2f}")
+    first, last = nights["stay_date"].min(), nights["stay_date"].max()
+    print(f"{len(nights)} test nights, {first} to {last}")
+    scores = _format_metrics(result.metrics)
+    for name, value in scores:
+        print(f"{name:<13} {value}")
 
-    path = out / f"hotel-{hotel_id}-{date.today()}.png"
-    _save_plot(nights, path, title=f"Hotel {hotel_id}: last {test_days} nights")
+    path = out / f"hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
+    _save_plot(
+        nights,
+        path,
+        title=(
+            f"Backtest: {result.hotel_name}, actual vs predicted rate, "
+            f"{first:%-d %b} – {last:%-d %b %Y}"
+        ),
+        subtitle="  ·  ".join(f"{name} {value}" for name, value in scores),
+    )
     print(f"Plot saved to {path}")
 
 
-def _save_plot(nights: pd.DataFrame, path: Path, *, title: str) -> None:
-    """Actual vs predicted rate per night, as a PNG."""
+def _format_metrics(metrics: dict[str, float | None]) -> list[tuple[str, str]]:
+    """The backtest's scores as (label, value) pairs, for the terminal and plot."""
+    coverage = metrics["coverage"]
+    bias = metrics["bias"]
+    assert bias is not None  # always scored; only coverage can be missing
+    interval = f"{1 - backtest_service.ALPHA:.0%}"
+    return [
+        ("MAE", f"€{metrics['mae']:.2f}"),
+        ("RMSE", f"€{metrics['rmse']:.2f}"),
+        ("Bias", f"{'+' if bias >= 0 else '−'}€{abs(bias):.2f}"),
+        ("MAPE", f"{metrics['mape']:.1%}"),
+        ("R²", f"{metrics['r2']:.3f}"),
+        (
+            f"{interval} coverage",
+            "n/a" if coverage is None else f"{coverage:.0%}",
+        ),
+    ]
+
+
+def _save_plot(nights: pd.DataFrame, path: Path, *, title: str, subtitle: str) -> None:
+    """Actual vs predicted rate per night, as a PNG, with the scores under the title."""
     # Imported here so only this command needs matplotlib, not the API.
     import matplotlib
 
     matplotlib.use("Agg")  # write files; no window
     import matplotlib.pyplot as plt
 
+    interval = f"{1 - backtest_service.ALPHA:.0%}"
+    missed = (nights["actual"] < nights["low"]) | (nights["actual"] > nights["high"])
+
     fig, ax = plt.subplots(figsize=(11, 4.5))
+    ax.fill_between(
+        nights["stay_date"],
+        nights["low"],
+        nights["high"],
+        color="#eb6834",
+        alpha=0.15,
+        linewidth=0,
+        label=f"{interval} interval",
+    )
     ax.plot(
         nights["stay_date"],
         nights["actual"],
@@ -78,11 +116,33 @@ def _save_plot(nights: pd.DataFrame, path: Path, *, title: str) -> None:
         linewidth=2,
         label="Predicted",
     )
-    ax.set_title(title, loc="left")
+    # The nights the interval missed: the ones that pull coverage down.
+    ax.scatter(
+        nights.loc[missed, "stay_date"],
+        nights.loc[missed, "actual"],
+        s=40,
+        color="#2a78d6",
+        edgecolors="white",
+        linewidths=1.5,
+        zorder=3,
+        label=f"Outside interval ({int(missed.sum())})",
+    )
+    ax.set_title(title, loc="left", pad=24)
+    ax.text(
+        0,
+        1.02,
+        subtitle,
+        transform=ax.transAxes,
+        fontsize=9,
+        color="#555555",
+        va="bottom",
+    )
     ax.set_ylabel("Rate (€)")
     ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(frameon=False, loc="upper left")
+    bottom, top = ax.get_ylim()
+    ax.set_ylim(bottom, top + 0.25 * (top - bottom))  # room for the legend
+    ax.legend(frameon=False, loc="upper left", ncols=4)
     fig.autofmt_xdate()
     fig.tight_layout()
 
