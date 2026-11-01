@@ -1,14 +1,127 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import 'tailwindcss';
 
-body {
-  margin: 0;
-  background: #0B0F14;
-  color: #E6EDF3;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+/*
+ * Design tokens, copied from the Figma "Design System" page.
+ * Tailwind v4 turns every --color-* here into utilities, so --color-pine-600
+ * becomes bg-pine-600, text-pine-600, border-pine-600 and so on.
+ * Change a value here and the whole app follows; never hard-code a hex in a component.
+ */
+@theme {
+  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
+  /* The brand display font (Qurova) isn't installed yet; falls back to the body font. */
+  --font-display: 'Qurova DEMO', 'Be Vietnam Pro', ui-sans-serif, sans-serif;
+
+  --radius-control: 12px;
+  --radius-chip: 999px;
+  --radius-card: 16px;
+
+  --color-white: #ffffff;
+  --color-dark: #151817;
+
+  /* Stone: neutral. Most text, borders and backgrounds. */
+  --color-stone-25: #fafbfb;
+  --color-stone-50: #f4f6f5;
+  --color-stone-100: #e9edeb;
+  --color-stone-200: #d5dbd8;
+  --color-stone-300: #b7c0bc;
+  --color-stone-400: #8e9893;
+  --color-stone-500: #6b756f;
+  --color-stone-600: #525b56;
+  --color-stone-700: #3d4541;
+  --color-stone-800: #2f3230;
+  --color-stone-900: #1f2221;
+
+  /* Pine: primary. */
+  --color-pine-50: #f1f4f3;
+  --color-pine-100: #dce4e1;
+  --color-pine-200: #b9c8c2;
+  --color-pine-300: #8fa59d;
+  --color-pine-400: #67807a;
+  --color-pine-500: #4e655e;
+  --color-pine-600: #455953;
+  --color-pine-700: #3f4d48;
+  --color-pine-800: #2e3935;
+  --color-pine-900: #1e2623;
+
+  /* Sky: secondary. Links, focus rings, info. */
+  --color-sky-50: #f3f8fa;
+  --color-sky-100: #e3eef2;
+  --color-sky-200: #b5d0dc;
+  --color-sky-300: #9fc4d0;
+  --color-sky-400: #76a8b9;
+  --color-sky-500: #4f8ba0;
+  --color-sky-600: #2f6f85;
+  --color-sky-700: #245769;
+  --color-sky-800: #1b414e;
+  --color-sky-900: #122c35;
+
+  /* Sand: accent. Events and moderate demand. */
+  --color-sand-50: #fbf7f1;
+  --color-sand-100: #f4eadd;
+  --color-sand-200: #e8d5be;
+  --color-sand-300: #d9be9c;
+  --color-sand-400: #c4a077;
+  --color-sand-500: #a88257;
+  --color-sand-600: #866541;
+  --color-sand-700: #634a31;
+  --color-sand-800: #473523;
+  --color-sand-900: #322518;
+
+  /* Error: price decreases, destructive actions. */
+  --color-error-50: #fceeec;
+  --color-error-100: #f8deda;
+  --color-error-200: #eebcb4;
+  --color-error-300: #e59a8f;
+  --color-error-400: #cc6e5e;
+  --color-error-500: #b3412e;
+  --color-error-600: #9a3524;
+  --color-error-700: #80291b;
+  --color-error-800: #601f14;
+  --color-error-900: #46170f;
+
+  /* Warning: changes waiting for approval. */
+  --color-warning-50: #fcf5e8;
+  --color-warning-100: #faebd2;
+  --color-warning-200: #f2d6a8;
+  --color-warning-300: #e9c27f;
+  --color-warning-400: #d09e4f;
+  --color-warning-500: #b7791f;
+  --color-warning-600: #9a6618;
+  --color-warning-700: #7e5212;
+  --color-warning-800: #5e3e0e;
+  --color-warning-900: #452d0a;
+
+  /* Success: price increases, applied changes. */
+  --color-success-50: #eef8f2;
+  --color-success-100: #ddf0e6;
+  --color-success-200: #b6dec8;
+  --color-success-300: #8fcbab;
+  --color-success-400: #5fa483;
+  --color-success-500: #2f7d5b;
+  --color-success-600: #276c4e;
+  --color-success-700: #1f5a40;
+  --color-success-800: #174430;
+  --color-success-900: #113223;
+
+  /* Ember: peak demand. */
+  --color-ember-50: #fbf0ea;
+  --color-ember-100: #f7e0d6;
+  --color-ember-200: #edc1af;
+  --color-ember-300: #e3a288;
+  --color-ember-400: #cc7a59;
+  --color-ember-500: #b4532a;
+  --color-ember-600: #9a4422;
+  --color-ember-700: #7f3519;
+  --color-ember-800: #5f2813;
+  --color-ember-900: #461d0e;
+
+  /* Semantic tokens: what a color MEANS. Components use these, not the raw scales. */
+  --color-price-up: var(--color-success-500);
+  --color-price-down: var(--color-error-500);
 }
 
-button,
-input,
-select {
-  font-family: inherit;
+@layer base {
+  body {
+    @apply bg-white font-sans text-stone-900 antialiased;
+  }
 }
