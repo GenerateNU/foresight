@@ -1,6 +1,7 @@
 // The route table: which URL shows which page. Add a page by adding a line here.
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from './components/layout/AppShell.jsx'
+import ComponentsPage from './pages/ComponentsPage.jsx'
 import NotFoundPage from './pages/NotFoundPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
 
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="upload/export-guide" element={<PlaceholderPage title="Export guide" />} />
         <Route path="pricing-rules" element={<PlaceholderPage title="Pricing rules" />} />
         <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+        {import.meta.env.DEV && <Route path="components" element={<ComponentsPage />} />}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
