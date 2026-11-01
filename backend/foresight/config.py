@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     app_name: str = "Foresight"
     debug: bool = False
 
+    # Browser origins allowed to call the API (the frontend). Comma-separated in
+    # .env, e.g. CORS_ORIGINS=http://localhost:5173,https://app.example.com
+    cors_origins: str = "http://localhost:5173"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # Database
     # App traffic. On Neon this is the pooled (-pooler) connection string.
     database_url: str = (
