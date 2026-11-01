@@ -130,7 +130,7 @@ foresight/
 ├── docs/
 │   ├── system-design.md    # How the backend fits together
 │   └── decisions/          # One design decision per file
-├── frontend/               # TBD
+├── frontend/               # React app; see frontend/README.md
 ├── docker-compose.yml
 ├── justfile
 └── .env.example
