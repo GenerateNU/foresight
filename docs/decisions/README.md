@@ -77,3 +77,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0055](0055-events-back-in-the-model.md) | Events are back in the model, counted from when PredictHQ first saw them | ML |
 | [0054](0054-hosted-on-render.md) | The backend is hosted on Render's free plan | operations |
 | [0056](0056-fonts-served-from-the-app.md) | Fonts are served from the app, not Google Fonts | frontend |
+| [0041](0041-waiting-is-fine-guessing-isnt.md) | Waiting is fine; leaving the manager guessing isn't | frontend |
