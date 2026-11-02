@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 # What a file that can't be read at all raises.
 PARSE_ERRORS = (ValueError, csv.Error, UnicodeDecodeError)
 
+_MONEY_LIMIT = 10**8  # money columns are Numeric(10, 2)
+
 BOOKING_COLUMNS = [
     "BookRef",
     "BookingDate",
@@ -68,34 +70,37 @@ def parse_cancellations(content: bytes) -> Parsed:
 
 def _booking(line: dict[str, str]) -> dict[str, Any]:
     booking = {
-        "book_ref": _required(line["BookRef"]),
+        "book_ref": _required(line["BookRef"], 32),
         "booked_at": _timestamp(line["BookingDate"]),
         "arrival": _day(line["Arrival"]),
         "departure": _day(line["Departure"]),
         "nights": int(line["Nights"]),
-        "room_type_code": _required(line["RoomType"]),
-        "company_code": line["Company"] or None,  # a code; CompanyName is free text
-        "agent_code": line["Agent"] or None,
-        "adr_nett": Decimal(line["ADRSoldNett"]),
-        "value_nett": Decimal(line["ReservationValueNett"]),
-        "rate_plan": line["RatePlan"] or None,
-        "market_segment": line["MarketSegment"] or None,
+        "room_type_code": _required(line["RoomType"], 32),
+        # Company is a code; CompanyName is free text.
+        "company_code": _optional(line["Company"], 64),
+        "agent_code": _optional(line["Agent"], 64),
+        "adr_nett": _money(line["ADRSoldNett"]),
+        "value_nett": _money(line["ReservationValueNett"]),
+        "rate_plan": _optional(line["RatePlan"], 64),
+        "market_segment": _optional(line["MarketSegment"], 64),
     }
     if booking["departure"] <= booking["arrival"]:
         raise ValueError("departure is not after arrival")
+    if booking["nights"] not in range(2**31):
+        raise ValueError("nights is out of range")
     return booking
 
 
 def _cancellation(line: dict[str, str]) -> dict[str, Any]:
     cancellation = {
-        "cancel_ref": _required(line["CancelRef"]),
-        "book_ref": _required(line["Ref"]),
+        "cancel_ref": _required(line["CancelRef"], 32),
+        "book_ref": _required(line["Ref"], 32),
         "booked_at": _timestamp(line["BookingCreatedDate"]),
         "cancelled_at": _timestamp(line["CancelDate"]),
-        "reason_code": line["CancelReasonCode"] or None,
+        "reason_code": _optional(line["CancelReasonCode"], 32),
         "arrival": _day(line["ArrivalDate"]),
         "departure": _day(line["DepartureDate"]),
-        "lost_revenue": Decimal(line["EstimatedRevenue"]),
+        "lost_revenue": _money(line["EstimatedRevenue"]),
     }
     if cancellation["departure"] <= cancellation["arrival"]:
         raise ValueError("departure is not after arrival")
@@ -127,13 +132,31 @@ def _parse(
         except (ValueError, ArithmeticError) as exc:  # ArithmeticError: bad Decimal
             skipped += 1
             logger.warning("%s line %d skipped: %s", report, reader.line_num, exc)
+    # A header-only file is a quiet day; every row failing is a format change.
+    if skipped and not rows:
+        raise ValueError(f"no readable rows in the {report} export")
     return Parsed(rows, skipped)
 
 
-def _required(value: str) -> str:
-    if not value.strip():
+def _optional(value: str, limit: int) -> str | None:
+    value = value.strip()
+    if len(value) > limit:
+        raise ValueError(f"value is longer than {limit} characters")
+    return value or None
+
+
+def _required(value: str, limit: int) -> str:
+    text = _optional(value, limit)
+    if text is None:
         raise ValueError("a required value is empty")
-    return value.strip()
+    return text
+
+
+def _money(value: str) -> Decimal:
+    amount = Decimal(value)
+    if not amount.is_finite() or abs(amount) >= _MONEY_LIMIT:
+        raise ValueError("amount is out of range")
+    return amount
 
 
 def _timestamp(value: str) -> datetime:

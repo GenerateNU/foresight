@@ -166,7 +166,8 @@ class DailyPerformanceResponse(ResponseSchema):
         """
         if self.sellable_rooms <= 0:
             return None
-        return round(self.rooms_sold / self.sellable_rooms, 4)
+        # Exports can show more rooms sold than sellable (1 of 1,025 real nights).
+        return round(min(self.rooms_sold / self.sellable_rooms, 1), 4)
 
     @computed_field
     @property
@@ -179,7 +180,7 @@ class DailyPerformanceResponse(ResponseSchema):
     @computed_field
     @property
     def revpar(self) -> Decimal | None:
-        """Revenue Per Available Room, in EUR; null if none were available."""
+        """Revenue per room in stock, in EUR; null if none were in stock."""
         if not self.rooms_available:
             return None
         return round(self.room_revenue / self.rooms_available, 2)

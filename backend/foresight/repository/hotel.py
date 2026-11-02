@@ -35,6 +35,8 @@ _PERF_MEASURES = (
     "rooms_out_of_service",
     "waitlist",
 )
+# Older exports leave these out, and daily uploads overlap earlier nights.
+_PERF_OPTIONAL = ("rooms_blocked", "rooms_out_of_service", "waitlist")
 
 
 async def get_hotel(session: AsyncSession, hotel_id: int) -> Hotel | None:
@@ -98,6 +100,7 @@ async def upsert_daily_performance(
         key=_PERF_KEY,
         mutable=_PERF_MEASURES,
         rows=rows,
+        keep_if_null=_PERF_OPTIONAL,
     )
 
 
@@ -222,9 +225,9 @@ async def training_nights(
 ) -> Sequence[Mapping[str, Any]]:
     """Every night of every room type, oldest first, for training.
 
-    Rows carry stay_date, room_type (its name), rate, rooms_sold and
-    rooms_available. Nights with no or a zero rate are included; the caller
-    decides what to drop.
+    Rows carry stay_date, room_type (its name), rate, rooms_sold,
+    rooms_available and rooms_out_of_service. Nights with no or a zero rate are
+    included; the caller decides what to drop.
     """
     stmt = (
         select(
