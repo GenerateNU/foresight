@@ -39,6 +39,9 @@ the last 90 days, so event history starts late and grows as nights pass.
   - `big_event_count`: events whose predicted accommodation spend is at
     least 100k. The threshold is a starting point from 14 Dublin nights;
     the backtest should also try attendance of at least 10,000 instead.
+  - `nearest_big_event_km`: how far the night's closest big event is from
+    the hotel, in km. Empty when there's no big event or the hotel has no
+    coordinates, so the backtest can show whether distance matters.
 - **Testing:** all of them start in the model, and the ones the backtest
   finds don't help are removed.
 - **Not added:** attendance by category (accommodation spend already weights categories) and day N of M (the per-night accommodation impact already varies by night). Either comes back if the accommodation inputs don't help.
