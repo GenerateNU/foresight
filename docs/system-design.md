@@ -564,7 +564,7 @@ user ([0041](decisions/0041-login-required-hotels-by-link.md)).
 
 ### 6.7 Backtest
 
-`just backtest 7 [--baselines] [--inputs …] [--test-days N]` checks
+`just backtest 7 [--baselines] [--inputs …] [--test-days N] [--event-days N]` checks
 whether the model, and each input, is worth having
 ([0041](decisions/0041-how-the-backtest-judges-the-model.md)). Read-only:
 models are trained in memory and thrown away.
@@ -575,6 +575,8 @@ cli.backtest
       pricing_model.training_data               the same inputs training sees
       cutoff = newest night − test_days (default 90)
       one EBM on --inputs (default: all FEATURES)
+      only with --event-days:
+        event inputs blanked before cutoff − N  other inputs keep all history
       ml/base.score                             every test night
       only with --baselines:
         ml/baselines on nights ≤ cutoff         same weekday last year,
@@ -587,6 +589,8 @@ cli.backtest
 `ml/features.INPUT_GROUPS` sorts every feature into calendar, weather,
 events (holiday flags included) and flights; `--inputs` takes group names or
 single features. Compare input sets by running it once per set.
+`--event-days N` limits only the event inputs to the N days before the
+cutoff, to see how much event history the model needs.
 
 ---
 
