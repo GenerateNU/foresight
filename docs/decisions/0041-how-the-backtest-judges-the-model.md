@@ -39,8 +39,18 @@ the model and asks the backtest to remove the ones that don't help.
     dropped): which sets are worth comparing depends on the question, so the
     person running the backtest picks them.
   - Flights have no data, so leave them out.
+  - **Event history, `--event-days N`.** Blanks the event inputs (the `events`
+    group) on training nights more than N days before the cutoff; the test
+    nights and every other input keep all their history. Runs at the same
+    `--test-days` with different N (e.g. 14, 30, 60, then without the flag)
+    differ only in how much event history the model learned from, so they
+    show whether more of it improves the guesses. Only events get this: they
+    are the one input with under ~90 days of history (0040).
 
 ## Consequences
+- Until [0042](0042-refit-on-every-row.md), the model never learned from the
+  newest 15% of its training nights, where all the event rows were. Event
+  results from before that fix say nothing about events.
 - An input is worth keeping only if it lowers the error and widens the lead
   over the best baseline, not just if it moves the model's MAE.
 - Event history only reaches back about 90 days (0040). With the default
