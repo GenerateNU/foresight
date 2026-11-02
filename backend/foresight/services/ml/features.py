@@ -50,6 +50,7 @@ INPUT_GROUPS = {
         "event_rank_max",
         "event_accommodation_impact",
         "big_event_count",
+        "nearest_big_event_km",
     ],
     "flights": ["flight_count", "avg_fare_eur"],  # no data yet
 }
