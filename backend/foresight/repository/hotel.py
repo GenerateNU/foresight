@@ -220,10 +220,10 @@ async def stay_date_range(
     return None if first is None else (first, last)
 
 
-async def training_nights(
+async def list_nights(
     session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
 ) -> Sequence[Mapping[str, Any]]:
-    """Every night of every room type, oldest first, for training.
+    """Every night of every room type, oldest first.
 
     Rows carry stay_date, room_type (its name), rate, rooms_sold,
     rooms_available and rooms_out_of_service. Nights with no or a zero rate are
