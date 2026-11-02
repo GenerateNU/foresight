@@ -1,6 +1,7 @@
 # Import all models here so Alembic can detect them
 
 from foresight.database.base import Base
+from foresight.database.models.booking import Booking, BookingCancellation
 from foresight.database.models.city import City
 from foresight.database.models.example_widget import Widget
 from foresight.database.models.feedback import Feedback
@@ -16,6 +17,8 @@ from foresight.database.models.user import User, UserHotel
 
 __all__ = [
     "Base",
+    "Booking",
+    "BookingCancellation",
     "City",
     "CompetitorRate",
     "DailyPerformance",
