@@ -8,7 +8,8 @@ list used a different rule from the model's features, the manager could see
 events that don't move the rate, or miss ones that do.
 
 ## Decision
-- `event.events_by_night` decides which events affect a night: live events in
+- `event.counted_events` decides which events affect a night (since
+  [0040](0040-events-in-the-model.md), the model reads it too): live events in
   the hotel's city, on every night from their start to their end date
   (inclusive), in a category the model counts (`ATTENDED_CATEGORIES` plus
   public and school holidays).

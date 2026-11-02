@@ -19,8 +19,10 @@ having run.
   recorded weather only; serving uses recorded, then forecast, then the
   typical weather for that ISO week. Week 53 borrows week 52 when no recorded
   year has one.
-- Events and flights are passed empty for now. Their columns stay in
-  `FEATURES` so adding them later doesn't change the model's inputs.
+- ~~Events and flights are passed empty for now.~~ Events are read since
+  [0040](0040-events-in-the-model.md); flights are still passed empty. Their
+  columns stay in `FEATURES` so adding them later doesn't change the
+  model's inputs.
 
 ## Consequences
 - A recommendation is fast and predictable: no outside calls, no quotas.
