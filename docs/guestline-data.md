@@ -67,7 +67,7 @@ Cancellations lines 32388 and 32869 have the wrong number of fields because a st
 
 The synthetic files in `backend/data/` match on all 14 nights.
 
-As of the night itself rather than the day after, 68 of the 658 nights from 1 Jan 2025 to 20 Oct 2026 miss by up to 3 rooms (10.3%). The rest of that gap is bookings and cancellations dated after the stay night.
+As of the night itself rather than the day after, 68 of the 658 nights from 1 Jan 2025 to 20 Oct 2026 miss by up to 3 rooms (10.3%). Those misses come from bookings and cancellations dated after the stay night.
 
 **Treat nights as complete from 21 Dec 2024.** Earlier stays include bookings made before the export's first day, 1 Jan 2024, so the count only ever runs short. The average shortfall is 29 rooms a night in January 2024, 2 in September and under 1 from October, and the last short night is 20 Dec 2024. Exporting bookings from mid-2023 would fill this in.
 
