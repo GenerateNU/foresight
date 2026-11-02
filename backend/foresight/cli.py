@@ -37,10 +37,10 @@ async def link_user(email: str, hotel_id: int) -> None:
         print(f"{user.email} is already linked to hotel {hotel_id}")
 
 
-async def backtest(hotel_id: int, test_days: int, out: Path) -> None:
+async def backtest(hotel_id: int, test_days: int, out: Path, baselines: bool) -> None:
     async with async_session_factory() as session:
         result = await backtest_service.run_backtest(
-            session, hotel_id, test_days=test_days
+            session, hotel_id, test_days=test_days, baselines=baselines
         )
     nights = result.nights
     first, last = nights["stay_date"].min(), nights["stay_date"].max()
@@ -48,6 +48,9 @@ async def backtest(hotel_id: int, test_days: int, out: Path) -> None:
     scores = _format_metrics(result.metrics)
     for name, value in scores:
         print(f"{name:<13} {value}")
+    if result.baselines:
+        print()
+        print(_baseline_table(result))
 
     path = out / f"hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
     _save_plot(
@@ -79,6 +82,28 @@ def _format_metrics(metrics: dict[str, float | None]) -> list[tuple[str, str]]:
             "n/a" if coverage is None else f"{coverage:.0%}",
         ),
     ]
+
+
+def _baseline_table(result: backtest_service.BacktestResult) -> str:
+    """The model's MAE next to each baseline's, on the nights the baseline covers."""
+    total = len(result.nights)
+    lines = [
+        f"{'Compared with':<28} {'Nights':>9} {'Baseline MAE':>13} "
+        f"{'Model MAE':>10} {'Skill':>7}"
+    ]
+    for name, label in backtest_service.BASELINES.items():
+        b = result.baselines[name]
+        if b.nights == 0:
+            lines.append(f"{label:<28} {'0/' + str(total):>9}   no history")
+            continue
+        skill = "n/a" if b.skill is None else f"{b.skill:+.0%}"
+        lines.append(
+            f"{label:<28} {f'{b.nights}/{total}':>9} "
+            f"{'€' + format(b.metrics['mae'], '.2f'):>13} "
+            f"{'€' + format(b.model_mae, '.2f'):>10} {skill:>7}"
+        )
+    lines.append("Skill > 0 means the model beats the baseline.")
+    return "\n".join(lines)
 
 
 def _save_plot(nights: pd.DataFrame, path: Path, *, title: str, subtitle: str) -> None:
@@ -116,6 +141,19 @@ def _save_plot(nights: pd.DataFrame, path: Path, *, title: str, subtitle: str) -
         linewidth=2,
         label="Predicted",
     )
+    # Baselines:
+    for (name, label), style in zip(
+        backtest_service.BASELINES.items(), ["--", ":"], strict=True
+    ):
+        if name in nights and nights[name].notna().any():
+            ax.plot(
+                nights["stay_date"],
+                nights[name],
+                color="#888888",
+                linestyle=style,
+                linewidth=1.2,
+                label=label,
+            )
     # The nights the interval missed: the ones that pull coverage down.
     ax.scatter(
         nights.loc[missed, "stay_date"],
@@ -156,7 +194,7 @@ async def _run(args: argparse.Namespace) -> None:
         if args.command == "link-user":
             await link_user(args.email, args.hotel_id)
         elif args.command == "backtest":
-            await backtest(args.hotel_id, args.test_days, args.out)
+            await backtest(args.hotel_id, args.test_days, args.out, args.baselines)
     finally:
         await engine.dispose()
 
@@ -173,6 +211,11 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("hotel_id", type=int, help="The hotel's id")
     bt.add_argument(
         "--test-days", type=int, default=90, help="How many recent nights to predict"
+    )
+    bt.add_argument(
+        "--baselines",
+        action="store_true",
+        help="Also score simple baselines the model should beat",
     )
     bt.add_argument(
         "--out", type=Path, default=Path("backtest-out"), help="Folder for the plot"

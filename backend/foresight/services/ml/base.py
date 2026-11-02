@@ -96,26 +96,52 @@ class Model(ABC):
                 coverage (share of y inside the (1 - alpha) interval. None if the model
                 has no intervals).
         """
-        y_true = np.asarray(y, dtype=float)
-        y_pred = self.predict(x)
-
-        nonzero = y_true != 0  # MAPE is undefined where the true value is 0
-        mape = np.mean(np.abs((y_true - y_pred)[nonzero] / y_true[nonzero]))
-
         try:
             if alpha is None:
                 _, lo, hi = self.predict_interval(x)
             else:
                 _, lo, hi = self.predict_interval(x, alpha)
-            coverage = float(np.mean((y_true >= lo) & (y_true <= hi)))
         except NotImplementedError:
-            coverage = None
+            lo = hi = None
+        return score(y, self.predict(x), lo, hi)
 
-        return {
-            "mae": mean_absolute_error(y_true, y_pred),
-            "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
-            "mape": float(mape),
-            "r2": r2_score(y_true, y_pred),
-            "bias": float(np.mean(y_pred - y_true)),
-            "coverage": coverage,
-        }
+
+def score(
+    y_true: Any,
+    y_pred: Any,
+    low: Any = None,
+    high: Any = None,
+) -> dict[str, float | None]:
+    """Scores predictions against the true values.
+
+    Shared by models and the backtest's baselines, so both are measured alike.
+
+    Args:
+        y_true (array-like): True target values.
+        y_pred (array-like): One prediction per true value.
+        low (array-like | None): Lower bound of each prediction's interval.
+        high (array-like | None): Upper bound of each prediction's interval.
+
+    Returns:
+        dict[str, float | None]: mae, rmse, mape, r2, bias (mean of
+            predicted - true; positive means it predicts too high), and
+            coverage (share of y_true inside [low, high]; None without bounds).
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+
+    nonzero = y_true != 0  # MAPE is undefined where the true value is 0
+    mape = np.mean(np.abs((y_true - y_pred)[nonzero] / y_true[nonzero]))
+
+    coverage = None
+    if low is not None and high is not None:
+        coverage = float(np.mean((y_true >= low) & (y_true <= high)))
+
+    return {
+        "mae": mean_absolute_error(y_true, y_pred),
+        "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+        "mape": float(mape),
+        "r2": r2_score(y_true, y_pred),
+        "bias": float(np.mean(y_pred - y_true)),
+        "coverage": coverage,
+    }
