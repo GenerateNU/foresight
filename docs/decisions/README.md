@@ -67,3 +67,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight | ML |
 | [0045](0045-refit-on-every-row.md) | The kept model is refit on every row; the holdout only sets the interval and scores | ML |
 | [0046](0046-record-training-cost.md) | Every version records its fit's time and peak memory | ML |
+| [0047](0047-bookings-and-cancellations.md) | Bookings and cancellations are stored as Guestline gives them | data model |

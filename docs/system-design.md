@@ -100,18 +100,18 @@ backend/foresight/
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                city, hotel, user, weather, weather_coverage, event, flight,
                            model_inputs, pricing_model, recommendation, feedback, freshness
-    ingest/                weather, event, performance, window
+    ingest/                weather, event, performance, bookings, window
     adapters/              open_meteo, predicthq, aerodatabox, opensky, cso,
-                           hotel_csv, normalize, textdates
+                           hotel_csv, guestline, normalize, textdates
     ml/                    base, ebm, features, weighting, baselines
   repository/
     upsert.py pagination.py
-    city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
+    booking.py city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
     user.py
     signals/               weather, event, flight, competitor_rate
   database/
     base.py enums.py session.py
-    models/                city, hotel, job, pricing_model, recommendation, feedback,
+    models/                booking, city, hotel, job, pricing_model, recommendation, feedback,
                            user
       signals/             weather, event, flight, competitor_rate
     migrations/
@@ -199,6 +199,8 @@ Every write from an outside source or a file is an upsert on a natural key
 | `flight_arrivals` | city_id, arrival_date, source |
 | `competitor_rates` | city_id, hotel_name, stay_date, source |
 | `daily_performance` | room_type_id, stay_date |
+| `bookings` | hotel_id, book_ref |
+| `booking_cancellations` | hotel_id, cancel_ref |
 | `room_types` (CSV import) | hotel_id, name |
 | `events` | dedupe_key (normalized title + city + local start date) |
 | `event_observations` | source, source_ref |
@@ -252,6 +254,8 @@ turns its source's quota responses into a named error:
 
 ```
 cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hotel's own history)
+        │           ├─< bookings                          (rooms booked, still live; 0047)
+        │           ├─< booking_cancellations             (rooms cancelled; linked by book_ref)
         │           ├─< pricing_models ─< pricing_model_feedback >─ feedback
         │           │                                     (trained models; one active; the
         │           │                                      feedback each one used; 0044)
