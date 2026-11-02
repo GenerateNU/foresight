@@ -264,3 +264,74 @@ async def test_other_hotels_are_not_counted(session, priced) -> None:
 async def test_unknown_hotel_is_refused(session) -> None:
     with pytest.raises(NotFoundError):
         await rooms(session, -1)
+
+
+# Every night in a range
+
+
+async def curves(session, hotel_id: int, start=NIGHT, end=NIGHT) -> dict:
+    return await service.booking_curves(session, hotel_id, start=start, end=end)
+
+
+async def test_curve_rises_when_booked_and_falls_when_cancelled(
+    session, priced
+) -> None:
+    await save(
+        session,
+        priced.hotel_id,
+        booking("BK1/1"),
+        cancellation("BK2/1", cancelled_at=datetime(2025, 8, 1, 9, 0)),
+    )
+
+    assert (await curves(session, priced.hotel_id)) == {
+        NIGHT: {date(2025, 6, 1): 2, date(2025, 8, 1): 1}
+    }
+
+
+@pytest.mark.parametrize(
+    ("as_of", "expected"),
+    [
+        (date(2025, 5, 31), 0),  # before the first booking
+        (date(2025, 6, 1), 1),
+        (date(2025, 7, 1), 1),  # between changes: the last count holds
+        (date(2025, 8, 1), 2),
+        (date(2025, 12, 1), 2),  # after the last change
+    ],
+)
+def test_rooms_on_reads_a_curve_at_any_date(as_of, expected) -> None:
+    curve = {date(2025, 6, 1): 1, date(2025, 8, 1): 2}
+
+    assert service.rooms_on(curve, as_of) == expected
+
+
+def test_rooms_on_an_empty_curve_is_zero() -> None:
+    assert service.rooms_on({}, AS_OF) == 0
+
+
+async def test_stay_appears_on_each_night_in_the_range(session, priced) -> None:
+    await save(session, priced.hotel_id, booking(**STAY))
+
+    result = await curves(
+        session, priced.hotel_id, start=date(2025, 9, 1), end=date(2025, 9, 30)
+    )
+
+    assert sorted(result) == [
+        date(2025, 9, 10),
+        date(2025, 9, 11),
+        date(2025, 9, 12),
+    ]
+
+
+async def test_nights_outside_the_range_are_left_out(session, priced) -> None:
+    await save(session, priced.hotel_id, booking(**STAY), cancellation("BK2/1", **STAY))
+
+    result = await curves(
+        session, priced.hotel_id, start=date(2025, 9, 11), end=date(2025, 9, 11)
+    )
+
+    assert list(result) == [date(2025, 9, 11)]
+
+
+async def test_curves_refuse_an_unknown_hotel(session) -> None:
+    with pytest.raises(NotFoundError):
+        await curves(session, -1)

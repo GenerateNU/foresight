@@ -98,7 +98,7 @@ backend/foresight/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured /
                            NotSignedIn / Forbidden
     job.py                 job kinds, validation, handlers, lifecycle
-    domain/                city, hotel, user, weather, weather_coverage, event, flight,
+    domain/                booking, city, hotel, user, weather, weather_coverage, event, flight,
                            model_inputs, pricing_model, recommendation, feedback, freshness
     ingest/                weather, event, performance, bookings, window
     adapters/              open_meteo, predicthq, aerodatabox, opensky, cso,
