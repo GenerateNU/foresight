@@ -27,6 +27,17 @@ just logs
 just destroy
 ```
 
+### Frontend
+
+```bash
+just frontend-install     # once, and after package.json changes
+just frontend             # http://localhost:5173, calls the API from `just dev`
+just frontend --mocks     # fake data, no backend needed
+```
+
+Settings and conventions are in [`frontend/README.md`](frontend/README.md).
+`just lint` checks the backend and the frontend.
+
 ### Local vs Neon database
 
 Recipes that touch the database take an optional `--neon` flag. Without it

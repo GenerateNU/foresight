@@ -25,6 +25,17 @@ default:
 install:
     cd backend && uv sync
 
+# --- Frontend ---
+
+# Install frontend dependencies
+frontend-install:
+    cd frontend && npm ci
+
+# Run the frontend dev server on http://localhost:5173 (`just frontend --mocks` for fake data, no backend)
+frontend *flags:
+    @{{ if flags =~ '^(--mocks)?$' { "true" } else { error("unknown flag '" + flags + "' (only --mocks is supported)") } }}
+    cd frontend && {{ if flags == "--mocks" { "VITE_USE_MOCKS=true " } else { "" } }}npm run dev
+
 # --- Docker ---
 
 # Build/rebuild the backend image (run after changing dependencies or the Dockerfile)
@@ -93,18 +104,20 @@ test *flags: (_flags flags)
 
 # --- Quality ---
 
-# Run ruff linter
+# Run ruff and the frontend's ESLint
 lint:
     cd backend && uv run ruff check foresight/
+    cd frontend && npm run lint
 
 # Run ruff formatter
 format:
     cd backend && uv run ruff format foresight/
 
-# Run ruff checks and fix
+# Run ruff and ESLint, fixing what they can, then format
 fix:
     cd backend && uv run ruff check --fix foresight/
     cd backend && uv run ruff format foresight/
+    cd frontend && npm run lint -- --fix
 
 # --- Pre-commit ---
 

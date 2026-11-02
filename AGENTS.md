@@ -45,7 +45,9 @@ just dev --neon       # same, against Neon; `--neon` works on run/migrate*/test 
 just migrate          # apply migrations
 just migrate-create "msg"   # new Alembic migration after model changes
 just migrate-down     # roll back last migration
-just lint             # ruff checks
+just frontend         # frontend dev server on :5173 (`--mocks` for fake data, no backend)
+just frontend-install # install frontend dependencies (npm ci)
+just lint             # ruff checks + frontend ESLint
 just format           # ruff format
 ```
 
