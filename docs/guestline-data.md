@@ -57,9 +57,19 @@ Cancellations lines 32388 and 32869 have the wrong number of fields because a st
 
 ## The booking rebuild matches Actual & Forecast
 
-Counting live bookings per night reproduces Actual & Forecast `Total` exactly on every night from 1 Jan 2025 to 20 Oct 2026.
+`services/domain/booking.check_final_counts` compares the rebuild with `Total` for each night, counting bookings as of the day after the night ([0048](decisions/0048-rooms-booked-rebuilt-when-asked.md)).
 
-In 2024 the count runs short. It is 29 rooms a night short in January and reaches zero by December, because those stays include bookings made before 1 Jan 2024. Treat 2024 nights as complete only from about Oct 2024, or export bookings from mid-2023.
+| Nights | Nights checked | Mismatches | Worst gap |
+|---|---|---|---|
+| 21 Dec 2024 to 21 Oct 2026 | 670 | 0 (0%) | none |
+| 1 Jan to 20 Dec 2024 | 355 | 265 (74.6%) | 73 rooms short |
+| Whole export | 1,025 | 265 (25.9%) | 73 rooms short |
+
+The synthetic files in `backend/data/` match on all 14 nights.
+
+As of the night itself rather than the day after, 68 of the 658 nights from 1 Jan 2025 to 20 Oct 2026 miss by up to 3 rooms (10.3%). The rest of that gap is bookings and cancellations dated after the stay night.
+
+**Treat nights as complete from 21 Dec 2024.** Earlier stays include bookings made before the export's first day, 1 Jan 2024, so the count only ever runs short. The average shortfall is 29 rooms a night in January 2024, 2 in September and under 1 from October, and the last short night is 20 Dec 2024. Exporting bookings from mid-2023 would fill this in.
 
 ## Pickup for future nights needs cancellations by cancellation date
 
