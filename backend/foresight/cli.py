@@ -19,6 +19,7 @@ from foresight.database.session import async_session_factory, engine
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
 from foresight.services.errors import DomainError
+from foresight.services.ml.features import FEATURES, INPUT_GROUPS
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -37,20 +38,23 @@ async def link_user(email: str, hotel_id: int) -> None:
         print(f"{user.email} is already linked to hotel {hotel_id}")
 
 
-async def backtest(hotel_id: int, test_days: int, out: Path, baselines: bool) -> None:
+async def backtest(
+    hotel_id: int, test_days: int, out: Path, baselines: bool, inputs: list[str]
+) -> None:
     async with async_session_factory() as session:
         result = await backtest_service.run_backtest(
-            session, hotel_id, test_days=test_days, baselines=baselines
+            session, hotel_id, test_days=test_days, baselines=baselines, inputs=inputs
         )
     nights = result.nights
     first, last = nights["stay_date"].min(), nights["stay_date"].max()
-    print(f"{len(nights)} test nights, {first} to {last}")
+    described = _describe_inputs(result.inputs)
+    print(f"{len(nights)} test nights, {first} to {last}; inputs: {described}")
     scores = _format_metrics(result.metrics)
     for name, value in scores:
         print(f"{name:<13} {value}")
     if result.baselines:
         print()
-        print(_baseline_table(result))
+        print(_baseline_table(result.baselines, len(nights)))
 
     path = out / f"hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
     _save_plot(
@@ -58,11 +62,40 @@ async def backtest(hotel_id: int, test_days: int, out: Path, baselines: bool) ->
         path,
         title=(
             f"Backtest: {result.hotel_name}, actual vs predicted rate, "
-            f"{first:%-d %b} – {last:%-d %b %Y}"
+            f"{first:%-d %b} – {last:%-d %b %Y} ({described})"
         ),
         subtitle="  ·  ".join(f"{name} {value}" for name, value in scores),
     )
     print(f"Plot saved to {path}")
+
+
+def _describe_inputs(inputs: list[str]) -> str:
+    """Inputs named by group where a whole group is in, e.g. "calendar, precip_mm"."""
+    if inputs == FEATURES:
+        return "all inputs"
+    chosen, parts = set(inputs), []
+    for group, columns in INPUT_GROUPS.items():
+        if set(columns) <= chosen:
+            parts.append(group)
+        else:
+            parts.extend(c for c in columns if c in chosen)
+    return ", ".join(parts)
+
+
+def _parse_inputs(text: str) -> list[str]:
+    """`--inputs`: comma-separated group names and/or features, in FEATURES order.
+
+    Raises argparse.ArgumentTypeError for an unknown name.
+    """
+    names = [n.strip() for n in text.split(",") if n.strip()]
+    unknown = [n for n in names if n not in INPUT_GROUPS and n not in FEATURES]
+    if unknown or not names:
+        raise argparse.ArgumentTypeError(
+            f"unknown input {', '.join(unknown) or '(none given)'}; choose from "
+            f"groups {', '.join(INPUT_GROUPS)} or features {', '.join(FEATURES)}"
+        )
+    expanded = [c for n in names for c in INPUT_GROUPS.get(n, [n])]
+    return backtest_service.in_feature_order(expanded)
 
 
 def _format_metrics(metrics: dict[str, float | None]) -> list[tuple[str, str]]:
@@ -84,15 +117,16 @@ def _format_metrics(metrics: dict[str, float | None]) -> list[tuple[str, str]]:
     ]
 
 
-def _baseline_table(result: backtest_service.BacktestResult) -> str:
+def _baseline_table(
+    scores: dict[str, backtest_service.BaselineScore], total: int
+) -> str:
     """The model's MAE next to each baseline's, on the nights the baseline covers."""
-    total = len(result.nights)
     lines = [
         f"{'Compared with':<28} {'Nights':>9} {'Baseline MAE':>13} "
         f"{'Model MAE':>10} {'Skill':>7}"
     ]
     for name, label in backtest_service.BASELINES.items():
-        b = result.baselines[name]
+        b = scores[name]
         if b.nights == 0:
             lines.append(f"{label:<28} {'0/' + str(total):>9}   no history")
             continue
@@ -194,7 +228,9 @@ async def _run(args: argparse.Namespace) -> None:
         if args.command == "link-user":
             await link_user(args.email, args.hotel_id)
         elif args.command == "backtest":
-            await backtest(args.hotel_id, args.test_days, args.out, args.baselines)
+            await backtest(
+                args.hotel_id, args.test_days, args.out, args.baselines, args.inputs
+            )
     finally:
         await engine.dispose()
 
@@ -216,6 +252,17 @@ def main(argv: list[str] | None = None) -> int:
         "--baselines",
         action="store_true",
         help="Also score simple baselines the model should beat",
+    )
+    bt.add_argument(
+        "--inputs",
+        type=_parse_inputs,
+        default=list(FEATURES),
+        metavar="NAMES",
+        help=(
+            "Comma-separated inputs to train on: groups "
+            f"({', '.join(INPUT_GROUPS)}) and/or single features, e.g. "
+            "calendar,temp_max_c. Default: all, like the served model"
+        ),
     )
     bt.add_argument(
         "--out", type=Path, default=Path("backtest-out"), help="Folder for the plot"

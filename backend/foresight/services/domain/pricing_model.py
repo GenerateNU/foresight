@@ -55,6 +55,17 @@ _LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
 @dataclass(frozen=True, slots=True)
+class TrainingData:
+    """A hotel's priced nights and the model's inputs for them, row for row."""
+
+    nights: pd.DataFrame  # _NIGHT_COLUMNS, oldest first
+    x: pd.DataFrame  # FEATURES
+    y: pd.Series  # the rate
+    weights: np.ndarray  # sample weights (decision 0003)
+    events_fetched: set[date]  # nights an events backfill covered (0040)
+
+
+@dataclass(frozen=True, slots=True)
 class TrainingResult:
     model: PricingModel
     activated: bool
@@ -105,36 +116,13 @@ async def train(
     them. Raises InvalidRequestError if too few nights are left to train on.
     """
     began = time.monotonic()
-    rows = await hotel_repo.training_nights(session, hotel.id, start=start, end=end)
-    nights = pd.DataFrame(rows, columns=pd.Index(_NIGHT_COLUMNS))
-    # Rates arrive as Decimal or None; None becomes NaN.
-    rate = pd.Series(nights["rate"], dtype=float)
-    nights["rate"] = rate
-
-    # Decision 0004: free/staff/unpriced nights go before features and weights,
-    # so all three line up row for row.
-    keep = training_mask(rate)
-    nights = nights.loc[keep].reset_index(drop=True)
+    data = await training_data(session, hotel, start=start, end=end)
+    nights = data.nights
     if len(nights) < MIN_TRAINING_NIGHTS:
         raise InvalidRequestError(
             f"{len(nights)} priced nights to train on; need at least "
             f"{MIN_TRAINING_NIGHTS}"
         )
-
-    days = sorted(set(nights["stay_date"]))
-    weather = await weather_for(session, hotel.city, days, fallback=False)
-    events = await events_for(session, hotel.city, days)
-    x = build_features(
-        nights,
-        events.frame,
-        weather.frame,
-        NO_FLIGHTS,
-        events_fetched=events.fetched,
-        events_impacts=events.impacts,
-        hotel_location=hotel_location(hotel),
-    )
-    occupancy = nights["rooms_sold"] / nights["rooms_available"]
-    weights = sample_weights(occupancy.clip(0, 1))
 
     # Decision 0044: what the manager said after a night changes how it trains.
     feedback_rows = await feedback_repo.training_feedback(
@@ -142,11 +130,13 @@ async def train(
     )
     feedback = pd.DataFrame(feedback_rows, columns=pd.Index(_FEEDBACK_COLUMNS))
     feedback["rate"] = pd.to_numeric(feedback["rate"], errors="coerce")  # None -> NaN
-    effect = apply_feedback(nights, feedback, nights["rate"], weights)
+    effect = apply_feedback(nights, feedback, data.y, data.weights)
     y, weights = effect.rate, effect.weights
 
     # CPU-bound for seconds; a thread keeps the API answering meanwhile.
-    metrics, artifact = await asyncio.to_thread(_fit, x, y, weights, nights, params)
+    metrics, artifact = await asyncio.to_thread(
+        _fit, data.x, y, weights, nights, params
+    )
     metrics["feedback_nights"] = len(effect.used)
     metrics["feedback_rates_replaced"] = int(effect.used["rate_replaced"].sum())
 
@@ -175,6 +165,45 @@ async def train(
         round(time.monotonic() - began, 1),
         len(nights),
         len(effect.used),
+    )
+
+
+async def training_data(
+    session: AsyncSession, hotel: Hotel, *, start: date | None, end: date | None
+) -> TrainingData:
+    """The hotel's priced nights in [start, end] and their model inputs.
+
+    The one place training data is prepared, so `train` and the backtest
+    always see the same inputs.
+    """
+    rows = await hotel_repo.training_nights(session, hotel.id, start=start, end=end)
+    nights = pd.DataFrame(rows, columns=pd.Index(_NIGHT_COLUMNS))
+    # Rates arrive as Decimal or None; None becomes NaN.
+    rate = pd.Series(nights["rate"], dtype=float)
+    nights["rate"] = rate
+
+    # Decision 0004: free/staff/unpriced nights go before features and weights,
+    # so all three line up row for row.
+    nights = nights.loc[training_mask(rate)].reset_index(drop=True)
+
+    days = sorted(set(nights["stay_date"]))
+    weather = await weather_for(session, hotel.city, days, fallback=False)
+    events = await events_for(session, hotel.city, days)
+    x = build_features(
+        nights,
+        events.frame,
+        weather.frame,
+        NO_FLIGHTS,
+        events_fetched=events.fetched,
+        events_impacts=events.impacts,
+    )
+    occupancy = nights["rooms_sold"] / nights["rooms_available"]
+    return TrainingData(
+        nights=nights,
+        x=x,
+        y=nights["rate"],
+        weights=sample_weights(occupancy.clip(0, 1)),
+        events_fetched=events.fetched,
     )
 
 
