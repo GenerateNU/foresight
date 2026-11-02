@@ -196,6 +196,7 @@ async def training_data(
         NO_FLIGHTS,
         events_fetched=events.fetched,
         events_impacts=events.impacts,
+        hotel_location=hotel_location(hotel),
     )
     occupancy = nights["rooms_sold"] / nights["rooms_available"]
     return TrainingData(
