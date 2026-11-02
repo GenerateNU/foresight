@@ -323,7 +323,9 @@ async def test_tampered_cookie_is_401(
 ) -> None:
     await google_sign_in(client, monkeypatch)
     value = client.cookies["foresight_session"]
-    tampered = value[:-1] + ("A" if value[-1] != "A" else "B")
+    # Change the first character: every bit of it is data. The last one isn't (its
+    # padding bits are ignored when decoded), so changing it can leave the cookie valid.
+    tampered = ("A" if value[0] != "A" else "B") + value[1:]
 
     assert (await client.get("/auth/me")).status_code == 200
     response = await client.get(
