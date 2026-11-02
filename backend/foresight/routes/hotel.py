@@ -135,17 +135,38 @@ class DailyPerformanceResponse(ResponseSchema):
     rate: Decimal | None = Field(
         description="Average rate paid that night, in EUR; null if unsold"
     )
-    rooms_available: int = Field(description="Rooms of this type for sale")
+    rooms_available: int = Field(
+        description="Rooms of this type in stock, including any out of service"
+    )
     rooms_sold: int = Field(description="Rooms of this type sold")
     room_revenue: Decimal = Field(description="Revenue from these rooms, in EUR")
+    rooms_blocked: int | None = Field(
+        description="Rooms sold through group blocks; null if not imported"
+    )
+    rooms_out_of_service: int | None = Field(
+        description="Rooms that couldn't be sold that night; null if not imported"
+    )
+    waitlist: int | None = Field(
+        description="Guests on the waitlist; null if not imported"
+    )
+
+    @computed_field
+    @property
+    def sellable_rooms(self) -> int:
+        """Rooms that could be sold: in stock minus out of service."""
+        return self.rooms_available - (self.rooms_out_of_service or 0)
 
     @computed_field
     @property
     def occupancy(self) -> float | None:
-        """Share of rooms sold, 0-1; null if none were available."""
-        if not self.rooms_available:
+        """Share of sellable rooms sold, 0-1; null if none could be sold.
+
+        Guestline's Occ% counts out-of-service rooms as unsold, so a sold-out
+        night can show 99% there and 100% here.
+        """
+        if self.sellable_rooms <= 0:
             return None
-        return round(self.rooms_sold / self.rooms_available, 4)
+        return round(self.rooms_sold / self.sellable_rooms, 4)
 
     @computed_field
     @property

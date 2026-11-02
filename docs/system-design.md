@@ -434,6 +434,12 @@ POST /hotels/7/ingest/performance  files=a.csv,b.csv  base_rate=150
 The client's export has one room type, so every night is stored under
 "Standard". The rate is revenue divided by rooms sold, because the export has
 no listed price.
+Blocks, ROOS and Waitlist are saved too when the export has them; older
+exports leave them empty. Occupancy is rooms sold ÷ (rooms in stock − rooms out
+of service), so a sold-out night is 100% even when Guestline's Occ% shows 99%
+([0037](decisions/0037-three-guestline-reports.md)). Blked and DFS aren't read
+until their meaning is known.
+
 
 ### 6.3 An events backfill
 
