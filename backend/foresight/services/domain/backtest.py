@@ -23,7 +23,7 @@ from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.base import score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import FEATURES
+from foresight.services.ml.features import FEATURES, INPUT_GROUPS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -66,6 +66,7 @@ class BacktestResult:
 
     hotel_name: str
     inputs: list[str]  # the features the model was trained on
+    event_days: int | None  # event history the model saw; None means all of it
     # stay_date, room_type, actual, predicted, low, high (the (1 - ALPHA)
     # interval); with baselines, also one column per BASELINES key (NaN where
     # it had no history)
@@ -88,6 +89,7 @@ async def run_backtest(
     test_days: int = 90,
     baselines: bool = False,
     inputs: Sequence[str] = FEATURES,
+    event_days: int | None = None,
 ) -> BacktestResult:
     """Predicts the last `test_days` nights with a model trained on the rest.
 
@@ -99,13 +101,16 @@ async def run_backtest(
     there are no nights on one side of the cutoff.
     """
     hotel = await get_hotel(session, hotel_id)
+    if event_days is not None and event_days < 1:
+        raise InvalidRequestError("--event-days must be at least 1")
     split = await _split(session, hotel, test_days)
     columns = in_feature_order(inputs)
-    predicted, low, high = await _fit_predict(split, columns)
+    predicted, low, high = await _fit_predict(split, columns, event_days)
     nights = _test_nights(split, predicted, low, high, baselines=baselines)
     return BacktestResult(
         hotel_name=hotel.name,
         inputs=columns,
+        event_days=event_days,
         nights=nights,
         metrics=score(nights["actual"], nights["predicted"], low, high),
         baselines={
@@ -130,10 +135,12 @@ async def _split(session: AsyncSession, hotel: Hotel, test_days: int) -> _Split:
 
 
 async def _fit_predict(
-    split: _Split, columns: list[str]
+    split: _Split, columns: list[str], event_days: int | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Fits on the training nights' `columns`; predicts the test nights."""
     x = split.data.x[columns]
+    if event_days is not None:
+        x = _limit_event_history(x, split, event_days)
     seen = split.seen
     model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
     # CPU-bound for seconds; a thread keeps the event loop free.
@@ -141,6 +148,23 @@ async def _fit_predict(
         model.fit, x[seen], split.data.y[seen], sample_weight=split.data.weights[seen]
     )
     return model.predict_interval(x[~seen])
+
+
+def _limit_event_history(
+    x: pd.DataFrame, split: _Split, event_days: int
+) -> pd.DataFrame:
+    """Blanks the event inputs on nights more than `event_days` before the cutoff.
+
+    As if event history only reached that far back: the test nights and the
+    other inputs are untouched, so runs with different `event_days` differ
+    only in how much event history the model learned from.
+    """
+    start = split.cutoff - timedelta(days=event_days)
+    old = (split.data.nights["stay_date"] <= start).to_numpy()
+    columns = [c for c in INPUT_GROUPS["events"] if c in x.columns]
+    x = x.copy()
+    x.loc[old, columns] = float("nan")
+    return x
 
 
 def _test_nights(
