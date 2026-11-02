@@ -1,4 +1,5 @@
 import { API_URL, USE_MOCKS } from '../lib/config.js'
+import { saveReturnPath } from './auth.js'
 
 const SIGN_IN_PATH = '/sign-in'
 
@@ -47,5 +48,6 @@ function readableDetail(detail) {
 function redirectToSignIn() {
   const { pathname, search } = window.location
   if (pathname === SIGN_IN_PATH) return
-  window.location.assign(`${SIGN_IN_PATH}?next=${encodeURIComponent(pathname + search)}`)
+  saveReturnPath(pathname + search)
+  window.location.assign(SIGN_IN_PATH)
 }
