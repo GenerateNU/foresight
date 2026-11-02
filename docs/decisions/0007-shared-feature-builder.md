@@ -10,10 +10,13 @@ serving time that don't match what it learned (train/serve skew).
 `build_features(nights, events, weather, flights)` in
 `services/ml/features.py` is the only place features are computed. It's pure:
 DataFrames in, DataFrame out; no database access. `FEATURES` fixes the column
-order.
+order. Since [0040](0040-events-in-the-model.md) it also takes
+`events_fetched` (the nights an events backfill covered), `events_impacts`
+(PredictHQ's expected hotel guests per night) and `hotel_location`.
 
 Features: `room_type`, `day_of_week`, `month`, `is_public_holiday`,
 `is_school_holiday`, `event_count`, `event_attendance`, `event_rank_max`,
+`event_accommodation_impact`, `big_event_count`, `nearest_big_event_km`,
 `temp_max_c`, `precip_mm`, `wind_kph`, `flight_count`, `avg_fare_eur`.
 
 Rules:
@@ -21,8 +24,14 @@ Rules:
 - Only categories that bring visitors (`ATTENDED_CATEGORIES`) count toward the
   event features; holidays are separate flags; disasters, delays and the like
   aren't demand.
-- Missing weather or flight data stays empty; EBM learns a separate effect for
-  unknown values.
+- `event_accommodation_impact` sums PredictHQ's expected hotel guests per
+  night, including the nights before and after an event. `big_event_count`
+  counts attended events whose accommodation spend reaches `BIG_EVENT_SPEND`,
+  on the nights they run. `nearest_big_event_km` is the distance from the
+  hotel to the closest of those big events; it stays empty without one.
+- Missing weather or flight data stays empty, and so do the event features on
+  nights no events backfill covered; EBM learns a separate effect for unknown
+  values.
 - Weather and flights must have at most one row per day, otherwise it raises.
 
 Excluded: `rate` (the target), anything known only after the night (rooms
