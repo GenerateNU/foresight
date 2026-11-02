@@ -1,5 +1,7 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import AppShell from './components/layout/AppShell.jsx'
+import ReturnAfterSignIn from './features/auth/ReturnAfterSignIn.jsx'
+import SignInPage from './features/auth/SignInPage.jsx'
 import ComponentsPage from './pages/ComponentsPage.jsx'
 import NotFoundPage from './pages/NotFoundPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
@@ -9,11 +11,11 @@ export default function App() {
   return (
     <Routes>
       {/* Before signing in, or before the hotel exists: no sidebar or top bar. */}
-      <Route path="sign-in" element={<PlaceholderPage title="Sign in" />} />
+      <Route path="sign-in" element={<SignInPage />} />
       <Route path="setup" element={<PlaceholderPage title="Set up your hotel" />} />
 
       <Route element={<AppShell />}>
-        <Route index element={<Navigate to="/calendar" replace />} />
+        <Route index element={<ReturnAfterSignIn />} />
         <Route path="calendar" element={<PlaceholderPage title="Calendar" />} />
         <Route path="calendar/:date" element={<PlaceholderPage title="Night detail" />} />
         <Route path="today" element={<PlaceholderPage title="Today" />} />
