@@ -25,6 +25,7 @@ from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
     NO_FLIGHTS,
     events_for,
+    hotel_location,
     weather_for,
 )
 from foresight.services.errors import InvalidRequestError, NotFoundError
@@ -130,6 +131,7 @@ async def train(
         NO_FLIGHTS,
         events_fetched=events.fetched,
         events_impacts=events.impacts,
+        hotel_location=hotel_location(hotel),
     )
     occupancy = nights["rooms_sold"] / nights["rooms_available"]
     weights = sample_weights(occupancy.clip(0, 1))
