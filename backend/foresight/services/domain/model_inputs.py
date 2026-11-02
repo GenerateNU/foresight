@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.city import City
+    from foresight.database.models.hotel import Hotel
 
 WEATHER_COLUMNS = ["temp_max_c", "precip_mm", "wind_kph"]
 
@@ -49,6 +50,8 @@ EVENT_COLUMNS = [
     "category",
     "expected_attendance",
     "local_rank",
+    "latitude",
+    "longitude",
 ]
 IMPACT_COLUMNS = ["impact_date", "guests"]
 # PredictHQ's accommodation impact reaches a few nights before and after an
@@ -177,6 +180,8 @@ async def events_for(
             "expected_attendance": float,
             "local_rank": float,
             "accommodation_spend": float,
+            "latitude": float,
+            "longitude": float,
         }
     )
     impacts = pd.DataFrame(
@@ -188,6 +193,13 @@ async def events_for(
         columns=IMPACT_COLUMNS,
     )
     return CityEvents(frame, fetched, impacts)
+
+
+def hotel_location(hotel: Hotel) -> tuple[float, float] | None:
+    """The hotel's (latitude, longitude), or None if either is missing."""
+    if hotel.latitude is None or hotel.longitude is None:
+        return None
+    return hotel.latitude, hotel.longitude
 
 
 def _float(value: object) -> float | None:

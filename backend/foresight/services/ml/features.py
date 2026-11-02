@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from foresight.database.enums import EventCategory
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
 # Events whose predicted accommodation spend reaches this are "big" (decision
 # 0040). A starting point from 14 Dublin nights; the backtest may change it.
 BIG_EVENT_SPEND = 100_000
+_EARTH_RADIUS_KM = 6371.0
 
 # Model input columns, in order. Training and serving both use this list.
 FEATURES = [
@@ -26,6 +28,7 @@ FEATURES = [
     "event_rank_max",
     "event_accommodation_impact",
     "big_event_count",
+    "nearest_big_event_km",
     "temp_max_c",
     "precip_mm",
     "wind_kph",
@@ -55,6 +58,7 @@ def build_features(
     *,
     events_fetched: Collection[date] | None = None,
     events_impacts: pd.DataFrame | None = None,
+    hotel_location: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Builds the model's input columns, one row per room type per night.
 
@@ -80,6 +84,9 @@ def build_features(
         events_impacts (pd.DataFrame | None): Predicted accommodation impacts
             for each event, with columns impact_date and guests. None means
             no impact data available.
+        hotel_location (tuple[float, float] | None): The hotel's latitude and
+            longitude, for the distance to the nearest big event. None leaves
+            that distance empty.
 
     Returns:
         pd.DataFrame: The FEATURES columns, in order, indexed like nights.
@@ -90,7 +97,9 @@ def build_features(
     stay_date = pd.to_datetime(nights["stay_date"])
     dates = pd.DatetimeIndex(stay_date.unique())
 
-    event_daily = _event_features(events, dates).join(_impact(events_impacts, dates))
+    event_daily = _event_features(events, dates, hotel_location).join(
+        _impact(events_impacts, dates)
+    )
     if events_fetched is not None:
         known = dates.isin(pd.to_datetime(list(events_fetched)))
         event_daily = event_daily.where(pd.Series(known, index=dates), axis=0)
@@ -105,7 +114,11 @@ def build_features(
     return features.reindex(columns=FEATURES)
 
 
-def _event_features(events: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
+def _event_features(
+    events: pd.DataFrame,
+    dates: pd.DatetimeIndex,
+    hotel_location: tuple[float, float] | None = None,
+) -> pd.DataFrame:
     """Summarizes the events happening on each date.
 
     A multi-day event counts on every night from its start to its end date.
@@ -125,6 +138,7 @@ def _event_features(events: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFra
             "event_attendance": 0.0,
             "event_rank_max": 0.0,
             "big_event_count": 0,
+            "nearest_big_event_km": float("nan"),
         },
         index=dates,
     )
@@ -153,6 +167,12 @@ def _event_features(events: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFra
 
     attended = expanded.loc[expanded["category"].isin(ATTENDED_CATEGORIES)]
     if not attended.empty:
+        big = attended["accommodation_spend"] >= BIG_EVENT_SPEND
+        attended = attended.assign(
+            big_event_km=_km_from(
+                hotel_location, attended["latitude"], attended["longitude"]
+            ).where(big)
+        )
         totals = attended.groupby("date").agg(
             event_count=("category", "size"),
             event_attendance=("expected_attendance", "sum"),
@@ -161,10 +181,32 @@ def _event_features(events: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFra
                 "accommodation_spend",
                 lambda x: int((x >= BIG_EVENT_SPEND).sum()),
             ),
+            nearest_big_event_km=("big_event_km", "min"),
         )
-        totals = totals.fillna(0)
+        # The distance stays empty without a big event: 0 km would mean next door.
+        totals = totals.fillna(
+            {c: 0 for c in totals.columns if c != "nearest_big_event_km"}
+        )
         result.loc[totals.index, totals.columns] = totals
     return result
+
+
+def _km_from(
+    location: tuple[float, float] | None, latitude: pd.Series, longitude: pd.Series
+) -> pd.Series:
+    """Great-circle distance in km from `location` to each point (haversine).
+
+    Empty everywhere when `location` is None, e.g. a hotel without coordinates.
+    """
+    if location is None:
+        return pd.Series(float("nan"), index=latitude.index)
+    lat1, lon1 = np.radians(location[0]), np.radians(location[1])
+    lat2, lon2 = np.radians(latitude), np.radians(longitude)
+    a = (
+        np.sin((lat2 - lat1) / 2) ** 2
+        + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2
+    )
+    return 2 * _EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
 
 
 def _impact(impacts: pd.DataFrame | None, dates: pd.DatetimeIndex) -> pd.Series:
