@@ -61,9 +61,16 @@ class HotelDataParser:
         "InStock": "rooms_available",
         "Total": "rooms_sold",
         "Accomm": "room_revenue",
+        "Blocks": "rooms_blocked",
+        "ROOS": "rooms_out_of_service",
+        "Waitlist": "waitlist",
     }
 
     DEFAULT_SCHEMA = ["stay_date", "rooms_available", "rooms_sold", "room_revenue"]
+
+    # Read when the export has them; older exports don't, and their nights
+    # are saved with these empty.
+    OPTIONAL_COLUMNS = ["rooms_blocked", "rooms_out_of_service", "waitlist"]
 
     def __init__(self, input_path, schema=None, column_mapping=None):
         """
@@ -159,6 +166,9 @@ class HotelDataParser:
             "InStock",
             "ARR",
             "APR",
+            "Blocks",
+            "ROOS",
+            "Waitlist",
         ]
         for column in numeric_columns:
             if column in self.cleaned_data.columns:
@@ -171,9 +181,10 @@ class HotelDataParser:
                     self.cleaned_data[column], errors="coerce"
                 )
 
-        # Parse the date column (client format is DD/MM/YYYY HH:MM)
+        # Client format is DD/MM/YYYY followed by a time (00:00 or 00:00:00).
+        # Only the date matters, so read the first 10 characters.
         parsed_dates = pd.to_datetime(
-            self.cleaned_data["Date"], format="%d/%m/%Y %H:%M", errors="coerce"
+            self.cleaned_data["Date"].str[:10], format="%d/%m/%Y", errors="coerce"
         ).dt.date
         unparseable = parsed_dates.isna().sum()
         if unparseable:
@@ -222,8 +233,15 @@ class HotelDataParser:
             columns=self.column_mapping
         )
 
-        # Keep only the columns the schema cares about.
-        self.transformed_data = self.transformed_data[self.schema].copy()
+        # Older exports don't have the optional columns; add them empty.
+        for column in self.OPTIONAL_COLUMNS:
+            if column not in self.transformed_data.columns:
+                self.transformed_data[column] = None
+
+        # Keep only the columns we save.
+        self.transformed_data = self.transformed_data[
+            self.schema + self.OPTIONAL_COLUMNS
+        ].copy()
 
         self.logger.info("Data transformation completed.")
 
@@ -250,6 +268,9 @@ class HotelDataParser:
         self.logger.info("Validating hotel data...")
 
         data = self.transformed_data
+
+        if data.empty:
+            raise ValueError("No nights could be read from the file.")
 
         missing_columns = [
             column for column in self.schema if column not in data.columns
@@ -302,6 +323,9 @@ class HotelDataParser:
                 "rooms_available": int(night["rooms_available"]),
                 "rooms_sold": int(night["rooms_sold"]),
                 "room_revenue": Decimal(str(night["room_revenue"])),
+                "rooms_blocked": optional_count(night["rooms_blocked"]),
+                "rooms_out_of_service": optional_count(night["rooms_out_of_service"]),
+                "waitlist": optional_count(night["waitlist"]),
             }
             for night in self.transformed_data.to_dict(orient="records")
         ]
@@ -346,3 +370,10 @@ def average_rate(room_revenue, rooms_sold):
     if not rooms_sold:
         return None
     return (Decimal(str(room_revenue)) / int(rooms_sold)).quantize(Decimal("0.01"))
+
+
+def optional_count(value):
+    """A whole number of rooms, or None when the export didn't have the column."""
+    if pd.isna(value):
+        return None
+    return int(value)

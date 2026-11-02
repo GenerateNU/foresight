@@ -51,7 +51,14 @@ MIN_TRAINING_NIGHTS = 120
 # Share of the most recent nights scored after training; also the conformal
 # calibration share (decision 0005), so metrics describe unseen nights.
 HOLDOUT_FRAC = 0.15
-_NIGHT_COLUMNS = ["stay_date", "room_type", "rate", "rooms_sold", "rooms_available"]
+_NIGHT_COLUMNS = [
+    "stay_date",
+    "room_type",
+    "rate",
+    "rooms_sold",
+    "rooms_available",
+    "rooms_out_of_service",
+]
 _FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "verdict", "rate"]
 _LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
@@ -200,7 +207,8 @@ async def training_data(
         events_impacts=events.impacts,
         hotel_location=hotel_location(hotel),
     )
-    occupancy = nights["rooms_sold"] / nights["rooms_available"]
+    sellable = nights["rooms_available"] - nights["rooms_out_of_service"].fillna(0)
+    occupancy = nights["rooms_sold"] / sellable
     return TrainingData(
         nights=nights,
         x=x,

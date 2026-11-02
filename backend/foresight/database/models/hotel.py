@@ -71,9 +71,14 @@ class DailyPerformance(Base):
 
     stay_date: Mapped[date] = mapped_column(Date)  # the night being sold
     rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # price we listed
-    rooms_available: Mapped[int]
+    rooms_available: Mapped[int]  # rooms in stock, including any out of service
     rooms_sold: Mapped[int] = mapped_column(default=0)
     room_revenue: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    # From Actual & Forecast. Empty for nights imported before these were read,
+    # or from an export that left the columns out.
+    rooms_blocked: Mapped[int | None]  # sold through group blocks
+    rooms_out_of_service: Mapped[int | None]  # Guestline's ROOS
+    waitlist: Mapped[int | None]  # guests waiting for a room
 
     room_type: Mapped["RoomType"] = relationship(back_populates="nights", lazy="raise")
 

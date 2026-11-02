@@ -26,7 +26,15 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 _PERF_KEY = ("room_type_id", "stay_date")
-_PERF_MEASURES = ("rate", "rooms_available", "rooms_sold", "room_revenue")
+_PERF_MEASURES = (
+    "rate",
+    "rooms_available",
+    "rooms_sold",
+    "room_revenue",
+    "rooms_blocked",
+    "rooms_out_of_service",
+    "waitlist",
+)
 
 
 async def get_hotel(session: AsyncSession, hotel_id: int) -> Hotel | None:
@@ -225,6 +233,7 @@ async def training_nights(
             DailyPerformance.rate,
             DailyPerformance.rooms_sold,
             DailyPerformance.rooms_available,
+            DailyPerformance.rooms_out_of_service,
         )
         .join(RoomType, DailyPerformance.room_type_id == RoomType.id)
         .where(RoomType.hotel_id == hotel_id)
