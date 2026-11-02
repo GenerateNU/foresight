@@ -86,7 +86,7 @@ backend/foresight/
   main.py                  app, routers, session and CORS middleware, error handlers, lifespan
   config.py                settings (pydantic-settings)
   worker.py                runs jobs; commits per chunk
-  cli.py                   operator commands (`just link-user`); commits once per command
+  cli.py                   operator commands (`just link-user`, `just backtest`); commits once per command
   routes/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
@@ -103,7 +103,7 @@ backend/foresight/
     ingest/                weather, event, performance, window
     adapters/              open_meteo, predicthq, aerodatabox, opensky, cso,
                            hotel_csv, normalize, textdates
-    ml/                    base, ebm, features, weighting
+    ml/                    base, ebm, features, weighting, baselines
   repository/
     upsert.py pagination.py
     city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
@@ -451,12 +451,13 @@ Both read only what's already ingested; neither fetches
 POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   job_service.start_train_job       hotel exists, nights loaded in window → 422
   → domain/pricing_model.train
-      hotel_repo.training_nights                every night, oldest first
-      ml/weighting.training_mask                drop unpriced nights (0004)
-      domain/model_inputs.weather_for           recorded weather only
-      domain/model_inputs.events_for            counted events + fetched nights (0040)
-      ml/features.build_features                unfetched nights' events empty; flights empty
-      ml/weighting.sample_weights               occupancy (0003)
+      training_data                             shared with the backtest (6.7)
+        hotel_repo.training_nights              every night, oldest first
+        ml/weighting.training_mask              drop unpriced nights (0004)
+        domain/model_inputs.weather_for         recorded weather only
+        domain/model_inputs.events_for          counted events + fetched nights (0040)
+        ml/features.build_features              unfetched nights' events empty; flights empty
+        ml/weighting.sample_weights             occupancy (0003)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
       EBMModel.fit in a thread                  calibrates on the newest 15% (0005)
@@ -560,6 +561,32 @@ using one in a handler is what checks access. Tests list every route from
 OpenAPI and assert the 401 and the cross-hotel 404 for each. The scheduler, when
 it exists, runs in the API process and calls the job services directly with no
 user ([0041](decisions/0041-login-required-hotels-by-link.md)).
+
+### 6.7 Backtest
+
+`just backtest 7 [--baselines] [--inputs …] [--test-days N]` checks
+whether the model, and each input, is worth having
+([0041](decisions/0041-how-the-backtest-judges-the-model.md)). Read-only:
+models are trained in memory and thrown away.
+
+```
+cli.backtest
+  → domain/backtest.run_backtest
+      pricing_model.training_data               the same inputs training sees
+      cutoff = newest night − test_days (default 90)
+      one EBM on --inputs (default: all FEATURES)
+      ml/base.score                             every test night
+      only with --baselines:
+        ml/baselines on nights ≤ cutoff         same weekday last year,
+                                                last 4 weeks' weekday mean
+        ml/base.score                           each baseline vs the model
+                                                on the nights it covers
+  ← scores (+ baseline table), and a PNG in backend/backtest-out/
+```
+
+`ml/features.INPUT_GROUPS` sorts every feature into calendar, weather,
+events (holiday flags included) and flights; `--inputs` takes group names or
+single features. Compare input sets by running it once per set.
 
 ---
 

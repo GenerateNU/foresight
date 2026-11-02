@@ -36,6 +36,24 @@ FEATURES = [
     "avg_fare_eur",
 ]
 
+# FEATURES by kind, for choosing which inputs a backtest trains on. Every
+# feature is in exactly one group. The holiday flags sit with events: they come
+# from the same PredictHQ data, and are unknown on the same nights.
+INPUT_GROUPS = {
+    "calendar": ["room_type", "day_of_week", "month"],
+    "weather": ["temp_max_c", "precip_mm", "wind_kph"],
+    "events": [
+        "is_public_holiday",
+        "is_school_holiday",
+        "event_count",
+        "event_attendance",
+        "event_rank_max",
+        "event_accommodation_impact",
+        "big_event_count",
+    ],
+    "flights": ["flight_count", "avg_fare_eur"],  # no data yet
+}
+
 # Events that bring people to the city. Holidays become their own flags, and
 # categories like disasters or airport delays aren't counted as demand.
 ATTENDED_CATEGORIES = [
