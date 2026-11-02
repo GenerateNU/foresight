@@ -604,6 +604,28 @@ single features. Compare input sets by running it once per set.
 `--event-days N` limits only the event inputs to the N days before the
 cutoff, to see how much event history the model needs.
 
+### 6.8 How full a night was on an earlier date
+
+Computed when asked, never stored
+([0048](decisions/0048-rooms-booked-rebuilt-when-asked.md)). There's no route yet.
+
+```
+domain/booking.booking_curves(session, 7, start=…, end=…)
+  get_hotel                                       404 if missing
+  booking_repo.list_live_bookings                 no cancellation for the ref
+  booking_repo.list_cancellations
+  per night of each stay: +1 the day booked, −1 the day cancelled
+← {night: {day the count changed: rooms booked at the end of that day}}
+
+domain/booking.rooms_on(curve, as_of)             reads one night at any date
+domain/booking.rooms_booked(session, 7, night=…, as_of=…)     one night
+domain/booking.check_final_counts(session, 7, start=…, end=…)
+  each night's curve the day after it, minus rooms sold from list_nights
+```
+
+Pass `check_final_counts` nights the booking export fully covers; for the first
+hotel that's from 21 Dec 2024 ([guestline-data.md](guestline-data.md)).
+
 ---
 
 ## 7. API
@@ -677,6 +699,8 @@ sign-in is requested.
 | `adapters/aerodatabox.py`, `opensky.py` | work; no flights job yet, so `flight_arrivals` stays empty |
 | `adapters/cso.py` | monthly airport passengers; needs a monthly table before it can be stored |
 | `competitor_rates` | table and upsert; no source |
+| `ingest/bookings.py` | parses and saves bookings and cancellations; no upload route yet (#89) |
+| `domain/booking.py` | the rebuild of how full a night was; nothing calls it yet (#103) |
 
 ---
 
@@ -693,7 +717,7 @@ sign-in is requested.
 5. **Tests.** The suite covers recommendations, events on a night, freshness
    and users, but not ingest or training. Nothing has been run against real
    PredictHQ, AeroDataBox or OpenSky keys.
-6. **Booking-level PMS data.** [0037](decisions/0037-three-guestline-reports.md)
-   picks the Guestline reports to import, but the table, parsers and the
-   rebuild of how full each night was before arrival aren't designed yet.
-   Until then, the performance import (6.2) is the only hotel data.
+6. **Amended bookings.** A booking keeps the dates it had when first uploaded
+   ([0047](decisions/0047-bookings-and-cancellations.md)), and how often dates
+   change isn't known. The rebuild (6.5) matches final rooms sold, but nothing
+   independent checks its counts at earlier dates.
