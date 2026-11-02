@@ -8,7 +8,6 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import ErrorState from '../components/ui/ErrorState.jsx'
 import Input from '../components/ui/Input.jsx'
 import LoadingState from '../components/ui/LoadingState.jsx'
-import Skeleton from '../components/ui/Skeleton.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
 
 function Section({ title, children }) {
@@ -71,13 +70,6 @@ export default function ComponentsPage() {
       </Section>
 
       <Section title="Loading, empty and error states">
-        <div role="status" aria-label="Loading" className="flex items-center gap-4">
-          <Skeleton className="size-12 rounded-card" />
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-        </div>
         <Spinner />
         <LoadingState label="Loading prices…" />
         <EmptyState
