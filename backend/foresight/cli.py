@@ -39,15 +39,27 @@ async def link_user(email: str, hotel_id: int) -> None:
 
 
 async def backtest(
-    hotel_id: int, test_days: int, out: Path, baselines: bool, inputs: list[str]
+    hotel_id: int,
+    test_days: int,
+    out: Path,
+    baselines: bool,
+    inputs: list[str],
+    event_days: int | None,
 ) -> None:
     async with async_session_factory() as session:
         result = await backtest_service.run_backtest(
-            session, hotel_id, test_days=test_days, baselines=baselines, inputs=inputs
+            session,
+            hotel_id,
+            test_days=test_days,
+            baselines=baselines,
+            inputs=inputs,
+            event_days=event_days,
         )
     nights = result.nights
     first, last = nights["stay_date"].min(), nights["stay_date"].max()
     described = _describe_inputs(result.inputs)
+    if result.event_days is not None:
+        described += f"; {result.event_days} days of event history"
     print(f"{len(nights)} test nights, {first} to {last}; inputs: {described}")
     scores = _format_metrics(result.metrics)
     for name, value in scores:
@@ -229,7 +241,12 @@ async def _run(args: argparse.Namespace) -> None:
             await link_user(args.email, args.hotel_id)
         elif args.command == "backtest":
             await backtest(
-                args.hotel_id, args.test_days, args.out, args.baselines, args.inputs
+                args.hotel_id,
+                args.test_days,
+                args.out,
+                args.baselines,
+                args.inputs,
+                args.event_days,
             )
     finally:
         await engine.dispose()
@@ -247,6 +264,15 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("hotel_id", type=int, help="The hotel's id")
     bt.add_argument(
         "--test-days", type=int, default=90, help="How many recent nights to predict"
+    )
+    bt.add_argument(
+        "--event-days",
+        type=int,
+        default=None,
+        help=(
+            "Train on only this many days of event history before the cutoff, "
+            "e.g. 30. Other inputs keep all their history. Default: all"
+        ),
     )
     bt.add_argument(
         "--baselines",
