@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select, update
 
 from foresight.database.enums import JobStatus
+from foresight.database.models.hotel import Hotel
 from foresight.database.models.job import Job
 from foresight.repository.pagination import fetch_page
 
@@ -103,3 +104,26 @@ async def latest_finished_job(
     if status is not None:
         stmt = stmt.where(Job.status == status)
     return await session.scalar(stmt.order_by(Job.finished_at.desc()).limit(1))
+
+
+async def list_finished_jobs_in_city(
+    session: AsyncSession,
+    *,
+    city_id: int,
+    kind: JobKind,
+    params: dict[str, Any],
+) -> Sequence[Job]:
+    """Finished jobs of this kind, for any hotel in the city, whose params
+    contain `params`. Oldest first."""
+    result = await session.scalars(
+        select(Job)
+        .join(Hotel, Job.hotel_id == Hotel.id)
+        .where(
+            Hotel.city_id == city_id,
+            Job.finished_at.is_not(None),
+            Job.kind == kind,
+            Job.params.contains(params),
+        )
+        .order_by(Job.id)
+    )
+    return result.all()

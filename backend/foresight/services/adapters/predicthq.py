@@ -206,6 +206,28 @@ def to_normalized(raw: Mapping[str, Any], *, city: str) -> NormalizedEvent:
     )
 
 
+def accommodation(raw: Mapping[str, Any]) -> tuple[float | None, dict[date, float]]:
+    """PredictHQ's hotel estimates in a raw event record.
+
+    Return the predicted accommodation spend (None when PredictHQ gave none)
+    and the expected guests on each night, including the nights before and
+    after the event. Only attendance-based impacts are read; a rank-based
+    one is on a different scale.
+    """
+    spend = (raw.get("predicted_event_spend_industries") or {}).get("accommodation")
+    nights: dict[date, float] = {}
+    for pattern in raw.get("impact_patterns") or []:
+        if (
+            pattern.get("vertical") != "accommodation"
+            or pattern.get("impact_type") != "phq_attendance"
+        ):
+            continue
+        for impact in pattern.get("impacts") or []:
+            night = date.fromisoformat(impact["date_local"])
+            nights[night] = nights.get(night, 0.0) + float(impact["value"])
+    return (None if spend is None else float(spend)), nights
+
+
 def _parse_instant(value: str) -> datetime:
     moment = datetime.fromisoformat(value)
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
