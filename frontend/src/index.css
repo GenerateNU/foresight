@@ -15,14 +15,6 @@
   --radius-chip: 999px;
   --radius-card: 16px;
 
-  /* Loading placeholders fade in late, so a fast answer never flashes one (decision 0041). */
-  --animate-appear: appear 200ms ease-out 150ms both;
-  @keyframes appear {
-    from {
-      opacity: 0;
-    }
-  }
-
   --color-white: #ffffff;
   --color-dark: #151817;
 

@@ -61,5 +61,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0038](0038-recommendations-reused-while-inputs-hold.md) | A recommendation is stored when made, and reused while its inputs hold | data model |
 | [0039](0039-freshness-reports-dates-only.md) | Freshness reports dates only, recommendations included | API |
 | [0040](0040-google-sign-in-cookie-sessions.md) | Google sign-in, with a signed session cookie | API / auth |
-| [0041](0041-waiting-is-fine-guessing-isnt.md) | Waiting is fine; leaving the manager guessing isn't | frontend |
 | [0042](0042-fonts-served-from-the-app.md) | Fonts are served from the app, not Google Fonts | frontend |

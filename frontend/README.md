@@ -44,8 +44,7 @@ src/
 
 - **Reuse before you style.** Need a button, panel, field or status? Use `components/ui/`. If a screen needs a variant, add it to the component, not to the screen.
 - **Colors come from tokens.** Use `bg-pine-600`, `text-stone-500`, `text-price-up`. Never write a hex in a component. To change a color, change it in `index.css`.
-- **Waiting is fine; guessing isn't** ([decision 0041](../docs/decisions/0041-waiting-is-fine-guessing-isnt.md)). The frame shows at once; data areas show `Skeleton` blocks in the content's shape (or `LoadingState` if the shape is unknown), keep their content while `refreshing`, and use `ErrorState` with `onRetry={reload}` and `EmptyState`.
-- **Judge speed on a production build** (`npm run build && npm run preview`), not the dev server.
+- **Every load has three states.** Show `LoadingState`, `ErrorState` (with `onRetry={reload}` from `useAsync`) or `EmptyState` before the real content.
 - **Components draw, they don't fetch.** Pages fetch (via `api/` + `useAsync`) and pass plain data down.
 - **A feature folder owns its screen.** A piece moves to `components/ui/` once a second screen needs it.
 - **Pure logic goes in plain `.js` files** so it can be tested without React.
