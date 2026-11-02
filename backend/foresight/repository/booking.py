@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import exists, select
+
 from foresight.database.models.booking import Booking, BookingCancellation
 from foresight.repository.upsert import Outcome, upsert_rows
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
+    from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,3 +64,39 @@ async def upsert_cancellations(
         ),
         rows=rows,
     )
+
+
+async def list_live_bookings(
+    session: AsyncSession, hotel_id: int, *, start: date, end: date
+) -> Sequence[Booking]:
+    """Bookings with a night from `start` to `end` and no cancellation."""
+    # Matched on the ref alone: a cancellation can carry amended stay dates.
+    cancelled = exists().where(
+        BookingCancellation.hotel_id == Booking.hotel_id,
+        BookingCancellation.book_ref == Booking.book_ref,
+    )
+    return (
+        await session.scalars(
+            select(Booking).where(
+                Booking.hotel_id == hotel_id,
+                Booking.arrival <= end,
+                Booking.departure > start,
+                ~cancelled,
+            )
+        )
+    ).all()
+
+
+async def list_cancellations(
+    session: AsyncSession, hotel_id: int, *, start: date, end: date
+) -> Sequence[BookingCancellation]:
+    """Cancellations with a night from `start` to `end`."""
+    return (
+        await session.scalars(
+            select(BookingCancellation).where(
+                BookingCancellation.hotel_id == hotel_id,
+                BookingCancellation.arrival <= end,
+                BookingCancellation.departure > start,
+            )
+        )
+    ).all()
