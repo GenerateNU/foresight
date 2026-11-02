@@ -107,4 +107,5 @@ class FeedbackReasonTag(StrEnum):
     VENUE_SOLD_OUT = "venue_sold_out"
     COMPETITOR_PRICING = "competitor_pricing"
     LOCAL_KNOWLEDGE = "local_knowledge"
+    GUT_FEEL = "gut_feel"
     OTHER = "other"
