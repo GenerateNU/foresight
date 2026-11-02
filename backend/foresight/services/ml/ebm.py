@@ -26,13 +26,15 @@ class EBMModel(Model):
         self.alpha = alpha
         self.calibration_frac = calibration_frac
         self._residuals: np.ndarray | None = None  # set by fit
+        self.holdout_pred: np.ndarray | None = None  # fit 1's predictions, set by fit
 
     def fit(self, x, y, sample_weight=None):
         """Trains the model and calibrates its prediction interval.
 
-        The last `calibration_frac` of rows are held out: the model trains on
-        the earlier rows, and its errors on the held-out rows set the interval
-        width. Rows must be sorted by time so the held-out rows are the latest.
+        Fits twice. First on all but the last `calibration_frac` of rows: its
+        errors on those held-out rows set the interval width. Then on every
+        row, and that fit is the model kept, so the newest rows are learned
+        from too. Rows must be sorted by time so the held-out rows are the latest.
 
         Args:
             x (pd.DataFrame): Training features, sorted by time.
@@ -53,20 +55,33 @@ class EBMModel(Model):
                 f"{self.name} needs more rows to hold out a calibration set "
                 f"(got {len(x)})"
             )
-        train_weight = None
+
+        weights = None
         if sample_weight is not None:
-            train_weight = np.asarray(sample_weight, dtype=float)[:cut]
-            if not (train_weight > 0).all():
+            weights = np.asarray(sample_weight, dtype=float)
+            if not (weights > 0).all():
                 raise ValueError(f"{self.name} needs every sample weight > 0")
 
+        # Fit 1, oldest rows only: its errors on the newest rows, which it
+        # hasn't seen, set the interval width and the reported scores.
+        holdout = ExplainableBoostingRegressor(
+            random_state=self.seed, **self.params
+        ).fit(
+            x.iloc[:cut],
+            y.iloc[:cut],
+            sample_weight=None if weights is None else weights[:cut],
+        )
+
+        self.holdout_pred = holdout.predict(x.iloc[cut:])
+        self._residuals = np.abs(
+            np.asarray(y.iloc[cut:], dtype=float) - self.holdout_pred
+        )
+
+        # Fit 2, every row: the model that's kept, so the newest nights (the
+        # only ones with event data) are learned from too.
         self._model = ExplainableBoostingRegressor(
             random_state=self.seed, **self.params
-        ).fit(x.iloc[:cut], y.iloc[:cut], sample_weight=train_weight)
-
-        calibration_pred = self._model.predict(x.iloc[cut:])
-        self._residuals = np.abs(
-            np.asarray(y.iloc[cut:], dtype=float) - calibration_pred
-        )
+        ).fit(x, y, sample_weight=weights)
         return self
 
     def predict(self, x):

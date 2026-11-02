@@ -29,6 +29,7 @@ from foresight.services.domain.model_inputs import (
     weather_for,
 )
 from foresight.services.errors import InvalidRequestError, NotFoundError
+from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import FEATURES, build_features
 from foresight.services.ml.feedback import apply_feedback
@@ -253,8 +254,15 @@ def _fit(
 def _metrics(
     model: EBMModel, x: pd.DataFrame, y: pd.Series, nights: pd.DataFrame
 ) -> dict[str, Any]:
-    """Scores on the most recent nights; these also calibrated the interval."""
-    scores = model.evaluate(x, y)
+    """Scores on the most recent nights; these also calibrated the interval.
+
+    The kept model trained on these nights too, so its own scores here would
+    look too good; the first fit's describe unseen nights (decision 0042).
+    """
+    pred = model.holdout_pred
+    assert pred is not None
+    margin = model.interval_margin(model.alpha)
+    scores = score(y, pred, pred - margin, pred + margin)
     return {
         **{k: (None if v is None else round(float(v), 4)) for k, v in scores.items()},
         "interval_level": 1 - model.alpha,
