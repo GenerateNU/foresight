@@ -41,8 +41,8 @@ from foresight.services.domain.city import local_today
 from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
-    NO_EVENTS,
     NO_FLIGHTS,
+    events_for,
     weather_for,
 )
 from foresight.services.errors import InvalidRequestError, NotFoundError
@@ -110,6 +110,7 @@ class Recommendation:
     model_version: str
     events: list[NightEvent]  # the events on the night, largest first
     weather_source: str | None  # "recorded", "forecast", "typical week …"
+    events_source: str | None  # "fetched" or "missing"; None on older snapshots
     snapshot_id: int | None  # None for a past night priced but not saved
     priced_at: datetime  # when the model produced this rate
 
@@ -122,6 +123,7 @@ class _Night:
     features: pd.DataFrame  # the model's input, one row
     events: list[NightEvent]
     weather_source: str
+    events_source: str  # "fetched" or "missing"
     inputs: dict[str, Any]  # what's stored with the snapshot
     inputs_hash: str
 
@@ -230,16 +232,26 @@ async def _load_nights(
         session, hotel.city_id, start=start, end=end
     )
     weather = await weather_for(session, hotel.city, days, fallback=True)
+    city_events = await events_for(session, hotel.city, days)
     frame = pd.DataFrame({"stay_date": days, "room_type": room_type.name})
-    x = build_features(frame, NO_EVENTS, weather.frame, NO_FLIGHTS)
+    x = build_features(
+        frame,
+        city_events.frame,
+        weather.frame,
+        NO_FLIGHTS,
+        events_fetched=city_events.fetched,
+        events_impacts=city_events.impacts,
+    )
 
     nights = []
     for i, day in enumerate(days):
         features = x.iloc[[i]]  # a one-row frame keeps each column's dtype
+        events_source = "fetched" if day in city_events.fetched else "missing"
         inputs = {
             "features": {k: _plain(v) for k, v in features.iloc[0].items()},
             "events": [_event_json(e) for e in events[day]],
             "weather_source": weather.sources[day],
+            "events_source": events_source,
         }
         nights.append(
             _Night(
@@ -247,6 +259,7 @@ async def _load_nights(
                 features=features,
                 events=events[day],
                 weather_source=weather.sources[day],
+                events_source=events_source,
                 inputs=inputs,
                 inputs_hash=_fingerprint(stored.id, inputs),
             )
@@ -439,6 +452,7 @@ def _from_snapshot(
         model_version=snap.model_version,
         events=[_event_from_json(e) for e in inputs.get("events", [])],
         weather_source=inputs.get("weather_source"),
+        events_source=inputs.get("events_source"),
         snapshot_id=snap.id,
         priced_at=snap.created_at,
     )
@@ -466,6 +480,7 @@ def _unsaved(
         model_version=_version(stored),
         events=night.events,
         weather_source=night.weather_source,
+        events_source=night.events_source,
         snapshot_id=None,
         priced_at=datetime.now(UTC),
     )

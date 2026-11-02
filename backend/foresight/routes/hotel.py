@@ -236,6 +236,12 @@ class RecommendationResponse(ResponseSchema):
         "a typical week, or missing; null on snapshots older than this field",
         examples=["forecast"],
     )
+    events_source: str | None = Field(
+        description="Whether an events backfill covered the night: fetched, or "
+        "missing, meaning its event features are unknown rather than quiet; "
+        "null on snapshots older than this field",
+        examples=["fetched"],
+    )
     snapshot_id: int | None = Field(
         description="The snapshot this rate is stored as; null for a past night "
         "priced now, since past nights aren't saved after the fact"

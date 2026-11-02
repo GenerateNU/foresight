@@ -11,11 +11,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from foresight.database.enums import EventCategory, EventStatus, Source
+from foresight.database.enums import EventCategory, EventStatus, JobKind, Source
+from foresight.repository import job as job_repo
 from foresight.repository.signals import event as event_repo
 from foresight.repository.upsert import Outcome
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.errors import InvalidRequestError
+from foresight.services.ingest.window import Window
 from foresight.services.ml.features import ATTENDED_CATEGORIES
 
 if TYPE_CHECKING:
@@ -115,6 +117,53 @@ async def list_events(
     )
 
 
+async def counted_events(
+    session: AsyncSession, city_id: int, *, start: date, end: date
+) -> Sequence[Event]:
+    """Live events in the city, of a category the model counts, that fall on
+    any night in [start, end], both inclusive (decision 0032)."""
+    return await event_repo.list_events_overlapping(
+        session,
+        city_id=city_id,
+        start=start,
+        end=end,
+        exclude_statuses=_WITHDRAWN,
+        categories=_COUNTED,
+    )
+
+
+async def fetched_nights(
+    session: AsyncSession, city_id: int, *, start: date, end: date
+) -> set[date]:
+    """The nights in [start, end] an events backfill has fetched for the city.
+
+    Nights outside it are unknown, not quiet (decision 0040). Only backfills
+    count: the routine refresh asks for what changed, not for any nights. Each
+    job counts for the months it saved, except months PredictHQ cut short or
+    that came back empty: a month with nothing points to a plan limit, not a
+    quiet city.
+    """
+    jobs = await job_repo.list_finished_jobs_in_city(
+        session, city_id=city_id, kind=JobKind.EVENTS, params={"mode": "window"}
+    )
+    nights: set[date] = set()
+    for job in jobs:
+        if not job.progress.get("fetched"):
+            continue  # recorded before `empty_months` existed
+        skipped = job.progress.get("empty_months", []) + job.progress.get(
+            "overflowed_months", []
+        )
+        months = list(Window.from_params(job.params).months())
+        for first, last in months[: job.progress.get("months_done", 0)]:
+            if [first.isoformat(), last.isoformat()] in skipped:
+                continue
+            first, last = max(first, start), min(last, end)
+            nights.update(
+                first + timedelta(days=i) for i in range((last - first).days + 1)
+            )
+    return nights
+
+
 async def events_by_night(
     session: AsyncSession, city_id: int, *, start: date, end: date
 ) -> dict[date, list[NightEvent]]:
@@ -131,14 +180,8 @@ async def events_by_night(
     """
     if end < start:
         raise InvalidRequestError("end must not be before start")
-    events = await event_repo.list_events_overlapping(
-        session,
-        city_id=city_id,
-        start=start,
-        end=end,
-        exclude_statuses=_WITHDRAWN,
-        categories=_COUNTED,
-    )
+    events = await counted_events(session, city_id, start=start, end=end)
+
     return _by_night(events, start, end)
 
 

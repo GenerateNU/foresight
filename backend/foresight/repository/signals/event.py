@@ -231,3 +231,25 @@ async def list_events_overlapping(
         )
     )
     return result.all()
+
+
+async def latest_payloads(
+    session: AsyncSession, event_ids: Collection[int], *, source: Source
+) -> dict[int, Mapping[str, Any]]:
+    """Each event's most recently updated raw record from `source`, by event id.
+    Events without one are left out."""
+    if not event_ids:
+        return {}
+    result = await session.execute(
+        select(_OBSERVATIONS.c.event_id, _OBSERVATIONS.c.payload)
+        .where(
+            _OBSERVATIONS.c.event_id.in_(event_ids),
+            _OBSERVATIONS.c.source == source,
+        )
+        .distinct(_OBSERVATIONS.c.event_id)
+        .order_by(
+            _OBSERVATIONS.c.event_id,
+            _OBSERVATIONS.c.source_updated_at.desc().nulls_last(),
+        )
+    )
+    return dict(result.tuples().all())
