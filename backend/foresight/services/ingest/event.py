@@ -44,6 +44,8 @@ class EventReport:
     outcomes: Counter[Outcome] = field(default_factory=Counter)
     # Months PredictHQ truncated at the plan's result limit.
     overflowed: list[tuple[date, date]] = field(default_factory=list)
+    # Months that came back with nothing, e.g. dates the plan doesn't cover.
+    empty: list[tuple[date, date]] = field(default_factory=list)
 
 
 async def ingest_recent(
@@ -96,6 +98,8 @@ async def ingest_window(
             )
             if result.overflowed:
                 report.overflowed.append((first, last))
+            if not result.events:
+                report.empty.append((first, last))
             await _save(session, city, result, report)
             yield report, first, last
 

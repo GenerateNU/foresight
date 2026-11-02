@@ -417,6 +417,7 @@ def _event_progress(
         "overflowed_months": [
             [a.isoformat(), b.isoformat()] for a, b in report.overflowed
         ],
+        "empty_months": [[a.isoformat(), b.isoformat()] for a, b in report.empty],
     }
     if months is not None:
         progress["months_done"], progress["months_total"] = months

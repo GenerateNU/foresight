@@ -22,8 +22,8 @@ from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
-    NO_EVENTS,
     NO_FLIGHTS,
+    events_for,
     weather_for,
 )
 from foresight.services.errors import InvalidRequestError, NotFoundError
@@ -118,7 +118,15 @@ async def train(
 
     days = sorted(set(nights["stay_date"]))
     weather = await weather_for(session, hotel.city, days, fallback=False)
-    x = build_features(nights, NO_EVENTS, weather.frame, NO_FLIGHTS)
+    events = await events_for(session, hotel.city, days)
+    x = build_features(
+        nights,
+        events.frame,
+        weather.frame,
+        NO_FLIGHTS,
+        events_fetched=events.fetched,
+        events_impacts=events.impacts,
+    )
     y = nights["rate"]
     occupancy = nights["rooms_sold"] / nights["rooms_available"]
     weights = sample_weights(occupancy.clip(0, 1))

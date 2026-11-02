@@ -1,6 +1,18 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import pandas as pd
 
 from foresight.database.enums import EventCategory
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
+    from datetime import date
+
+# Events whose predicted accommodation spend reaches this are "big" (decision
+# 0040). A starting point from 14 Dublin nights; the backtest may change it.
+BIG_EVENT_SPEND = 100_000
 
 # Model input columns, in order. Training and serving both use this list.
 FEATURES = [
@@ -12,6 +24,8 @@ FEATURES = [
     "event_count",
     "event_attendance",
     "event_rank_max",
+    "event_accommodation_impact",
+    "big_event_count",
     "temp_max_c",
     "precip_mm",
     "wind_kph",
@@ -38,12 +52,16 @@ def build_features(
     events: pd.DataFrame,
     weather: pd.DataFrame,
     flights: pd.DataFrame,
+    *,
+    events_fetched: Collection[date] | None = None,
+    events_impacts: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Builds the model's input columns, one row per room type per night.
 
     Used for training (past nights) and serving (the night being priced), so
-    both see identical features. Missing weather or flight data stays empty;
-    the model learns a separate effect for unknown values.
+    both see identical features. Missing weather or flight data stays empty,
+    and so do the event columns on nights no events backfill covered; the
+    model learns a separate effect for unknown values.
 
     Args:
         nights (pd.DataFrame): One row per room type per night, with columns
@@ -55,6 +73,13 @@ def build_features(
             weather_date, temp_max_c, precip_mm, and wind_kph.
         flights (pd.DataFrame): At most one row per day for the hotel's
             airport, with columns arrival_date, flight_count, and avg_fare_eur.
+        events_fetched (Collection[date] | None): Nights an events backfill
+            covered. On any other night the event columns stay empty: no
+            events there means unknown, not quiet (decision 0040). None
+            treats every night as covered.
+        events_impacts (pd.DataFrame | None): Predicted accommodation impacts
+            for each event, with columns impact_date and guests. None means
+            no impact data available.
 
     Returns:
         pd.DataFrame: The FEATURES columns, in order, indexed like nights.
@@ -65,12 +90,14 @@ def build_features(
     stay_date = pd.to_datetime(nights["stay_date"])
     dates = pd.DatetimeIndex(stay_date.unique())
 
-    daily = (
-        _event_features(events, dates)
-        .join(_daily(weather, "weather_date", ["temp_max_c", "precip_mm", "wind_kph"]))
-        .join(_daily(flights, "arrival_date", ["flight_count", "avg_fare_eur"]))
-    )
+    event_daily = _event_features(events, dates).join(_impact(events_impacts, dates))
+    if events_fetched is not None:
+        known = dates.isin(pd.to_datetime(list(events_fetched)))
+        event_daily = event_daily.where(pd.Series(known, index=dates), axis=0)
 
+    daily = event_daily.join(
+        _daily(weather, "weather_date", ["temp_max_c", "precip_mm", "wind_kph"])
+    ).join(_daily(flights, "arrival_date", ["flight_count", "avg_fare_eur"]))
     features = daily.reindex(stay_date).set_index(nights.index)
     features["room_type"] = nights["room_type"].astype("category")
     features["day_of_week"] = stay_date.dt.dayofweek.to_numpy()
@@ -97,6 +124,7 @@ def _event_features(events: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFra
             "event_count": 0,
             "event_attendance": 0.0,
             "event_rank_max": 0.0,
+            "big_event_count": 0,
         },
         index=dates,
     )
@@ -129,10 +157,22 @@ def _event_features(events: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFra
             event_count=("category", "size"),
             event_attendance=("expected_attendance", "sum"),
             event_rank_max=("local_rank", "max"),
+            big_event_count=(
+                "accommodation_spend",
+                lambda x: int((x >= BIG_EVENT_SPEND).sum()),
+            ),
         )
         totals = totals.fillna(0)
         result.loc[totals.index, totals.columns] = totals
     return result
+
+
+def _impact(impacts: pd.DataFrame | None, dates: pd.DatetimeIndex) -> pd.Series:
+    """PredictHQ's expected hotel guests from events, summed per night."""
+    if impacts is None or impacts.empty:
+        return pd.Series(0.0, index=dates, name="event_accommodation_impact")
+    per_night = impacts.groupby(pd.to_datetime(impacts["impact_date"]))["guests"].sum()
+    return per_night.reindex(dates, fill_value=0.0).rename("event_accommodation_impact")
 
 
 def _daily(df: pd.DataFrame, date_column: str, columns: list[str]) -> pd.DataFrame:
