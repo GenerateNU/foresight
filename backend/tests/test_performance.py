@@ -12,12 +12,14 @@ from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from sqlalchemy import select
 
-from foresight.database.models import DailyPerformance, Hotel
+from foresight.database.models import DailyPerformance, Hotel, RoomType
 from foresight.repository.upsert import Outcome
 from foresight.routes.hotel import DailyPerformanceResponse
 from foresight.services.adapters.hotel_csv import HotelDataParser
+from foresight.services.errors import InvalidRequestError
 from foresight.services.ingest import performance
 
 SAMPLE = (Path(__file__).parents[1] / "data" / "Actual & Forecast.csv").read_bytes()
@@ -33,6 +35,17 @@ def without_columns(*columns: str) -> bytes:
     """The sample file as an older export that didn't have these columns."""
     frame = pd.read_csv(io.BytesIO(SAMPLE), dtype=str)
     return frame.drop(columns=list(columns)).to_csv(index=False).encode()
+
+
+async def first_night(session, hotel_id: int) -> DailyPerformance:
+    return await session.scalar(
+        select(DailyPerformance)
+        .join(RoomType)
+        .where(
+            RoomType.hotel_id == hotel_id,
+            DailyPerformance.stay_date == date(2025, 9, 1),
+        )
+    )
 
 
 def night(**changes) -> DailyPerformanceResponse:
@@ -78,6 +91,32 @@ def test_older_export_still_loads() -> None:
     assert rows[0]["waitlist"] is None
 
 
+def test_unpadded_dates_are_read() -> None:
+    frame = pd.read_csv(io.BytesIO(SAMPLE), dtype=str)
+    frame["Date"] = frame["Date"].str.replace("01/09/2025", "1/9/2025")
+
+    rows = parse(frame.to_csv(index=False).encode())
+
+    assert rows[0]["stay_date"] == date(2025, 9, 1)
+
+
+def test_blank_date_column_is_a_clean_rejection() -> None:
+    frame = pd.read_csv(io.BytesIO(SAMPLE), dtype=str)
+    frame["Date"] = ""
+
+    with pytest.raises(InvalidRequestError):
+        performance.parse_files([("bad.csv", frame.to_csv(index=False).encode())])
+
+
+def test_infinite_count_is_treated_as_missing() -> None:
+    frame = pd.read_csv(io.BytesIO(SAMPLE), dtype=str)
+    frame["ROOS"] = "inf"
+
+    rows = parse(frame.to_csv(index=False).encode())
+
+    assert rows[0]["rooms_out_of_service"] is None
+
+
 # Occupancy
 
 
@@ -93,6 +132,10 @@ def test_no_sellable_rooms_has_no_occupancy() -> None:
     assert night(rooms_sold=0, rooms_out_of_service=10).occupancy is None
 
 
+def test_occupancy_never_exceeds_one() -> None:
+    assert night(rooms_sold=10, rooms_out_of_service=1).occupancy == 1.0
+
+
 # Saving
 
 
@@ -105,9 +148,21 @@ async def test_sample_saves_new_columns_and_reloads_unchanged(session, priced) -
     again = await performance.save_file(session, hotel, parsed, base_rate=base_rate)
 
     assert again[Outcome.UNCHANGED] == 14
-    first = await session.scalar(
-        select(DailyPerformance).where(DailyPerformance.stay_date == date(2025, 9, 1))
-    )
+    first = await first_night(session, priced.hotel_id)
     assert first.rooms_out_of_service == 1
     assert first.rooms_blocked == 0
     assert first.waitlist == 0
+
+
+async def test_older_export_keeps_stored_columns(session, priced) -> None:
+    hotel = await session.get(Hotel, priced.hotel_id)
+    base_rate = Decimal("150")
+    [full] = performance.parse_files([("full.csv", SAMPLE)])
+    older = without_columns("Blocks", "ROOS", "Waitlist")
+    [partial] = performance.parse_files([("older.csv", older)])
+
+    await performance.save_file(session, hotel, full, base_rate=base_rate)
+    again = await performance.save_file(session, hotel, partial, base_rate=base_rate)
+
+    assert again[Outcome.UNCHANGED] == 14
+    assert (await first_night(session, priced.hotel_id)).rooms_out_of_service == 1

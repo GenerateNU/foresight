@@ -54,8 +54,8 @@ class HotelDataParser:
     # Column mapping for this client's export format, confirmed against the
     # sample files: InStock is the hotel's total room count (Occ == Total /
     # InStock * 100), Total is rooms sold, Accomm is accommodation-only
-    # revenue. Everything else in the export (DayOfWeek, Blocks, the
-    # cumulative columns, Yield, Waitlist, ...) has no home in the schema yet.
+    # revenue. Everything else in the export (DayOfWeek, the cumulative
+    # columns, Yield, ...) has no home in the schema yet.
     DEFAULT_COLUMN_MAPPING = {
         "Date": "stay_date",
         "InStock": "rooms_available",
@@ -179,12 +179,14 @@ class HotelDataParser:
                 )
                 self.cleaned_data[column] = pd.to_numeric(
                     self.cleaned_data[column], errors="coerce"
-                )
+                ).replace([float("inf"), float("-inf")], float("nan"))
 
         # Client format is DD/MM/YYYY followed by a time (00:00 or 00:00:00).
-        # Only the date matters, so read the first 10 characters.
+        # Only the date matters. astype: a blank column is read as numbers.
         parsed_dates = pd.to_datetime(
-            self.cleaned_data["Date"].str[:10], format="%d/%m/%Y", errors="coerce"
+            self.cleaned_data["Date"].astype(str).str.replace(r"\s.*", "", regex=True),
+            format="%d/%m/%Y",
+            errors="coerce",
         ).dt.date
         unparseable = parsed_dates.isna().sum()
         if unparseable:

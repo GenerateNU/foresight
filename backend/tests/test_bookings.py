@@ -61,8 +61,10 @@ def make_csv(*rows: dict) -> bytes:
     return out.getvalue().encode()
 
 
-async def count(session, model) -> int:
-    return await session.scalar(select(func.count()).select_from(model))
+async def count(session, model, hotel_id: int) -> int:
+    return await session.scalar(
+        select(func.count()).select_from(model).where(model.hotel_id == hotel_id)
+    )
 
 
 # Parsing
@@ -109,7 +111,13 @@ def test_guest_details_are_not_kept() -> None:
         {"Departure": "03/Sep/2025"},  # same day as arrival
         {"BookingDate": "yesterday"},
         {"ADRSoldNett": "n/a"},
+        {"ADRSoldNett": "NaN"},
+        {"ADRSoldNett": "Infinity"},
+        {"ReservationValueNett": "123456789012.00"},
         {"Nights": ""},
+        {"Nights": "99999999999"},
+        {"BookRef": "BK" + "1" * 31},
+        {"RatePlan": "X" * 65},
     ],
 )
 def test_bad_row_is_skipped(bad: dict) -> None:
@@ -131,6 +139,19 @@ def test_wrong_report_is_rejected() -> None:
         service.parse_bookings("Cancellation.csv", SAMPLE_CANCELLATIONS)
 
 
+def test_file_with_no_readable_rows_is_rejected() -> None:
+    content = make_csv({**GOOD, "Arrival": "03/09/2025"})
+
+    with pytest.raises(InvalidRequestError):
+        service.parse_bookings("DailyNewReservations.csv", content)
+
+
+def test_header_only_file_loads_empty() -> None:
+    parsed = service.parse_bookings("DailyNewReservations.csv", make_csv())
+
+    assert parsed.rows == []
+
+
 # Saving
 
 
@@ -148,8 +169,8 @@ async def test_loading_twice_adds_nothing(session, priced) -> None:
     assert second[Outcome.NEW] == 0
     assert second[Outcome.UNCHANGED] == 88
     assert second_cancellations[Outcome.UNCHANGED] == 38
-    assert await count(session, Booking) == 88
-    assert await count(session, BookingCancellation) == 38
+    assert await count(session, Booking, priced.hotel_id) == 88
+    assert await count(session, BookingCancellation, priced.hotel_id) == 38
 
 
 async def test_changed_row_is_updated(session, priced) -> None:
@@ -160,7 +181,8 @@ async def test_changed_row_is_updated(session, priced) -> None:
     result = await service.save_bookings(session, priced.hotel_id, changed)
 
     assert result[Outcome.UPDATED] == 1
-    assert await session.scalar(select(Booking.adr_nett)) == Decimal("99.00")
+    stored = select(Booking.adr_nett).where(Booking.hotel_id == priced.hotel_id)
+    assert await session.scalar(stored) == Decimal("99.00")
 
 
 async def test_unknown_hotel_is_refused(session) -> None:

@@ -34,8 +34,8 @@ Rejected:
   export's "cumulative columns" may be this) — a schema and parser change.
 - **Competitor signals** (we sold out while they had rooms, and vice versa)
   aren't implemented: there's no competitor data source yet.
-- **Waitlist** and **group blocks** exist in the client export but aren't
-  mapped yet. Whether group blocks get a low weight or are excluded is open.
+- **Waitlist** and **group blocks** are imported but don't affect weights yet.
+  Whether group blocks get a low weight or are excluded is open.
 - [0037](0037-three-guestline-reports.md) picks the Guestline reports that
   supply booking dates, cancellations, group blocks and the waitlist for the
   factors above.

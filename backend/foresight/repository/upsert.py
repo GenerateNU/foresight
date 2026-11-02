@@ -34,12 +34,14 @@ async def upsert_rows(
     key: Sequence[str],
     mutable: Sequence[str],
     rows: Iterable[Mapping[str, Any]],
+    keep_if_null: Sequence[str] = (),
 ) -> dict[Outcome, int]:
     """Upsert `rows` on `constraint`, touching a row only when a value changed.
 
     Does not commit; the caller owns the transaction. `key` must name the
     columns `constraint` covers: Postgres refuses to update a row twice in one
     statement, so repeats within a batch are collapsed to the last one first.
+    A null in a `keep_if_null` column leaves the stored value alone.
     """
     table = cast("Table", model.__table__)
     counts = dict.fromkeys(Outcome, 0)
@@ -52,7 +54,7 @@ async def upsert_rows(
     for i in range(0, len(rows), batch):
         for outcome, n in (
             await _upsert_batch(
-                session, table, constraint, mutable, rows[i : i + batch]
+                session, table, constraint, mutable, keep_if_null, rows[i : i + batch]
             )
         ).items():
             counts[outcome] += n
@@ -64,12 +66,17 @@ async def _upsert_batch(
     table: Table,
     constraint: str,
     mutable: Sequence[str],
+    keep_if_null: Sequence[str],
     rows: list[Mapping[str, Any]],
 ) -> dict[Outcome, int]:
     counts = dict.fromkeys(Outcome, 0)
     stmt = insert(table).values(rows)
     excluded = stmt.excluded
-    set_: dict[str, Any] = {c: excluded[c] for c in mutable}
+    set_: dict[str, Any] = {
+        c: func.coalesce(excluded[c], table.c[c]) if c in keep_if_null else excluded[c]
+        for c in mutable
+    }
+    changed = or_(*(table.c[c].is_distinct_from(set_[c]) for c in mutable))
     # Only the external-signal tables record when a row was last fetched.
     if "captured_at" in table.c:
         set_["captured_at"] = func.clock_timestamp()
@@ -77,7 +84,7 @@ async def _upsert_batch(
         constraint=constraint,
         set_=set_,
         # An unchanged row fails this, so it is never returned below.
-        where=or_(*(table.c[c].is_distinct_from(excluded[c]) for c in mutable)),
+        where=changed,
         # xmax is 0 only on a freshly inserted tuple, never on a conflict update.
     ).returning(literal_column("(xmax = 0)").label("inserted"))
 
