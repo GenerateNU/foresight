@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from datetime import date
 
+    from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -75,28 +76,21 @@ async def list_live_bookings(
         BookingCancellation.hotel_id == Booking.hotel_id,
         BookingCancellation.book_ref == Booking.book_ref,
     )
-    return (
-        await session.scalars(
-            select(Booking).where(
-                Booking.hotel_id == hotel_id,
-                Booking.arrival <= end,
-                Booking.departure > start,
-                ~cancelled,
-            )
-        )
-    ).all()
+    stmt = _stays_touching(Booking, hotel_id, start, end).where(~cancelled)
+    return (await session.scalars(stmt)).all()
 
 
 async def list_cancellations(
     session: AsyncSession, hotel_id: int, *, start: date, end: date
 ) -> Sequence[BookingCancellation]:
     """Cancellations with a night from `start` to `end`."""
-    return (
-        await session.scalars(
-            select(BookingCancellation).where(
-                BookingCancellation.hotel_id == hotel_id,
-                BookingCancellation.arrival <= end,
-                BookingCancellation.departure > start,
-            )
-        )
-    ).all()
+    stmt = _stays_touching(BookingCancellation, hotel_id, start, end)
+    return (await session.scalars(stmt)).all()
+
+
+def _stays_touching[T: (Booking, BookingCancellation)](
+    model: type[T], hotel_id: int, start: date, end: date
+) -> Select[tuple[T]]:
+    return select(model).where(
+        model.hotel_id == hotel_id, model.arrival <= end, model.departure > start
+    )

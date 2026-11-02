@@ -185,7 +185,7 @@ async def training_data(
     The one place training data is prepared, so `train` and the backtest
     always see the same inputs.
     """
-    rows = await hotel_repo.training_nights(session, hotel.id, start=start, end=end)
+    rows = await hotel_repo.list_nights(session, hotel.id, start=start, end=end)
     nights = pd.DataFrame(rows, columns=pd.Index(_NIGHT_COLUMNS))
     # Rates arrive as Decimal or None; None becomes NaN.
     rate = pd.Series(nights["rate"], dtype=float)

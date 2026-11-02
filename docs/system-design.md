@@ -463,12 +463,12 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   job_service.start_train_job       hotel exists, nights loaded in window → 422
   → domain/pricing_model.train
       training_data                             shared with the backtest (6.7)
-        hotel_repo.training_nights              every night, oldest first
+        hotel_repo.list_nights                  every night, oldest first
         ml/weighting.training_mask              drop unpriced nights (0004)
         domain/model_inputs.weather_for         recorded weather only
         domain/model_inputs.events_for          counted events + fetched nights (0041)
         ml/features.build_features              unfetched nights' events empty; flights empty
-        ml/weighting.sample_weights             occupancy (0003)
+        ml/weighting.sample_weights             occupancy of sellable rooms (0003)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
       EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0045)

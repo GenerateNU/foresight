@@ -9,13 +9,20 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from foresight.database.models import Hotel
 from foresight.repository import booking as booking_repo
+from foresight.repository import hotel as hotel_repo
+from foresight.services.adapters import guestline
 from foresight.services.domain import booking as service
 from foresight.services.errors import NotFoundError
+from foresight.services.ingest import bookings as bookings_ingest
+from foresight.services.ingest import performance
+
+DATA = Path(__file__).parents[1] / "data"
 
 AS_OF = date(2025, 9, 1)
 NIGHT = date(2025, 9, 10)
@@ -335,3 +342,112 @@ async def test_nights_outside_the_range_are_left_out(session, priced) -> None:
 async def test_curves_refuse_an_unknown_hotel(session) -> None:
     with pytest.raises(NotFoundError):
         await curves(session, -1)
+
+
+# Checking against the hotel's final numbers
+
+
+async def sold(session, room_type_id: int, night: date, rooms: int) -> None:
+    await hotel_repo.upsert_daily_performance(
+        session,
+        [
+            {
+                "room_type_id": room_type_id,
+                "stay_date": night,
+                "rate": Decimal("100.00"),
+                "rooms_available": 20,
+                "rooms_sold": rooms,
+                "room_revenue": Decimal("100.00"),
+                "rooms_blocked": None,
+                "rooms_out_of_service": None,
+                "waitlist": None,
+            }
+        ],
+    )
+
+
+async def check(session, hotel_id: int, start=NIGHT, end=NIGHT):
+    return await service.check_final_counts(session, hotel_id, start=start, end=end)
+
+
+@pytest.mark.parametrize(
+    ("rooms_sold", "mismatches"),
+    [(2, {}), (1, {NIGHT: 1}), (3, {NIGHT: -1})],
+)
+async def test_final_count_reports_the_gap(
+    session, priced, rooms_sold, mismatches
+) -> None:
+    await save(session, priced.hotel_id, booking("BK1/1"), booking("BK1/2"))
+    await sold(session, priced.room_type_id, NIGHT, rooms_sold)
+
+    result = await check(session, priced.hotel_id)
+
+    assert result.nights == 1
+    assert result.mismatches == mismatches
+
+
+async def test_final_count_includes_the_day_after_the_night(session, priced) -> None:
+    await save(
+        session,
+        priced.hotel_id,
+        booking("BK1/1", booked_at=datetime(2025, 9, 11, 0, 30)),
+        booking("BK2/1"),
+        cancellation("BK3/1", cancelled_at=datetime(2025, 9, 11, 9, 0)),
+    )
+    await sold(session, priced.room_type_id, NIGHT, 2)
+
+    assert (await check(session, priced.hotel_id)).mismatches == {}
+
+
+async def test_night_sold_with_no_bookings_is_a_mismatch(session, priced) -> None:
+    await sold(session, priced.room_type_id, NIGHT, 5)
+
+    assert (await check(session, priced.hotel_id)).mismatches == {NIGHT: -5}
+
+
+async def test_night_with_no_final_count_is_not_compared(session, priced) -> None:
+    await save(session, priced.hotel_id, booking())
+
+    result = await check(session, priced.hotel_id)
+
+    assert result.nights == 0
+    assert result.mismatches == {}
+
+
+async def test_nights_outside_the_checked_range_are_ignored(session, priced) -> None:
+    await sold(session, priced.room_type_id, NIGHT - timedelta(days=1), 5)
+    await sold(session, priced.room_type_id, NIGHT, 0)
+
+    result = await check(session, priced.hotel_id)
+
+    assert result.nights == 1
+    assert result.mismatches == {}
+
+
+async def test_check_refuses_an_unknown_hotel(session) -> None:
+    with pytest.raises(NotFoundError):
+        await check(session, -1)
+
+
+async def test_sample_files_match_their_final_numbers(session, priced) -> None:
+    hotel = await session.get(Hotel, priced.hotel_id)
+    await bookings_ingest.save_bookings(
+        session,
+        priced.hotel_id,
+        guestline.parse_bookings((DATA / "DailyNewReservations.csv").read_bytes()),
+    )
+    await bookings_ingest.save_cancellations(
+        session,
+        priced.hotel_id,
+        guestline.parse_cancellations((DATA / "Cancellation.csv").read_bytes()),
+    )
+    report = (DATA / "Actual & Forecast.csv").read_bytes()
+    [parsed] = performance.parse_files([("Actual & Forecast.csv", report)])
+    await performance.save_file(session, hotel, parsed, base_rate=Decimal("150"))
+
+    result = await check(
+        session, priced.hotel_id, start=date(2025, 9, 1), end=date(2025, 9, 14)
+    )
+
+    assert result.nights == 14
+    assert result.mismatches == {}
