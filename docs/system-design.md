@@ -428,7 +428,8 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       hotel_repo.training_nights                every night, oldest first
       ml/weighting.training_mask                drop unpriced nights (0004)
       domain/model_inputs.weather_for           recorded weather only
-      ml/features.build_features                events and flights empty (0007)
+      domain/model_inputs.events_for            counted events + fetched nights (0040)
+      ml/features.build_features                unfetched nights' events empty; flights empty
       ml/weighting.sample_weights               occupancy (0003)
       EBMModel.fit in a thread                  calibrates on the newest 15% (0005)
       model_repo.create_pricing_model           new version, inactive (0008, 0009)
@@ -438,7 +439,8 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
 GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
   → domain/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
-      per night: build_features row, events_by_night (0032), weather source (0024)
+      per night: build_features row, events_by_night (0032), weather source (0024),
+                 events source (0040)
       fingerprint = sha256(model id + those inputs)
       snapshot_repo.latest_snapshots            one query for the range
       fingerprint matches → reuse the snapshot; the model doesn't run
