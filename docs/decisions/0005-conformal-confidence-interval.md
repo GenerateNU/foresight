@@ -1,6 +1,6 @@
 # 0005. Conformal confidence interval, 80% by default
 
-**Status:** Accepted · **Date:** 2026-10-13
+**Status:** Accepted, updated by [0042](0042-refit-on-every-row.md) · **Date:** 2026-10-13
 
 ## Context
 Each recommendation needs a range the rate is likely to fall in. EBM doesn't
