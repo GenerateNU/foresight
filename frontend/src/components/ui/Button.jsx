@@ -15,18 +15,21 @@ const SIZES = {
 
 /**
  * The one button. Pick a `variant` for its weight and a `size`; `size="icon"` is a square
- * for a single glyph and needs an `aria-label`. Any other prop goes to the <button>.
+ * for a single glyph and needs an `aria-label`. With `href` it renders a link that looks
+ * like a button (for leaving the app, e.g. to sign in). Any other prop goes to the element.
  */
 export default function Button({
   variant = 'secondary',
   size = 'md',
   type = 'button',
+  href,
   className,
   ...props
 }) {
+  const Element = href ? 'a' : 'button'
   return (
-    <button
-      type={type}
+    <Element
+      {...(href ? { href } : { type })}
       className={cx(
         'inline-flex items-center justify-center gap-2 rounded-control font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400',

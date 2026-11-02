@@ -4,13 +4,17 @@ React + Vite + Tailwind CSS (v4) + React Router. Plain JavaScript.
 
 ## Run it
 
+From the repo root:
+
 ```sh
-cp .env.example .env.local   # then edit; see the settings below
-npm install
-npm run dev                  # http://localhost:5173
-npm run lint
-npm run build
+just frontend-install        # npm ci
+just frontend                # http://localhost:5173
+just frontend --mocks        # same, with fake data and no backend
+just lint                    # ruff + ESLint
 ```
+
+Or from `frontend/`: `npm run dev`, `npm run lint`, `npm run build`. To change a setting,
+`cp .env.example .env.local` and edit it.
 
 | Setting | What it does |
 | --- | --- |
@@ -29,6 +33,7 @@ src/
   index.css           Tailwind + the design tokens from Figma (colors, fonts, radii)
   api/                the ONLY code that talks to the backend
     client.js           fetch wrapper: base URL, cookies, errors, 401 -> sign in, mocks
+    auth.js             the Google sign-in link, and the page to return to after it
     hotels.js           one function per endpoint, returns clean data
     mocks/              fake responses, same shapes as the real API
   lib/                small helpers with no React in them (config, cx)
@@ -57,7 +62,15 @@ src/
 2. Make `src/features/<name>/<Name>Page.jsx`: `PageHeader`, then fetch with `useAsync` and render the loading, error, empty and loaded states.
 3. Swap its placeholder in `src/App.jsx` for the new page.
 
+## Signing in
+
+A 401 from the API saves the current page in `sessionStorage` and sends the browser to
+`/sign-in`. Its button is a plain link to the API's `/auth/google/login`, not a `fetch`. After
+Google, the API always redirects to the app's root (`FRONTEND_URL`) and ignores any `next`
+parameter (docs/decisions/0040), so the root route reads the saved page and goes back to it,
+or to the calendar.
+
 ## Not built yet
 
-- Sign in, logout and the signed-in user in the top bar (issue #108).
+- The designed sign-in page, logout and the signed-in user in the top bar (issue #108).
 - Every screen behind a placeholder route.
