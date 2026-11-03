@@ -33,6 +33,7 @@ from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import FEATURES, build_features
 from foresight.services.ml.feedback import apply_feedback
+from foresight.services.ml.resources import measure
 from foresight.services.ml.weighting import sample_weights, training_mask
 
 if TYPE_CHECKING:
@@ -241,14 +242,15 @@ def _fit(
     nights: pd.DataFrame,
     params: dict[str, Any],
 ) -> tuple[dict[str, Any], bytes]:
-    """Fit, score on the held-out nights, and serialize. Returns the metrics
-    and the artifact to store."""
-    model = EBMModel(alpha=0.2, calibration_frac=HOLDOUT_FRAC, **params).fit(
-        x, y, sample_weight=weights
-    )
+    """Fit, score on the held-out nights, and serialize. Returns the metrics,
+    with the fit's time and memory, and the artifact to store."""
+    with measure() as cost:
+        model = EBMModel(alpha=0.2, calibration_frac=HOLDOUT_FRAC, **params).fit(
+            x, y, sample_weight=weights
+        )
     cut = int(len(x) * (1 - HOLDOUT_FRAC))
     metrics = _metrics(model, x.iloc[cut:], y.iloc[cut:], nights.iloc[cut:])
-    return metrics, model.to_bytes()
+    return {**metrics, **cost}, model.to_bytes()
 
 
 def _metrics(

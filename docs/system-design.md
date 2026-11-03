@@ -461,6 +461,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
       EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0042)
+        ml/resources.measure                    the fit's time and peak memory into metrics (0043)
       model_repo.create_pricing_model           new version, inactive (0008, 0009)
       model_repo.link_feedback                  records which feedback this version used
       model_repo.activate_pricing_model         unless activate=false

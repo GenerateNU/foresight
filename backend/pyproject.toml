@@ -26,6 +26,7 @@ dependencies = [
     "joblib>=1.4",
     "authlib>=1.6",
     "itsdangerous>=2.2",
+    "psutil>=7.0",
 ]
 
 [dependency-groups]

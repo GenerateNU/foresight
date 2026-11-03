@@ -391,7 +391,17 @@ async def _train(
             "seconds": result.seconds,
             "nights_used": result.nights_used,
             "feedback_used": result.feedback_used,
-            "metrics": {k: model.metrics[k] for k in ("mae", "mape", "r2", "coverage")},
+            "metrics": {
+                k: model.metrics[k]
+                for k in (
+                    "mae",
+                    "mape",
+                    "r2",
+                    "coverage",
+                    "train_seconds",
+                    "peak_memory_mb",
+                )
+            },
         },
         None,
     )
