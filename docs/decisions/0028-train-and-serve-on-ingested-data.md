@@ -20,7 +20,7 @@ having run.
   typical weather for that ISO week. Week 53 borrows week 52 when no recorded
   year has one.
 - ~~Events and flights are passed empty for now.~~ Events are read since
-  [0040](0040-events-in-the-model.md); flights are still passed empty. Their
+  [0041](0041-events-in-the-model.md); flights are still passed empty. Their
   columns stay in `FEATURES` so adding them later doesn't change the
   model's inputs.
 

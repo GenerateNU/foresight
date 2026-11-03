@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from datetime import date
 
 # Events whose predicted accommodation spend reaches this are "big" (decision
-# 0040). A starting point from 14 Dublin nights; the backtest may change it.
+# 0041). A starting point from 14 Dublin nights; the backtest may change it.
 BIG_EVENT_SPEND = 100_000
 _EARTH_RADIUS_KM = 6371.0
 
@@ -98,7 +98,7 @@ def build_features(
             airport, with columns arrival_date, flight_count, and avg_fare_eur.
         events_fetched (Collection[date] | None): Nights an events backfill
             covered. On any other night the event columns stay empty: no
-            events there means unknown, not quiet (decision 0040). None
+            events there means unknown, not quiet (decision 0041). None
             treats every night as covered.
         events_impacts (pd.DataFrame | None): Predicted accommodation impacts
             for each event, with columns impact_date and guests. None means

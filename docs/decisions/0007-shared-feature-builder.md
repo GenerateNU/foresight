@@ -10,7 +10,7 @@ serving time that don't match what it learned (train/serve skew).
 `build_features(nights, events, weather, flights)` in
 `services/ml/features.py` is the only place features are computed. It's pure:
 DataFrames in, DataFrame out; no database access. `FEATURES` fixes the column
-order. Since [0040](0040-events-in-the-model.md) it also takes
+order. Since [0041](0041-events-in-the-model.md) it also takes
 `events_fetched` (the nights an events backfill covered), `events_impacts`
 (PredictHQ's expected hotel guests per night) and `hotel_location`.
 

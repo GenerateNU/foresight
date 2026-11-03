@@ -1,4 +1,4 @@
-# 0042. The kept model is refit on every row
+# 0043. The kept model is refit on every row
 
 **Status:** Accepted · **Date:** 2026-11-02
 
@@ -6,7 +6,7 @@
 [0005](0005-conformal-confidence-interval.md) holds out the newest 15% of rows
 to calibrate the interval, and the model kept was the one fit on the other
 85%. Event data only reaches back ~90 days
-([0040](0040-events-in-the-model.md)), so every row with event inputs fell in
+([0041](0041-events-in-the-model.md)), so every row with event inputs fell in
 the held-out slice: the model never learned from them and every event input
 contributed €0. This lasts until covered nights outnumber the holdout (about
 8 months), and the backtest had the same problem.

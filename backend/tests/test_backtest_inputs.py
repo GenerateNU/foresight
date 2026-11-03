@@ -6,13 +6,13 @@ import argparse
 from collections import Counter
 from datetime import date, timedelta
 
-import numpy as np 
+import numpy as np
 import pandas as pd
 import pytest
 
 from foresight.cli import _describe_inputs, _parse_inputs
 from foresight.services.domain.backtest import (
-    _limit_event_history, 
+    _limit_event_history,
     _Split,
     in_feature_order,
 )
@@ -49,6 +49,7 @@ def test_describe_names_whole_groups() -> None:
         _describe_inputs(_parse_inputs("calendar,precip_mm")) == "calendar, precip_mm"
     )
 
+
 def _split(days: int, cutoff_day: int) -> _Split:
     """`days` nights from 1 Sep 2026, every input 1.0, cut after `cutoff_day`."""
     stay = [date(2026, 9, 1) + timedelta(days=i) for i in range(days)]
@@ -56,11 +57,12 @@ def _split(days: int, cutoff_day: int) -> _Split:
         nights=pd.DataFrame({"stay_date": stay}),
         x=pd.DataFrame(1.0, index=range(days), columns=FEATURES),
         y=pd.Series(100.0, index=range(days)),
-        weights=np.ones(days), 
+        weights=np.ones(days),
         events_fetched=set(stay),
     )
     cutoff = stay[cutoff_day]
     return _Split(data, cutoff, np.array([d <= cutoff for d in stay]))
+
 
 def test_event_days_blanks_only_old_event_inputs() -> None:
     split = _split(10, cutoff_day=6)  # cutoff 7 Sep; 8-10 Sep are test nights

@@ -64,7 +64,7 @@ class TrainingData:
     x: pd.DataFrame  # FEATURES
     y: pd.Series  # the rate
     weights: np.ndarray  # sample weights (decision 0003)
-    events_fetched: set[date]  # nights an events backfill covered (0040)
+    events_fetched: set[date]  # nights an events backfill covered (0041)
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,7 +259,7 @@ def _metrics(
     """Scores on the most recent nights; these also calibrated the interval.
 
     The kept model trained on these nights too, so its own scores here would
-    look too good; the first fit's describe unseen nights (decision 0042).
+    look too good; the first fit's describe unseen nights (decision 0043).
     """
     pred = model.holdout_pred
     assert pred is not None

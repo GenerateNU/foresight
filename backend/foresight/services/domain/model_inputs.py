@@ -10,7 +10,7 @@ follows decision 0024:
   ISO week across every recorded year (week 53 borrows week 52 when no
   recorded year has one), and says which it used.
 
-Events follow decision 0040: the counted events (`event.counted_events`, the
+Events follow decision 0041: the counted events (`event.counted_events`, the
 same rule as the events shown on a night), and which nights an events
 backfill covered. On any other night the event features stay empty, not zero.
 

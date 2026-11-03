@@ -1,4 +1,4 @@
-"""EBMModel.fit learns from every row, the newest included (decision 0042). No DB."""
+"""EBMModel.fit learns from every row, the newest included (decision 0043). No DB."""
 
 from __future__ import annotations
 
