@@ -140,7 +140,8 @@ class PricingModelResponse(ResponseSchema):
     features: list[str] = Field(description="Model inputs, in order")
     metrics: dict[str, Any] = Field(
         description="Scored on the most recent nights, held out from training; "
-        "mae and rmse in EUR"
+        "mae and rmse in EUR. Versions trained since decision 0043 also hold "
+        "train_seconds, peak_memory_mb and added_memory_mb for the fit"
     )
     lib_versions: dict[str, str] = Field(
         description="Library versions it was trained with"
