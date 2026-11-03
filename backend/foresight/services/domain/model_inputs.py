@@ -140,7 +140,7 @@ class CityEvents:
     """Events for `build_features`, the nights an events backfill covered, and
     PredictHQ's expected hotel guests per night from those events."""
 
-    frame: pd.DataFrame  # EVENT_COLUMNS + eccommodation_speed
+    frame: pd.DataFrame  # EVENT_COLUMNS + accommodation_spend
     fetched: set[date]
     impacts: pd.DataFrame  # IMPACT_COLUMNS, one row per event per night
 
@@ -174,7 +174,7 @@ async def events_for(
     )
 
     # Unknown attendance or rank is None; as floats they become NaN, which
-    # which `build_features` can sum, rather than a column it can't.
+    # `build_features` can sum, rather than a column it can't.
     frame = frame.astype(
         {
             "expected_attendance": float,
