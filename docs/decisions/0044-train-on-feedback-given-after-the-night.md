@@ -3,7 +3,7 @@
 **Status:** Accepted · **Date:** 2026-10-31
 
 ## Context
-Managers tell us (decision [0040](0040-manager-feedback-is-versioned.md)) when
+Managers tell us (decision [0043](0043-manager-feedback-is-versioned.md)) when
 a night's rate was too high, too low or about right, and sometimes what they'd
 charge. If training ignores it, feedback changes what we show but the model
 keeps making the same mistakes.
@@ -25,7 +25,7 @@ first, and a few pieces mustn't swing the model.
 occupancy weights. Both 1 and 2, on **feedback given after the night** only.
 
 - **Which feedback.** For each room type and night, the current (highest)
-  version ([0040](0040-manager-feedback-is-versioned.md)), kept only if its
+  version ([0043](0043-manager-feedback-is-versioned.md)), kept only if its
   `timing` is `AFTER`. Feedback from before a night is never used. If the
   current version is from before the night, an older version from after it
   can't exist, so the night has none.

@@ -20,7 +20,8 @@ after it.
   the database as well as the request.
 - The reason is given two ways, both optional: `reason_tags`, chosen from a
   fixed list (`GROUP_OR_WEDDING_BLOCK`, `VENUE_SOLD_OUT`,
-  `COMPETITOR_PRICING`, `LOCAL_KNOWLEDGE`, `OTHER`), and free `reason_text`.
+  `COMPETITOR_PRICING`, `LOCAL_KNOWLEDGE`, `GUT_FEEL`, `OTHER`), and free
+  `reason_text`.
   Tags are easy to count and to train on; the text keeps what no tag says.
 - `timing` is `BEFORE` or `AFTER` the night. The server sets it from the stay
   date: a night before today is over, so `AFTER`; today and later are still
