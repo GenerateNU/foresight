@@ -1,14 +1,22 @@
-"""Choosing the backtest's inputs: groups and `--inputs`. No DB."""
+"""Choosing the backtest's inputs: groups, `--inputs` and `--event-days`. No DB."""
 
 from __future__ import annotations
 
 import argparse
 from collections import Counter
+from datetime import date, timedelta
 
+import numpy as np 
+import pandas as pd
 import pytest
 
 from foresight.cli import _describe_inputs, _parse_inputs
-from foresight.services.domain.backtest import in_feature_order
+from foresight.services.domain.backtest import (
+    _limit_event_history, 
+    _Split,
+    in_feature_order,
+)
+from foresight.services.domain.pricing_model import TrainingData
 from foresight.services.ml.features import FEATURES, INPUT_GROUPS
 
 
@@ -40,3 +48,38 @@ def test_describe_names_whole_groups() -> None:
     assert (
         _describe_inputs(_parse_inputs("calendar,precip_mm")) == "calendar, precip_mm"
     )
+
+def _split(days: int, cutoff_day: int) -> _Split:
+    """`days` nights from 1 Sep 2026, every input 1.0, cut after `cutoff_day`."""
+    stay = [date(2026, 9, 1) + timedelta(days=i) for i in range(days)]
+    data = TrainingData(
+        nights=pd.DataFrame({"stay_date": stay}),
+        x=pd.DataFrame(1.0, index=range(days), columns=FEATURES),
+        y=pd.Series(100.0, index=range(days)),
+        weights=np.ones(days), 
+        events_fetched=set(stay),
+    )
+    cutoff = stay[cutoff_day]
+    return _Split(data, cutoff, np.array([d <= cutoff for d in stay]))
+
+def test_event_days_blanks_only_old_event_inputs() -> None:
+    split = _split(10, cutoff_day=6)  # cutoff 7 Sep; 8-10 Sep are test nights
+    got = _limit_event_history(split.data.x, split, event_days=3)
+
+    events = INPUT_GROUPS["events"]
+    others = [c for c in FEATURES if c not in events]
+    assert got.loc[:3, events].isna().all().all()  # 1-4 Sep: over 3 days back
+    assert got.loc[4:, events].notna().all().all()  # 5-7 Sep and the test nights
+    assert got[others].notna().all().all()  # calendar and weather untouched
+
+
+def test_event_days_leaves_the_original_alone() -> None:
+    split = _split(10, cutoff_day=6)
+    _limit_event_history(split.data.x, split, event_days=3)
+    assert split.data.x.notna().all().all()
+
+
+def test_event_days_without_event_inputs_changes_nothing() -> None:
+    split = _split(10, cutoff_day=6)
+    x = split.data.x[INPUT_GROUPS["calendar"] + INPUT_GROUPS["weather"]]
+    pd.testing.assert_frame_equal(_limit_event_history(x, split, event_days=3), x)
