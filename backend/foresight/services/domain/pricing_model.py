@@ -259,7 +259,7 @@ def _metrics(
     """Scores on the most recent nights; these also calibrated the interval.
 
     The kept model trained on these nights too, so its own scores here would
-    look too good; the first fit's describe unseen nights (decision 0043).
+    look too good; the first fit's describe unseen nights (decision 0045).
     """
     pred = model.holdout_pred
     assert pred is not None

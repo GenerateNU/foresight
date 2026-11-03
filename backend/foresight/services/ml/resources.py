@@ -1,4 +1,4 @@
-"""How long a training fit takes and how much memory it uses (decision 0044).
+"""How long a training fit takes and how much memory it uses (decision 0046).
 
 Memory is this process's resident memory plus its children's: EBM fits in
 parallel (joblib worker processes), so most of it is outside this process.

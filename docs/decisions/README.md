@@ -65,5 +65,5 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight | ML |
 | [0041](0041-events-in-the-model.md) | Events reach the model; nights no backfill covered are unknown | ML |
 | [0042](0042-how-the-backtest-judges-the-model.md) | The backtest judges the model against baselines and smaller input sets | ML |
-| [0043](0043-refit-on-every-row.md) | The kept model is refit on every row; the holdout only sets the interval and scores | ML |
-| [0044](0044-record-training-cost.md) | Every version records its fit's time and peak memory | ML |
+| [0045](0045-refit-on-every-row.md) | The kept model is refit on every row; the holdout only sets the interval and scores | ML |
+| [0046](0046-record-training-cost.md) | Every version records its fit's time and peak memory | ML |

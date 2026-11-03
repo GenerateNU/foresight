@@ -1,4 +1,4 @@
-# 0044. Every version records how long its fit took and how much memory it used
+# 0046. Every version records how long its fit took and how much memory it used
 
 **Status:** Accepted · **Date:** 2026-11-02
 
@@ -6,7 +6,7 @@
 Before recommending how often to retrain, we need to know what a training run
 costs. The train job already reported the run's total seconds in its
 progress, but nothing was saved on the version, and memory wasn't measured at
-all. Since [0043](0043-refit-on-every-row.md) every run fits twice, so the
+all. Since [0045](0045-refit-on-every-row.md) every run fits twice, so the
 cost roughly doubled.
 
 ## Decision
