@@ -1,4 +1,4 @@
-# 0043. The kept model is refit on every row
+# 0045. The kept model is refit on every row
 
 **Status:** Accepted · **Date:** 2026-11-02
 

@@ -48,7 +48,7 @@ the model and asks the backtest to remove the ones that don't help.
     are the one input with under ~90 days of history (0041).
 
 ## Consequences
-- Until [0043](0043-refit-on-every-row.md), the model never learned from the
+- Until [0045](0045-refit-on-every-row.md), the model never learned from the
   newest 15% of its training nights, where all the event rows were. Event
   results from before that fix say nothing about events.
 - An input is worth keeping only if it lowers the error and widens the lead
