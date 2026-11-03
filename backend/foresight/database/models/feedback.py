@@ -46,8 +46,8 @@ class Feedback(Base):
     snapshot_id: Mapped[int | None] = mapped_column(
         ForeignKey("recommendation_snapshots.id", ondelete="SET NULL"), index=True
     )
-    # Who gave it. Null until sign-in is required on every route; SET NULL so
-    # deleting a user keeps what they said.
+    # Who gave it. Null for feedback saved before sign-in was required; SET NULL
+    # so deleting a user keeps what they said.
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )

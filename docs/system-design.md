@@ -291,7 +291,7 @@ and a reason as tags from a fixed list, free text, or both. Rows are only added;
 a change is the next `version` for that room type and night, the highest is
 current, and earlier ones keep their times. It records the snapshot the manager
 saw (null for a past night never saved), whether it came before or after the
-night (set by the server), and who gave it (null until sign-in is required).
+night (set by the server), and who gave it (null for feedback saved before sign-in was required).
 
 **Foreign keys** always state `ON DELETE`:
 

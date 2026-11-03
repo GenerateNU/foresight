@@ -8,7 +8,7 @@ version is current, and earlier ones keep their times.
 
 It records the recommendation snapshot the manager saw (null for a past night
 that was never saved), whether it came before or after the night, and who gave
-it (null until sign-in is required). Deleting a snapshot or a user keeps the
+it (null for feedback saved before sign-in was required). Deleting a snapshot or a user keeps the
 feedback and clears the link; deleting a hotel or room type removes it.
 
 A new table; no existing data changes. A downgrade drops the table and every
