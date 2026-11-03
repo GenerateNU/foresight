@@ -137,7 +137,7 @@ async def fetched_nights(
 ) -> set[date]:
     """The nights in [start, end] an events backfill has fetched for the city.
 
-    Nights outside it are unknown, not quiet (decision 0040). Only backfills
+    Nights outside it are unknown, not quiet (decision 0041). Only backfills
     count: the routine refresh asks for what changed, not for any nights. Each
     job counts for the months it saved, except months PredictHQ cut short or
     that came back empty: a month with nothing points to a plan limit, not a

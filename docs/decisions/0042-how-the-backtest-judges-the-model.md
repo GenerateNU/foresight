@@ -1,4 +1,4 @@
-# 0041. The backtest judges the model against baselines and smaller input sets
+# 0042. The backtest judges the model against baselines and smaller input sets
 
 **Status:** Accepted · **Date:** 2026-11-02
 
@@ -8,7 +8,7 @@ the `test_days` after it. Its MAE alone doesn't say whether the model is any
 use: a €12 error is good if the obvious guesses are off by €25, and bad if
 they're off by €10. Nor does it say which inputs earn their place: an input
 that doesn't help adds noise and a line in the manager's explanation
-("wind −€2"). [0040](0040-events-in-the-model.md) puts every event input in
+("wind −€2"). [0041](0041-events-in-the-model.md) puts every event input in
 the model and asks the backtest to remove the ones that don't help.
 
 ## Decision
@@ -45,15 +45,15 @@ the model and asks the backtest to remove the ones that don't help.
     `--test-days` with different N (e.g. 14, 30, 60, then without the flag)
     differ only in how much event history the model learned from, so they
     show whether more of it improves the guesses. Only events get this: they
-    are the one input with under ~90 days of history (0040).
+    are the one input with under ~90 days of history (0041).
 
 ## Consequences
-- Until [0042](0042-refit-on-every-row.md), the model never learned from the
+- Until [0043](0043-refit-on-every-row.md), the model never learned from the
   newest 15% of its training nights, where all the event rows were. Event
   results from before that fix say nothing about events.
 - An input is worth keeping only if it lowers the error and widens the lead
   over the best baseline, not just if it moves the model's MAE.
-- Event history only reaches back about 90 days (0040). With the default
+- Event history only reaches back about 90 days (0041). With the default
   `--test-days 90`, training has almost no nights with event data and a
   model with event inputs can't learn from them. Use a shorter window, e.g. `--test-days 30`, and treat the events result as an
   early sign: on synthetic data with a strong event effect, 30 training
