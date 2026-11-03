@@ -32,8 +32,8 @@ after it.
   ([0038](0038-recommendations-reused-while-inputs-hold.md)). It is null for a
   past night that was never saved. Deleting the snapshot clears the link and
   keeps the feedback.
-- `user_id` is who gave it. It is null for now and filled once sign-in is
-  required on every route. Deleting the user clears it.
+- `user_id` is who gave it: the signed-in user who posted it, or null for
+  feedback saved before sign-in was required. Deleting the user clears it.
 - Tags are stored as `FeedbackReasonTag` names in a `VARCHAR[]` and checked by
   the request schema, not by the database, so adding a tag needs no migration
   (the convention in `database/enums.py`). A tag sent twice is kept once.

@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Query, status
 from pydantic import Field
 
 from foresight.database.enums import (
@@ -12,6 +12,7 @@ from foresight.database.enums import (
     FeedbackTiming,
     FeedbackVerdict,
 )
+from foresight.routes.access import CurrentUserDep, HotelId
 from foresight.routes.helpers import RequestSchema, ResponseSchema, SessionDep
 from foresight.services.domain import feedback as feedback_service
 
@@ -77,7 +78,7 @@ class FeedbackResponse(ResponseSchema):
         description="The recommendation the manager saw; null if it had none"
     )
     user_id: int | None = Field(
-        description="Who gave it; null until sign-in is required"
+        description="Who gave it; null for feedback saved before sign-in was required"
     )
     verdict: FeedbackVerdict = Field(description="Too high, too low or about right")
     rate: Decimal | None = Field(
@@ -92,9 +93,6 @@ class FeedbackResponse(ResponseSchema):
     created_at: datetime = Field(description="When this version was given, UTC")
 
 
-HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
-
-
 #          ╭──────────────────────────────────────────────────────────╮
 #          │                        Endpoints                         │
 #          ╰──────────────────────────────────────────────────────────╯
@@ -106,7 +104,10 @@ HotelId = Annotated[int, Path(description="The hotel's id", examples=[1])]
     status_code=status.HTTP_201_CREATED,
 )
 async def add_feedback(
-    hotel_id: HotelId, data: FeedbackRequest, session: SessionDep
+    hotel_id: HotelId,
+    data: FeedbackRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
 ) -> FeedbackResponse:
     """Give feedback on a night's rate, or change what was said before.
 
@@ -116,7 +117,7 @@ async def add_feedback(
     snapshot from another night.
     """
     feedback = await feedback_service.add_feedback(
-        session, hotel_id, **data.model_dump()
+        session, hotel_id, user_id=user.id, **data.model_dump()
     )
     return FeedbackResponse.model_validate(feedback)
 

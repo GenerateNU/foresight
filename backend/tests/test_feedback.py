@@ -1,8 +1,7 @@
 """Manager feedback: added, changed (a new version), listed and validated.
 
 Service tests run against the real database (the `session` fixture rolls back).
-Route tests send real requests; the ones that don't reach the database use no
-session at all, the rest use the test session.
+Route tests send real requests as a signed-in user linked to the hotel.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import IntegrityError
 
 from foresight.database.enums import (
@@ -21,11 +19,11 @@ from foresight.database.enums import (
     FeedbackVerdict,
 )
 from foresight.database.models import City, Hotel, RoomType
-from foresight.database.session import get_session
-from foresight.main import app
 from foresight.repository import recommendation as snapshot_repo
 from foresight.services.domain import feedback as service
+from foresight.services.domain import user as user_service
 from foresight.services.errors import InvalidRequestError, NotFoundError
+from tests.test_access import make_user
 
 
 def _today() -> date:
@@ -125,10 +123,18 @@ async def test_a_repeated_tag_is_kept_once(session, priced) -> None:
     ]
 
 
-async def test_who_gave_it_is_empty_until_sign_in_exists(session, priced) -> None:
+async def test_who_gave_it_is_empty_when_not_given(session, priced) -> None:
     saved = await _give(session, priced)
 
     assert saved.user_id is None
+
+
+async def test_who_gave_it_is_recorded(session, priced) -> None:
+    user = await make_user(session)
+
+    saved = await _give(session, priced, user_id=user.id)
+
+    assert saved.user_id == user.id
 
 
 # The snapshot the manager saw
@@ -333,31 +339,14 @@ async def test_the_database_rejects_a_rate_of_zero(session, priced) -> None:
 
 
 @pytest.fixture
-async def client():
-    """No session: for requests rejected before they reach the database."""
-
-    async def no_session():
-        return None
-
-    app.dependency_overrides[get_session] = no_session
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
-        yield c
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-async def db_client(session):
-    async def test_session():
-        return session
-
-    app.dependency_overrides[get_session] = test_session
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
-        yield c
-    app.dependency_overrides.clear()
+async def member(session, priced, sign_in_as):
+    """A signed-in user linked to the hotel the `priced` fixture made."""
+    user = await make_user(session)
+    await user_service.link_user_to_hotel(
+        session, user_id=user.id, hotel_id=priced.hotel_id
+    )
+    sign_in_as(user)
+    return user
 
 
 def _body(priced, **overrides) -> dict:
@@ -383,41 +372,45 @@ def _body(priced, **overrides) -> dict:
         pytest.param({"colour": "red"}, id="unknown field"),
     ],
 )
-async def test_invalid_feedback_is_a_422(client, priced, overrides) -> None:
-    response = await client.post("/hotels/1/feedback", json=_body(priced, **overrides))
+async def test_invalid_feedback_is_a_422(client, priced, member, overrides) -> None:
+    response = await client.post(
+        f"/hotels/{priced.hotel_id}/feedback", json=_body(priced, **overrides)
+    )
 
     assert response.status_code == 422
 
 
-async def test_a_missing_verdict_is_a_422(client, priced) -> None:
+async def test_a_missing_verdict_is_a_422(client, priced, member) -> None:
     body = _body(priced)
     del body["verdict"]
 
-    response = await client.post("/hotels/1/feedback", json=body)
+    response = await client.post(f"/hotels/{priced.hotel_id}/feedback", json=body)
 
     assert response.status_code == 422
     assert "verdict" in response.text
 
 
-async def test_listing_without_a_range_is_a_422(client) -> None:
-    assert (await client.get("/hotels/1/feedback")).status_code == 422
-    assert (await client.get("/hotels/1/feedback?start=2025-01-01")).status_code == 422
-
-
-async def test_listing_with_a_bad_range_is_a_422(db_client, priced) -> None:
+async def test_listing_without_a_range_is_a_422(client, priced, member) -> None:
     url = f"/hotels/{priced.hotel_id}/feedback"
 
-    reversed_ = await db_client.get(f"{url}?start=2025-02-01&end=2025-01-01")
-    too_long = await db_client.get(f"{url}?start=2025-01-01&end=2026-12-31")
+    assert (await client.get(url)).status_code == 422
+    assert (await client.get(f"{url}?start=2025-01-01")).status_code == 422
+
+
+async def test_listing_with_a_bad_range_is_a_422(client, priced, member) -> None:
+    url = f"/hotels/{priced.hotel_id}/feedback"
+
+    reversed_ = await client.get(f"{url}?start=2025-02-01&end=2025-01-01")
+    too_long = await client.get(f"{url}?start=2025-01-01&end=2026-12-31")
 
     assert (reversed_.status_code, too_long.status_code) == (422, 422)
 
 
 async def test_feedback_can_be_added_changed_and_listed_over_http(
-    db_client, priced
+    client, priced, member
 ) -> None:
     url = f"/hotels/{priced.hotel_id}/feedback"
-    first = await db_client.post(
+    first = await client.post(
         url,
         json=_body(
             priced,
@@ -426,12 +419,12 @@ async def test_feedback_can_be_added_changed_and_listed_over_http(
             reason_text="Venue next door sold out",
         ),
     )
-    second = await db_client.post(
+    second = await client.post(
         url, json=_body(priced, verdict="too_low", rate="355.00")
     )
     window = f"?start={FUTURE}&end={FUTURE}"
-    current = await db_client.get(url + window)
-    history = await db_client.get(url + window + "&include_history=true")
+    current = await client.get(url + window)
+    history = await client.get(url + window + "&include_history=true")
 
     assert (first.status_code, second.status_code) == (201, 201)
     assert first.json()["reason_tags"] == ["venue_sold_out", "other"]
@@ -444,8 +437,31 @@ async def test_feedback_can_be_added_changed_and_listed_over_http(
     assert history.json()[0]["created_at"] and history.json()[1]["created_at"]
 
 
-async def test_a_unknown_hotel_is_a_404_over_http(db_client, priced) -> None:
-    response = await db_client.post("/hotels/999999/feedback", json=_body(priced))
+async def test_who_gave_it_is_the_signed_in_user_over_http(
+    client, priced, member
+) -> None:
+    response = await client.post(
+        f"/hotels/{priced.hotel_id}/feedback", json=_body(priced)
+    )
+
+    assert response.status_code == 201
+    assert response.json()["user_id"] == member.id
+
+
+async def test_a_users_other_hotel_is_a_404_over_http(
+    client, session, priced, member
+) -> None:
+    other = await _another_hotel(session)
+
+    response = await client.post(
+        f"/hotels/{other.hotel_id}/feedback", json=_body(other)
+    )
+
+    assert response.status_code == 404
+
+
+async def test_a_unknown_hotel_is_a_404_over_http(client, priced, member) -> None:
+    response = await client.post("/hotels/999999/feedback", json=_body(priced))
 
     assert response.status_code == 404
 
