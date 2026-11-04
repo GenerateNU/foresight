@@ -56,3 +56,6 @@ htmlcov/
 .cache.sqlite
 .neon
 node_modules/
+
+# HTTP response cache (requests-cache)
+.cache.sqlite

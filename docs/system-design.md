@@ -47,7 +47,7 @@ Two kinds of work enter the system:
 Everything is async: FastAPI handlers, SQLAlchemy sessions and every outside
 HTTP call. People sign in with Google ([0040](decisions/0040-google-sign-in-cookie-sessions.md)),
 every route but `/health` and `/auth/*` needs a signed-in user, and a hotel is
-reachable only by a user linked to it ([0041](decisions/0041-login-required-hotels-by-link.md)).
+reachable only by a user linked to it.
 
 ---
 
@@ -286,8 +286,8 @@ belong to several hotels, and a user with none is valid. Signing in with Google
 creates the user, or refreshes the existing one's email, name and
 `last_signed_in_at` ([0040](decisions/0040-google-sign-in-cookie-sessions.md)).
 Creating a hotel links its creator, and any member can link a colleague with
-`POST /hotels/{id}/users` ([0042](decisions/0042-link-users-through-the-api.md)).
-A hotel is reachable only through its link ([0041](decisions/0041-login-required-hotels-by-link.md)).
+`POST /hotels/{id}/users`.
+A hotel is reachable only through its link.
 
 **Feedback** ([0043](decisions/0043-manager-feedback-is-versioned.md)) is what
 the manager says about a night's rate: a required verdict, an optional rate,
@@ -549,9 +549,6 @@ expires. CORS allows `FRONTEND_URL` only, with credentials.
 
 ### 6.6 Reaching a hotel's data
 
-([0041](decisions/0041-login-required-hotels-by-link.md),
-[0042](decisions/0042-link-users-through-the-api.md))
-
 ```
 GET /jobs/12                                    a job, by its own id
   main.py: router has dependencies=[get_current_user]       401 if no session
@@ -574,7 +571,7 @@ POST /hotels/7/users {"email": "colleague@example.com"}
 using one in a handler is what checks access. Tests list every route from
 OpenAPI and assert the 401 and the cross-hotel 404 for each. The scheduler, when
 it exists, runs in the API process and calls the job services directly with no
-user ([0041](decisions/0041-login-required-hotels-by-link.md)).
+user.
 
 ### 6.7 Backtest
 
