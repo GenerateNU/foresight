@@ -23,7 +23,12 @@ from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.base import score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import FEATURES, INPUT_GROUPS
+from foresight.services.ml.features import (
+    BACKTEST_INPUTS,
+    BOOKING_LEAD_DAYS,
+    FEATURES,
+    INPUT_GROUPS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -45,9 +50,9 @@ BASELINES = {
 
 
 def in_feature_order(inputs: Sequence[str]) -> list[str]:
-    """The inputs, without repeats, in FEATURES order."""
+    """The inputs, without repeats, in BACKTEST_INPUTS order."""
     chosen = set(inputs)
-    return [f for f in FEATURES if f in chosen]
+    return [f for f in BACKTEST_INPUTS if f in chosen]
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,12 +95,16 @@ async def run_backtest(
     baselines: bool = False,
     inputs: Sequence[str] = FEATURES,
     event_days: int | None = None,
+    start: date | None = None,
+    lead_days: int = BOOKING_LEAD_DAYS,
 ) -> BacktestResult:
     """Predicts the last `test_days` nights with a model trained on the rest.
 
     `inputs` picks the features the model trains on; the default is every
     feature, like the model that's served. With `baselines`, also scores the
-    BASELINES on the same nights.
+    BASELINES on the same nights. `start` leaves out earlier nights; use it
+    with BOOKING_INPUTS, which are only right on nights the booking export
+    fully covers. `lead_days` is how far before a night those inputs are read.
 
     Raises NotFoundError for an unknown hotel, and InvalidRequestError if
     there are no nights on one side of the cutoff.
@@ -103,7 +112,7 @@ async def run_backtest(
     hotel = await get_hotel(session, hotel_id)
     if event_days is not None and event_days < 1:
         raise InvalidRequestError("--event-days must be at least 1")
-    split = await _split(session, hotel, test_days)
+    split = await _split(session, hotel, test_days, start, lead_days)
     columns = in_feature_order(inputs)
     predicted, low, high = await _fit_predict(split, columns, event_days)
     nights = _test_nights(split, predicted, low, high, baselines=baselines)
@@ -119,10 +128,18 @@ async def run_backtest(
     )
 
 
-async def _split(session: AsyncSession, hotel: Hotel, test_days: int) -> _Split:
-    """Every past priced night, split at `test_days` before the newest one."""
+async def _split(
+    session: AsyncSession,
+    hotel: Hotel,
+    test_days: int,
+    start: date | None,
+    lead_days: int,
+) -> _Split:
+    """Past priced nights from `start`, split at `test_days` before the newest."""
     yesterday = date.today() - timedelta(days=1)
-    data = await training_data(session, hotel, start=None, end=yesterday)
+    data = await training_data(
+        session, hotel, start=start, end=yesterday, lead_days=lead_days
+    )
     if data.nights.empty:
         raise InvalidRequestError("no priced nights to backtest")
     cutoff = data.nights["stay_date"].max() - timedelta(days=test_days)

@@ -467,7 +467,9 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
         ml/weighting.training_mask              drop unpriced nights (0004)
         domain/model_inputs.weather_for         recorded weather only
         domain/model_inputs.events_for          counted events + fetched nights (0041)
+        domain/model_inputs.bookings_for        rooms booked before each night (0049)
         ml/features.build_features              unfetched nights' events empty; flights empty
+        ml/features.booking_features            backtest only, not in FEATURES (0049)
         ml/weighting.sample_weights             occupancy of sellable rooms (0003)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
@@ -576,8 +578,9 @@ user ([0041](decisions/0041-login-required-hotels-by-link.md)).
 
 ### 6.7 Backtest
 
-`just backtest 7 [--baselines] [--inputs …] [--test-days N] [--event-days N]` checks
-whether the model, and each input, is worth having
+`just backtest 7 [--baselines] [--inputs …] [--test-days N] [--event-days N]
+[--start DATE] [--lead-days N]` checks whether the model, and each input, is
+worth having
 ([0042](decisions/0042-how-the-backtest-judges-the-model.md)). Read-only:
 models are trained in memory and thrown away.
 
@@ -598,11 +601,15 @@ cli.backtest
   ← scores (+ baseline table), and a PNG in backend/backtest-out/
 ```
 
-`ml/features.INPUT_GROUPS` sorts every feature into calendar, weather,
-events (holiday flags included) and flights; `--inputs` takes group names or
+`ml/features.INPUT_GROUPS` sorts every input into calendar, weather, events
+(holiday flags included), flights and bookings; `--inputs` takes group names or
 single features. Compare input sets by running it once per set.
 `--event-days N` limits only the event inputs to the N days before the
-cutoff, to see how much event history the model needs.
+cutoff, to see how much event history the model needs. Bookings are only
+measured here, never served
+([0049](decisions/0049-booking-pace-measured-before-served.md)): run them with
+`--start` set to the first night the booking export fully covers, and
+`--lead-days` for how far before each night they're read (default 14).
 
 ### 6.8 How full a night was on an earlier date
 
@@ -700,7 +707,7 @@ sign-in is requested.
 | `adapters/cso.py` | monthly airport passengers; needs a monthly table before it can be stored |
 | `competitor_rates` | table and upsert; no source |
 | `ingest/bookings.py` | parses and saves bookings and cancellations; no upload route yet (#89) |
-| `domain/booking.py` | the rebuild of how full a night was; nothing calls it yet (#103) |
+| `BOOKING_INPUTS` | built for training and scored by the backtest; not served until uploads exist (#89, 0049) |
 
 ---
 
@@ -719,5 +726,5 @@ sign-in is requested.
    PredictHQ, AeroDataBox or OpenSky keys.
 6. **Amended bookings.** A booking keeps the dates it had when first uploaded
    ([0047](decisions/0047-bookings-and-cancellations.md)), and how often dates
-   change isn't known. The rebuild (6.5) matches final rooms sold, but nothing
+   change isn't known. The rebuild (6.8) matches final rooms sold, but nothing
    independent checks its counts at earlier dates.

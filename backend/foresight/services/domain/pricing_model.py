@@ -24,6 +24,7 @@ from foresight.repository import pricing_model as model_repo
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
     NO_FLIGHTS,
+    bookings_for,
     events_for,
     hotel_location,
     weather_for,
@@ -31,7 +32,12 @@ from foresight.services.domain.model_inputs import (
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import FEATURES, build_features
+from foresight.services.ml.features import (
+    BOOKING_LEAD_DAYS,
+    FEATURES,
+    booking_features,
+    build_features,
+)
 from foresight.services.ml.feedback import apply_feedback
 from foresight.services.ml.resources import measure
 from foresight.services.ml.weighting import sample_weights, training_mask
@@ -68,7 +74,7 @@ class TrainingData:
     """A hotel's priced nights and the model's inputs for them, row for row."""
 
     nights: pd.DataFrame  # _NIGHT_COLUMNS, oldest first
-    x: pd.DataFrame  # FEATURES
+    x: pd.DataFrame  # BACKTEST_INPUTS
     y: pd.Series  # the rate
     weights: np.ndarray  # sample weights (decision 0003)
     events_fetched: set[date]  # nights an events backfill covered (0041)
@@ -144,7 +150,7 @@ async def train(
 
     # CPU-bound for seconds; a thread keeps the API answering meanwhile.
     metrics, artifact = await asyncio.to_thread(
-        _fit, data.x, y, weights, nights, params
+        _fit, data.x[FEATURES], y, weights, nights, params
     )
     metrics["feedback_nights"] = len(effect.used)
     metrics["feedback_rates_replaced"] = int(effect.used["rate_replaced"].sum())
@@ -178,12 +184,18 @@ async def train(
 
 
 async def training_data(
-    session: AsyncSession, hotel: Hotel, *, start: date | None, end: date | None
+    session: AsyncSession,
+    hotel: Hotel,
+    *,
+    start: date | None,
+    end: date | None,
+    lead_days: int = BOOKING_LEAD_DAYS,
 ) -> TrainingData:
     """The hotel's priced nights in [start, end] and their model inputs.
 
     The one place training data is prepared, so `train` and the backtest
-    always see the same inputs.
+    always see the same inputs. `x` also holds BOOKING_INPUTS, as they stood
+    `lead_days` before each night; only the backtest trains on those.
     """
     rows = await hotel_repo.list_nights(session, hotel.id, start=start, end=end)
     nights = pd.DataFrame(rows, columns=pd.Index(_NIGHT_COLUMNS))
@@ -207,11 +219,12 @@ async def training_data(
         events_impacts=events.impacts,
         hotel_location=hotel_location(hotel),
     )
+    bookings = await bookings_for(session, hotel.id, days, lead_days=lead_days)
     sellable = nights["rooms_available"] - nights["rooms_out_of_service"].fillna(0)
     occupancy = nights["rooms_sold"] / sellable
     return TrainingData(
         nights=nights,
-        x=x,
+        x=x.join(booking_features(nights, bookings, hotel.total_rooms)),
         y=nights["rate"],
         weights=sample_weights(occupancy.clip(0, 1)),
         events_fetched=events.fetched,
