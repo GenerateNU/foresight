@@ -69,3 +69,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0046](0046-record-training-cost.md) | Every version records its fit's time and peak memory | ML |
 | [0047](0047-bookings-and-cancellations.md) | Bookings and cancellations are stored as Guestline gives them | data model |
 | [0048](0048-rooms-booked-rebuilt-when-asked.md) | How full a night was is rebuilt when asked | data model |
+| [0049](0049-booking-pace-measured-before-served.md) | Booking pace is measured in the backtest before it's served | ML |

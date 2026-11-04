@@ -36,8 +36,15 @@ FEATURES = [
     "avg_fare_eur",
 ]
 
-# FEATURES by kind, for choosing which inputs a backtest trains on. Every
-# feature is in exactly one group. The holiday flags sit with events: they come
+# How a night's bookings stood before it, for the backtest only (decision 0049).
+# Not in FEATURES: serving has no way to fill them until daily uploads exist.
+BOOKING_INPUTS = ["pct_booked", "pickup_7d"]
+BOOKING_LEAD_DAYS = 14
+
+BACKTEST_INPUTS = [*FEATURES, *BOOKING_INPUTS]
+
+# BACKTEST_INPUTS by kind, for choosing which inputs a backtest trains on. Every
+# input is in exactly one group. The holiday flags sit with events: they come
 # from the same PredictHQ data, and are unknown on the same nights.
 INPUT_GROUPS = {
     "calendar": ["room_type", "day_of_week", "month"],
@@ -53,6 +60,7 @@ INPUT_GROUPS = {
         "nearest_big_event_km",
     ],
     "flights": ["flight_count", "avg_fare_eur"],  # no data yet
+    "bookings": BOOKING_INPUTS,
 }
 
 # Events that bring people to the city. Holidays become their own flags, and
@@ -131,6 +139,36 @@ def build_features(
     features["day_of_week"] = stay_date.dt.dayofweek.to_numpy()
     features["month"] = stay_date.dt.month.to_numpy()
     return features.reindex(columns=FEATURES)
+
+
+def booking_features(
+    nights: pd.DataFrame, bookings: pd.DataFrame, total_rooms: int
+) -> pd.DataFrame:
+    """Builds BOOKING_INPUTS, one row per room type per night.
+
+    Total rooms, not sellable rooms: a future night's rooms out of service
+    aren't imported (decision 0037), and training must match serving.
+
+    Args:
+        nights (pd.DataFrame): See build_features.
+        bookings (pd.DataFrame): At most one row per night, with columns
+            stay_date, rooms_booked and rooms_week_before. A night with no row
+            stays empty.
+        total_rooms (int): The hotel's rooms.
+
+    Returns:
+        pd.DataFrame: The BOOKING_INPUTS columns, indexed like nights.
+    """
+    stays = bookings.set_index("stay_date").reindex(nights["stay_date"])
+    return pd.DataFrame(
+        {
+            "pct_booked": (stays["rooms_booked"] / total_rooms).to_numpy(dtype=float),
+            "pickup_7d": (stays["rooms_booked"] - stays["rooms_week_before"]).to_numpy(
+                dtype=float
+            ),
+        },
+        index=nights.index,
+    )
 
 
 def _event_features(

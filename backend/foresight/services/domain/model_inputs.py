@@ -14,6 +14,9 @@ Events follow decision 0041: the counted events (`event.counted_events`, the
 same rule as the events shown on a night), and which nights an events
 backfill covered. On any other night the event features stay empty, not zero.
 
+Bookings follow decision 0049: how a night's bookings stood some days before
+it, from the rebuild. Only the backtest trains on them so far.
+
 Flights aren't used yet (no history to train on), so they're passed as an
 empty frame. The feature columns stay fixed (`ml/features.FEATURES`) so
 adding them later doesn't change the model's inputs.
@@ -32,6 +35,7 @@ from foresight.repository.signals import event as event_repo
 from foresight.repository.signals import weather as weather_repo
 from foresight.services.adapters import predicthq
 from foresight.services.domain import event as event_service
+from foresight.services.domain.booking import booking_curves, rooms_on
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -54,6 +58,7 @@ EVENT_COLUMNS = [
     "longitude",
 ]
 IMPACT_COLUMNS = ["impact_date", "guests"]
+BOOKING_COLUMNS = ["stay_date", "rooms_booked", "rooms_week_before"]
 # PredictHQ's accommodation impact reaches a few nights before and after an
 # event (up to 3 and 5 in Dublin), so events a week either side still count.
 _IMPACT_REACH = timedelta(days=7)
@@ -200,6 +205,33 @@ def hotel_location(hotel: Hotel) -> tuple[float, float] | None:
     if hotel.latitude is None or hotel.longitude is None:
         return None
     return hotel.latitude, hotel.longitude
+
+
+async def bookings_for(
+    session: AsyncSession, hotel_id: int, days: Sequence[date], *, lead_days: int
+) -> pd.DataFrame:
+    """Rooms booked `lead_days` before each of `days`, and a week before that.
+
+    One row per day (BOOKING_COLUMNS). A day with no bookings stored is left out,
+    so it stays unknown rather than looking empty.
+    """
+    if not days:
+        return pd.DataFrame(columns=BOOKING_COLUMNS)
+    curves = await booking_curves(session, hotel_id, start=min(days), end=max(days))
+    return pd.DataFrame(
+        [
+            {
+                "stay_date": night,
+                "rooms_booked": rooms_on(curve, night - timedelta(days=lead_days)),
+                "rooms_week_before": rooms_on(
+                    curve, night - timedelta(days=lead_days + 7)
+                ),
+            }
+            for night in days
+            if (curve := curves.get(night))
+        ],
+        columns=BOOKING_COLUMNS,
+    )
 
 
 def _float(value: object) -> float | None:

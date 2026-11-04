@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,7 +19,12 @@ from foresight.database.session import async_session_factory, engine
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
 from foresight.services.errors import DomainError
-from foresight.services.ml.features import FEATURES, INPUT_GROUPS
+from foresight.services.ml.features import (
+    BACKTEST_INPUTS,
+    BOOKING_LEAD_DAYS,
+    FEATURES,
+    INPUT_GROUPS,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -45,6 +50,8 @@ async def backtest(
     baselines: bool,
     inputs: list[str],
     event_days: int | None,
+    start: date | None,
+    lead_days: int,
 ) -> None:
     async with async_session_factory() as session:
         result = await backtest_service.run_backtest(
@@ -54,6 +61,8 @@ async def backtest(
             baselines=baselines,
             inputs=inputs,
             event_days=event_days,
+            start=start,
+            lead_days=lead_days,
         )
     nights = result.nights
     first, last = nights["stay_date"].min(), nights["stay_date"].max()
@@ -95,16 +104,18 @@ def _describe_inputs(inputs: list[str]) -> str:
 
 
 def _parse_inputs(text: str) -> list[str]:
-    """`--inputs`: comma-separated group names and/or features, in FEATURES order.
+    """`--inputs`: comma-separated group names and/or features, in BACKTEST_INPUTS
+    order.
 
     Raises argparse.ArgumentTypeError for an unknown name.
     """
     names = [n.strip() for n in text.split(",") if n.strip()]
-    unknown = [n for n in names if n not in INPUT_GROUPS and n not in FEATURES]
+    unknown = [n for n in names if n not in INPUT_GROUPS and n not in BACKTEST_INPUTS]
     if unknown or not names:
         raise argparse.ArgumentTypeError(
             f"unknown input {', '.join(unknown) or '(none given)'}; choose from "
-            f"groups {', '.join(INPUT_GROUPS)} or features {', '.join(FEATURES)}"
+            f"groups {', '.join(INPUT_GROUPS)} or features "
+            f"{', '.join(BACKTEST_INPUTS)}"
         )
     expanded = [c for n in names for c in INPUT_GROUPS.get(n, [n])]
     return backtest_service.in_feature_order(expanded)
@@ -247,6 +258,8 @@ async def _run(args: argparse.Namespace) -> None:
                 args.baselines,
                 args.inputs,
                 args.event_days,
+                args.start,
+                args.lead_days,
             )
     finally:
         await engine.dispose()
@@ -278,6 +291,18 @@ def main(argv: list[str] | None = None) -> int:
         "--baselines",
         action="store_true",
         help="Also score simple baselines the model should beat",
+    )
+    bt.add_argument(
+        "--start",
+        type=date.fromisoformat,
+        help="Leave out earlier nights; needed with the bookings inputs, e.g. "
+        "the first night the booking export fully covers",
+    )
+    bt.add_argument(
+        "--lead-days",
+        type=int,
+        default=BOOKING_LEAD_DAYS,
+        help="How many days before each night to read the bookings inputs",
     )
     bt.add_argument(
         "--inputs",
