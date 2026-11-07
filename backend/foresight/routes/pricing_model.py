@@ -167,7 +167,8 @@ async def train_model(
     tasks: BackgroundTasks,
     data: Annotated[TrainRequest | None, Body(openapi_examples=_TRAIN_EXAMPLES)] = None,
 ) -> JobResponse:
-    """Train a new version on the hotel's ingested performance and weather.
+    """Train a new version on the hotel's ingested performance, and its bookings
+    if it has any (each booked room then trains with its days booked ahead).
 
     Ingest first; this never fetches. Fails fast (422) if no nights are
     loaded in the window.

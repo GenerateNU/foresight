@@ -19,7 +19,7 @@ from foresight.database.session import async_session_factory, engine
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
 from foresight.services.errors import DomainError
-from foresight.services.ml.features import FEATURES, INPUT_GROUPS
+from foresight.services.ml.features import ALL_FEATURES, INPUT_GROUPS
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -43,7 +43,7 @@ async def backtest(
     test_days: int,
     out: Path,
     baselines: bool,
-    inputs: list[str],
+    inputs: list[str] | None,
     start: date | None,
 ) -> None:
     async with async_session_factory() as session:
@@ -58,7 +58,7 @@ async def backtest(
     nights = result.nights
     first, last = nights["stay_date"].min(), nights["stay_date"].max()
     described = _describe_inputs(result.inputs)
-    print(f"{len(nights)} test nights, {first} to {last}; inputs: {described}")
+    print(f"{len(nights)} test rows, {first} to {last}; inputs: {described}")
     scores = _format_metrics(result.metrics)
     for name, value in scores:
         print(f"{name:<13} {value}")
@@ -68,7 +68,7 @@ async def backtest(
 
     path = out / f"hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
     _save_plot(
-        nights,
+        nights.groupby("stay_date", as_index=False).mean(numeric_only=True),
         path,
         title=(
             f"Backtest: {result.hotel_name}, actual vs predicted rate, "
@@ -80,9 +80,7 @@ async def backtest(
 
 
 def _describe_inputs(inputs: list[str]) -> str:
-    """Inputs named by group where a whole group is in, e.g. "calendar, precip_mm"."""
-    if inputs == FEATURES:
-        return "all inputs"
+    """Inputs named by group where a whole group is in, e.g. "calendar, lead_time"."""
     chosen, parts = set(inputs), []
     for group, columns in INPUT_GROUPS.items():
         if set(columns) <= chosen:
@@ -93,18 +91,18 @@ def _describe_inputs(inputs: list[str]) -> str:
 
 
 def _parse_inputs(text: str) -> list[str]:
-    """`--inputs`: comma-separated group names and/or features, in FEATURES
+    """`--inputs`: comma-separated group names and/or features, in ALL_FEATURES
     order.
 
     Raises argparse.ArgumentTypeError for an unknown name.
     """
     names = [n.strip() for n in text.split(",") if n.strip()]
-    unknown = [n for n in names if n not in INPUT_GROUPS and n not in FEATURES]
+    unknown = [n for n in names if n not in INPUT_GROUPS and n not in ALL_FEATURES]
     if unknown or not names:
         raise argparse.ArgumentTypeError(
             f"unknown input {', '.join(unknown) or '(none given)'}; choose from "
             f"groups {', '.join(INPUT_GROUPS)} or features "
-            f"{', '.join(FEATURES)}"
+            f"{', '.join(ALL_FEATURES)}"
         )
     expanded = [c for n in names for c in INPUT_GROUPS.get(n, [n])]
     return backtest_service.in_feature_order(expanded)
@@ -278,12 +276,12 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument(
         "--inputs",
         type=_parse_inputs,
-        default=list(FEATURES),
         metavar="NAMES",
         help=(
             "Comma-separated inputs to train on: groups "
             f"({', '.join(INPUT_GROUPS)}) and/or single features, e.g. "
-            "calendar,month. Default: all, like the served model"
+            "calendar,month. Default: every input the hotel's data has, like "
+            "the served model"
         ),
     )
     bt.add_argument(

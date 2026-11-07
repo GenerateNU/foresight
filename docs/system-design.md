@@ -486,13 +486,15 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       training_data                             shared with the backtest (6.7)
         hotel_repo.list_nights                  every night, oldest first
         ml/weighting.training_mask              drop unpriced nights (0004)
-        ml/features.build_features              calendar inputs only (0051)
+        domain/booking.booking_rows             if the hotel has bookings: one row per booked
+                                                room per night, with days booked ahead (0054)
+        ml/features.build_features              calendar inputs, plus lead_days on booked rows
         ml/weighting.sample_weights             occupancy of sellable rooms (0003)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
       EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0045)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
-      model_repo.create_pricing_model           new version, inactive (0008, 0009)
+      model_repo.create_pricing_model           new version, inactive; stores its input list (0008, 0009)
       model_repo.link_feedback                  records which feedback this version used
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}
@@ -500,7 +502,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
 GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
   → domain/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
-      per night: build_features row
+      per night: build_features row           + lead_days (night − today) if the version has it
       fingerprint = sha256(model id + that row)
       snapshot_repo.latest_snapshots            one query for the range
       fingerprint matches → reuse the snapshot; the model doesn't run
@@ -513,6 +515,11 @@ A recommendation is stored when it's made and reused while its inputs hold
 ([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)). Asking
 for a night again returns its stored snapshot while nothing it reads has
 changed, so there's no separate route for a night's factors.
+
+A version trained on booked rooms also reads days booked ahead
+([0054](decisions/0054-lead-days-input.md)): the rate is the price if booked
+today, so each night re-prices daily and the response carries `lead_days`.
+Serving reads the version's own `features`, so older versions are unchanged.
 
 Training learns from the manager's feedback
 ([0044](decisions/0044-train-on-feedback-given-after-the-night.md)): for each
@@ -602,7 +609,7 @@ cli.backtest
   → domain/backtest.run_backtest
       pricing_model.training_data               the same inputs training sees
       cutoff = newest night − test_days (default 90)
-      one EBM on --inputs (default: all FEATURES)
+      one EBM on --inputs (default: every input the training data has)
       ml/base.score                             every test night
       only with --baselines:
         ml/baselines on nights ≤ cutoff         same weekday last year,
@@ -612,9 +619,11 @@ cli.backtest
   ← scores (+ baseline table), and a PNG in backend/backtest-out/
 ```
 
-`ml/features.INPUT_GROUPS` sorts every input into groups (only calendar for
-now); `--inputs` takes group names or single features. Compare input sets by
-running it once per set. `--start` leaves out earlier nights.
+`ml/features.INPUT_GROUPS` sorts every input into groups (calendar and
+lead_time); `--inputs` takes group names or single features. Compare input
+sets by running it once per set: `--inputs calendar` leaves out days booked
+ahead. For a hotel with bookings the test rows are booked rooms, not nights,
+and `--baselines` is refused. `--start` leaves out earlier nights.
 
 ### 6.8 How full a night was on an earlier date
 

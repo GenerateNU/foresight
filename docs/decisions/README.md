@@ -74,3 +74,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0051](0051-calendar-only-model.md) | The model reads only the calendar until experiments say otherwise | ML |
 | [0052](0052-one-upload-route-and-a-queue-per-hotel.md) | One upload route for every hotel CSV, and a job queue per hotel | jobs / API |
 | [0053](0053-drop-base-rate.md) | Room types have no base rate | data model |
+| [0054](0054-lead-days-input.md) | Days booked ahead is a model input, trained on booked rooms | ML |

@@ -209,6 +209,11 @@ class RecommendationResponse(ResponseSchema):
     stay_date: date = Field(description="The night priced, local to the city")
     room_type: str = Field(description="The room type priced")
     room_type_id: int = Field(description="The room type's id")
+    lead_days: int | None = Field(
+        description="Days from today to the night. The rate is what the night "
+        "would cost if booked today. Null for a model that doesn't read booking "
+        "notice"
+    )
     recommended_rate: Decimal = Field(description="The rate to list, in `currency`")
     currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
     explanation: ExplanationResponse = Field(description="Why the rate is what it is")
@@ -399,14 +404,16 @@ async def get_recommendations(
     room_type_id: RecommendRoomType = None,
 ) -> list[RecommendationResponse]:
     """The active model's rate for each night, oldest first, with its
-    explanation, events and weather source. At most 90 nights.
+    explanation. At most 90 nights.
 
     Each night from today on is stored as a snapshot. A night whose inputs
-    (model, weather, events) haven't changed since its latest snapshot returns
-    that snapshot without running the model; one whose inputs changed is priced
-    again and stored. Past nights are never stored after the fact: one with a
-    snapshot returns it as it was, one without is priced and returned unsaved.
-    404 if the hotel has no active model.
+    (model, calendar, days from today if the model reads it) haven't changed
+    since its latest snapshot returns that snapshot without running the model;
+    one whose inputs changed is priced again and stored. A model that reads
+    booking notice re-prices every night each day. Past nights are never
+    stored after the fact: one with a snapshot returns it as it was, one
+    without is priced and returned unsaved. 404 if the hotel has no active
+    model.
     """
     if stay_date is not None and (start is not None or end is not None):
         raise InvalidRequestError("send `date`, or `start` and `end`, not both")

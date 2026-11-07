@@ -36,7 +36,7 @@ from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import build_features
+from foresight.services.ml.features import LEAD, build_features
 
 if TYPE_CHECKING:
     from datetime import date
@@ -90,6 +90,7 @@ class Recommendation:
     stay_date: date
     room_type: str
     room_type_id: int
+    lead_days: int | None
     recommended_rate: Decimal
     currency: str
     explanation: Explanation
@@ -156,11 +157,11 @@ async def get_recommendations(
             f"{room_type.name!r}; train a new version"
         )
 
-    nights = await _load_nights(session, hotel, room_type, stored, start, end)
+    today = local_today(hotel.city)
+    nights = await _load_nights(room_type, stored, today, start, end)
     latest = await snapshot_repo.latest_snapshots(
         session, room_type.id, start=start, end=end
     )
-    today = local_today(hotel.city)
 
     # A past night keeps the snapshot it has, whatever changed since.
     to_score = [
@@ -202,16 +203,17 @@ async def _room_type(
 
 
 async def _load_nights(
-    session: AsyncSession,
-    hotel: Hotel,
     room_type: RoomType,
     stored: PricingModel,
+    today: date,
     start: date,
     end: date,
 ) -> list[_Night]:
     """Every night's inputs and their fingerprint."""
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     frame = pd.DataFrame({"stay_date": days, "room_type": room_type.name})
+    if LEAD in stored.features:
+        frame[LEAD] = [max((day - today).days, 0) for day in days]
     x = build_features(frame)
 
     nights = []
@@ -329,9 +331,12 @@ def _describe(term: str, row: pd.Series) -> str:
 
 def _value(feature: str, value: float | int | str | None) -> str:
     """One feature's value for this night, in words. Values are scalars:
-    numbers for the calendar, a name for the room type."""
+    numbers for the calendar and notice, a name for the room type."""
     if value is None or pd.isna(value):
         return f"{feature.replace('_', ' ')} unknown"
+    if feature == LEAD:
+        days = int(value)
+        return "booked today" if days == 0 else f"booked {days} days ahead"
     if feature == "day_of_week":
         return _DAYS[int(value)]
     if feature == "month":
@@ -388,6 +393,7 @@ def _from_snapshot(
         stay_date=snap.stay_date,
         room_type=room_type.name,
         room_type_id=room_type.id,
+        lead_days=_lead_days(snap.inputs),
         recommended_rate=snap.rate,
         currency=CURRENCY,
         explanation=_explanation_from_json(snap.factors),
@@ -415,6 +421,7 @@ def _unsaved(
         stay_date=night.stay_date,
         room_type=room_type.name,
         room_type_id=room_type.id,
+        lead_days=_lead_days(night.inputs),
         recommended_rate=scored.rate,
         currency=CURRENCY,
         explanation=scored.explanation,
@@ -425,6 +432,12 @@ def _unsaved(
         snapshot_id=None,
         priced_at=datetime.now(UTC),
     )
+
+
+def _lead_days(inputs: dict[str, Any]) -> int | None:
+    """The notice a night was priced at, from its stored inputs; None if the
+    model didn't read it."""
+    return inputs.get("features", {}).get(LEAD)
 
 
 def _version(stored: PricingModel) -> str:

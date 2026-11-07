@@ -23,7 +23,7 @@ from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.base import score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import FEATURES
+from foresight.services.ml.features import ALL_FEATURES, LEAD
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -45,9 +45,9 @@ BASELINES = {
 
 
 def in_feature_order(inputs: Sequence[str]) -> list[str]:
-    """The inputs, without repeats, in FEATURES order."""
+    """The inputs, without repeats, in ALL_FEATURES order."""
     chosen = set(inputs)
-    return [f for f in FEATURES if f in chosen]
+    return [f for f in ALL_FEATURES if f in chosen]
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,21 +87,35 @@ async def run_backtest(
     *,
     test_days: int = 90,
     baselines: bool = False,
-    inputs: Sequence[str] = FEATURES,
+    inputs: Sequence[str] | None = None,
     start: date | None = None,
 ) -> BacktestResult:
     """Predicts the last `test_days` nights with a model trained on the rest.
 
     `inputs` picks the features the model trains on; the default is every
-    feature, like the model that's served. With `baselines`, also scores the
-    BASELINES on the same nights. `start` leaves out earlier nights.
+    feature the training data has, like the model that's served. For a hotel
+    with bookings the rows are booked rooms, not nights and
+    `--inputs calendar` leaves out the days booked ahead, to compare. With
+    `baselines`, also scores the BASELINES on the same nights. `start` leaves
+    out earlier nights.
 
     Raises NotFoundError for an unknown hotel, and InvalidRequestError if
-    there are no nights on one side of the cutoff.
+    there are no nights on one side of the cutoff, an input the data doesn't
+    have is asked for, or baselines are asked for on booking rows.
     """
     hotel = await get_hotel(session, hotel_id)
     split = await _split(session, hotel, test_days, start)
-    columns = in_feature_order(inputs)
+    have = list(split.data.x.columns)
+    columns = in_feature_order(have if inputs is None else inputs)
+    if missing := [c for c in columns if c not in have]:
+        raise InvalidRequestError(
+            f"no {', '.join(missing)} in this hotel's training data; "
+            "it has no bookings loaded"
+        )
+    if baselines and LEAD in have:
+        raise InvalidRequestError(
+            "baselines compare nights, but this hotel trains on bookings"
+        )
     predicted, low, high = await _fit_predict(split, columns)
     nights = _test_nights(split, predicted, low, high, baselines=baselines)
     return BacktestResult(

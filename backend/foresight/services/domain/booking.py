@@ -1,4 +1,5 @@
-"""Bookings: how many rooms were booked for a night on any earlier date."""
+"""Bookings: how many rooms were booked for a night on any earlier date, and
+what each booked room paid."""
 
 from __future__ import annotations
 
@@ -8,9 +9,14 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import pandas as pd
+
 from foresight.repository import booking as booking_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.errors import InvalidRequestError
+from foresight.services.ml.features import LEAD
+from foresight.services.ml.weighting import training_mask
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -65,6 +71,47 @@ async def booking_curves(
             changes[night][cancellation.cancelled_at.date()] -= 1
 
     return {night: _running_total(days) for night, days in changes.items()}
+
+
+async def booking_rows(
+    session: AsyncSession, hotel_id: int, *, start: date, end: date
+) -> pd.DataFrame:
+    """One row per booked room per night in [start, end], for training.
+
+    Columns: stay_date, room_type, lead_days (days from booking to the night)
+    and rate (the booking's nett rate per night). Cancelled bookings are left
+    out, and so are rows that can't teach a price: booked after the night, or
+    free. Empty if the hotel has no bookings in the window.
+
+    Raises:
+        InvalidRequestError: The hotel has more than one room type. Bookings
+            carry Guestline's codes, which don't map to room types yet, so
+            every booking is given the hotel's single room type.
+    """
+    columns = ["stay_date", "room_type", LEAD, "rate"]
+    bookings = await booking_repo.list_live_bookings(
+        session, hotel_id, start=start, end=end
+    )
+    if not bookings:
+        return pd.DataFrame(columns=pd.Index(columns))
+    room_types = await hotel_repo.list_room_types(session, hotel_id)
+    if len(room_types) != 1:
+        raise InvalidRequestError(
+            f"bookings can only train a hotel with one room type; this one "
+            f"has {len(room_types)}"
+        )
+
+    rows = pd.DataFrame(
+        [
+            (night, (night - b.booked_at.date()).days, float(b.adr_nett))
+            for b in bookings
+            for night in _nights(b, start, end)
+        ],
+        columns=pd.Index(["stay_date", LEAD, "rate"]),
+    )
+    rows["room_type"] = room_types[0].name
+    usable = (rows[LEAD] >= 0) & training_mask(rows["rate"])
+    return rows.loc[usable, columns].reset_index(drop=True)
 
 
 async def check_final_counts(
