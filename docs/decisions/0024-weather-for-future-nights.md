@@ -1,6 +1,6 @@
 # 0024. Weather for future nights: forecast, then typical weather
 
-**Status:** Accepted · **Date:** 2026-10-15
+**Status:** Superseded by [0051](0051-calendar-only-model.md) · **Date:** 2026-10-15
 
 ## Context
 The model needs weather for every night it prices, but forecasts only reach

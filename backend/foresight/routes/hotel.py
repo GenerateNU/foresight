@@ -7,7 +7,6 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query, status
 from pydantic import Field, computed_field, field_validator
 
-from foresight.database.enums import EventCategory
 from foresight.routes.access import CurrentUserDep, HotelId, RoomTypeId
 from foresight.routes.city import CityResponse
 from foresight.routes.helpers import (
@@ -211,27 +210,6 @@ class ConfidenceIntervalResponse(ResponseSchema):
     )
 
 
-class NightEventResponse(ResponseSchema):
-    """An event as it falls on one night."""
-
-    event_id: int = Field(description="The event's id")
-    title: str = Field(description="The event's name")
-    venue: str | None = Field(description="Where it's held; null if unknown")
-    category: EventCategory = Field(description="What kind of event it is")
-    expected_attendance: int | None = Field(
-        description="Predicted people; null if unknown"
-    )
-    day_number: int = Field(
-        description="Which day of the event this night is, counting from 1",
-        examples=[2],
-    )
-    day_count: int = Field(
-        description="Days the event runs, so 'day 2 of 3' is 2 and 3; 1 for a "
-        "single-day event",
-        examples=[3],
-    )
-
-
 class RecommendationResponse(ResponseSchema):
     hotel_id: int = Field(description="The hotel priced")
     stay_date: date = Field(description="The night priced, local to the city")
@@ -249,21 +227,6 @@ class RecommendationResponse(ResponseSchema):
     )
     model_id: int = Field(description="The model version that priced it")
     model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])
-    events: list[NightEventResponse] = Field(
-        description="Events on the night that the model counts, largest first: "
-        "expected attendance, then local rank. Withdrawn events are left out"
-    )
-    weather_source: str | None = Field(
-        description="Where the night's weather came from: recorded, forecast, "
-        "a typical week, or missing; null on snapshots older than this field",
-        examples=["forecast"],
-    )
-    events_source: str | None = Field(
-        description="Whether an events backfill covered the night: fetched, or "
-        "missing, meaning its event features are unknown rather than quiet; "
-        "null on snapshots older than this field",
-        examples=["fetched"],
-    )
     snapshot_id: int | None = Field(
         description="The snapshot this rate is stored as; null for a past night "
         "priced now, since past nights aren't saved after the fact"
