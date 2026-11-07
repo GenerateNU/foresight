@@ -416,6 +416,10 @@ safe.
   every queued or running job is marked failed.
 - Production runs a single uvicorn worker, because the queues and parsed files
   live in that process.
+- Production is a Render free-plan service
+  ([0054](decisions/0054-hosted-on-render.md)). It sleeps after 15 minutes
+  without requests, which kills running jobs and loses the queues the same
+  way a restart does.
 - Nothing runs on a schedule; the routine refreshes run when called.
 
 ---
