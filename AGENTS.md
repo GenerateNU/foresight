@@ -9,8 +9,8 @@ The goal: keep everyone's software practices aligned when they use AI.
 ## What Foresight is
 
 AI revenue-intelligence platform for boutique hotels. A backend pricing engine
-that ingests historical booking data + external demand signals (events, weather,
-flights, competitor pricing) and produces explainable room-rate recommendations.
+that ingests historical booking data + external demand signals (events,
+weather) and produces explainable room-rate recommendations.
 
 ## Stack
 

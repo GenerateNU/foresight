@@ -7,8 +7,8 @@ from foresight.database.base import Base
 
 
 class City(Base):
-    """One market. Hotels belong to it; weather, events, flights and competitor
-    rates are recorded against it and shared by every hotel in it.
+    """One market. Hotels belong to it; weather and events are recorded against
+    it and shared by every hotel in it.
     """
 
     __tablename__ = "cities"
@@ -21,14 +21,10 @@ class City(Base):
     slug: Mapped[str] = mapped_column(String(120), unique=True)
     country: Mapped[str | None] = mapped_column(String(2))  # ISO-3166 alpha-2
 
-    # IANA zone, e.g. "Europe/Dublin". Stay nights are local, so weather days,
-    # event dates and flight arrivals are all bucketed with it.
+    # IANA zone, e.g. "Europe/Dublin". Stay nights are local, so weather days
+    # and event dates are bucketed with it.
     timezone: Mapped[str] = mapped_column(String(64))
 
     # The centre of the market: where weather is read and events are searched.
     latitude: Mapped[float]
     longitude: Mapped[float]
-
-    # The main airport. Both codes are stored because flight sources differ.
-    airport_iata: Mapped[str | None] = mapped_column(String(3))  # "DUB"
-    airport_icao: Mapped[str | None] = mapped_column(String(4))  # "EIDW"

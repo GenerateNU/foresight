@@ -57,10 +57,6 @@ class Settings(BaseSettings):
 
     # External event sources
     predicthq_token: str = ""
-    # External APIs
-    xrapidapi_key: str = ""  # RapidAPI key for AeroDataBox (flight arrivals)
-    opensky_client_id: str = ""  # OpenSky API client (historical flights)
-    opensky_client_secret: str = ""
 
     # Sign-in
     google_client_id: str = ""
