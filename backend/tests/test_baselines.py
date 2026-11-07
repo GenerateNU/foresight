@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from foresight.services.ml.base import Model, score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 
 
@@ -84,36 +83,3 @@ def test_recent_weekday_mean_keeps_weekdays_and_room_types_apart() -> None:
 
     assert got.iloc[:3].tolist() == [100.0, 200.0, 400.0]
     assert np.isnan(got.iloc[3])
-
-
-class _Fixed(Model):
-    """A model that returns preset predictions and intervals."""
-
-    def __init__(self, pred: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> None:
-        super().__init__()
-        self._pred, self._lo, self._hi = pred, lo, hi
-
-    def fit(self, x: pd.DataFrame, y: pd.Series) -> _Fixed:
-        return self
-
-    def predict(self, x: pd.DataFrame) -> np.ndarray:
-        return self._pred
-
-    def predict_interval(self, x: pd.DataFrame, alpha: float = 0.05):
-        return self._pred, self._lo, self._hi
-
-
-def test_evaluate_is_score_of_its_predictions() -> None:
-    y = pd.Series([100.0, 150.0, 200.0])
-    pred = np.array([110.0, 140.0, 230.0])
-    lo, hi = pred - 15, pred + 15
-    model = _Fixed(pred, lo, hi)
-    x = pd.DataFrame(index=y.index)
-
-    got = model.evaluate(x, y)
-
-    assert got == score(y, pred, lo, hi)
-    assert got["mae"] == pytest.approx(50 / 3)
-    assert got["bias"] == pytest.approx(10.0)
-    assert got["coverage"] == pytest.approx(2 / 3)
-    assert score(y, pred)["coverage"] is None

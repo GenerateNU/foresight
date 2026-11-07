@@ -165,29 +165,6 @@ async def upsert_observation(
     )
 
 
-async def count_events_by_status(
-    session: AsyncSession, city_id: int
-) -> dict[EventStatus, int]:
-    result = await session.execute(
-        select(Event.status, func.count())
-        .where(Event.city_id == city_id)
-        .group_by(Event.status)
-    )
-    return dict(result.tuples().all())
-
-
-async def count_observations_by_source(
-    session: AsyncSession, city_id: int
-) -> dict[Source, int]:
-    result = await session.execute(
-        select(EventObservation.source, func.count())
-        .join(Event, EventObservation.event_id == Event.id)
-        .where(Event.city_id == city_id)
-        .group_by(EventObservation.source)
-    )
-    return dict(result.tuples().all())
-
-
 async def list_events(
     session: AsyncSession,
     *,
