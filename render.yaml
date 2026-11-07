@@ -1,0 +1,53 @@
+# The hosted backend. Why it looks like this:
+# docs/decisions/0050-hosted-on-render.md. Setup steps: README.md.
+services:
+  - type: web
+    name: foresight-api
+    runtime: docker
+    plan: free
+    # Can't be changed after the service is created. Keep it next to Neon.
+    region: virginia
+    branch: main
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    # The free plan has no pre-deploy step, so migrations run before the server.
+    # If they fail the server never starts, and the deploy fails with the
+    # previous version still serving.
+    dockerCommand: >-
+      /bin/sh -c ".venv/bin/alembic upgrade head &&
+      exec .venv/bin/uvicorn foresight.main:app
+      --host 0.0.0.0 --port 8000 --workers 1"
+    healthCheckPath: /health
+    # A deploy kills running jobs, so only backend changes that passed CI deploy.
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      # Render assumes 10000 unless told otherwise; the server binds 8000.
+      - key: PORT
+        value: "8000"
+      # Neon `production`: pooled for the app, direct for migrations.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: PREDICTHQ_TOKEN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # https://<service>.onrender.com/auth/google/callback, also registered on
+      # the Google OAuth client.
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      # No hosted frontend yet. Sign-in ends on this address, with the cookie set.
+      - key: FRONTEND_URL
+        value: http://localhost:5173
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_COOKIE_SAMESITE
+        value: lax

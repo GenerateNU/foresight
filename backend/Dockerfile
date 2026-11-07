@@ -44,6 +44,7 @@ CMD ["uv", "run", "uvicorn", "foresight.main:app", \
 # no dependency resolution runs at container start (immutable, fast boot).
 # One worker: background jobs run inside the API process and a job's uploaded
 # files live in its memory, so a second worker would split them.
+# Keep this stage last: render.yaml can't name a target, so the last one is built.
 FROM base AS prod
 
 CMD [".venv/bin/uvicorn", "foresight.main:app", \
