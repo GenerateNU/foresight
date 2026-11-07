@@ -2,8 +2,10 @@
 
 Read-only; models are trained in memory and thrown away. Trains on every
 night except the last `test_days`, as if it were trained that day, then
-predicts those nights. The inputs come from `pricing_model.training_data`, the
-same loader training uses, so the backtest scores the model that would ship.
+predicts those nights. For a hotel that trains on bookings the rows are booked
+rooms, one per room per night (decision 0056), so scores are per room. The
+inputs come from `pricing_model.training_data`, the same loader training uses,
+so the backtest scores the model that would ship.
 
 `run_backtest` scores one set of inputs; compare sets by running it once per set.
 """
@@ -23,7 +25,8 @@ from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.base import score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import FEATURES, INPUT_GROUPS
+from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
+from foresight.services.ml.weighting import combine_identical_rows
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,7 +34,6 @@ if TYPE_CHECKING:
     import numpy as np
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.models.hotel import Hotel
     from foresight.services.domain.pricing_model import TrainingData
 
 # The model's prediction interval is (1 - ALPHA); `coverage` is scored against it.
@@ -62,71 +64,47 @@ class BaselineScore:
 
 @dataclass(frozen=True, slots=True)
 class BacktestResult:
-    """Each test night's actual and predicted rate, and how far off they were."""
+    """Each test row's actual and predicted rate, and how far off they were."""
 
     hotel_name: str
+    target: str  # what was predicted: "adr_nett" (booked rooms) or "arr" (nights)
     inputs: list[str]  # the features the model was trained on
     event_days: int | None  # event history the model saw; None means all of it
-    # stay_date, room_type, actual, predicted, low, high (the (1 - ALPHA)
-    # interval); with baselines, also one column per BASELINES key (NaN where
-    # it had no history)
-    nights: pd.DataFrame
+    # One row per test night, or per booked room per night: stay_date,
+    # room_type, actual, predicted, low, high (the (1 - ALPHA) interval);
+    # lead_days on booked rooms; with baselines, also one column per BASELINES
+    # key (NaN where it had no history)
+    rows: pd.DataFrame
     metrics: dict[str, float | None]  # mae, rmse, mape, r2, bias, coverage
     baselines: dict[str, BaselineScore]  # keyed like BASELINES; empty if not asked
 
 
 @dataclass(frozen=True, slots=True)
-class _Split:
+class BacktestSplit:
+    """A hotel's training rows, split at the cutoff. Holds no session."""
+
+    hotel_name: str
     data: TrainingData
     cutoff: date
-    seen: np.ndarray  # True for training nights, False for test nights
+    seen: np.ndarray  # True for training rows, False for test rows
 
 
-async def run_backtest(
+async def load_backtest(
     session: AsyncSession,
     hotel_id: int,
     *,
     test_days: int = 90,
-    baselines: bool = False,
-    inputs: Sequence[str] = FEATURES,
-    event_days: int | None = None,
     start: date | None = None,
-) -> BacktestResult:
-    """Predicts the last `test_days` nights with a model trained on the rest.
+) -> BacktestSplit:
+    """Past training rows from `start`, split `test_days` before the newest.
 
-    `inputs` picks the features the model trains on; the default is every
-    feature, like the model that's served. With `baselines`, also scores the
-    BASELINES on the same nights. `start` leaves out earlier nights.
+    The database part of a backtest; `run_backtest` then needs none, so the
+    caller can release its connection before the fit.
 
     Raises NotFoundError for an unknown hotel, and InvalidRequestError if
     there are no nights on one side of the cutoff.
     """
     hotel = await get_hotel(session, hotel_id)
-    if event_days is not None and event_days < 1:
-        raise InvalidRequestError("--event-days must be at least 1")
-    split = await _split(session, hotel, test_days, start)
-    columns = in_feature_order(inputs)
-    predicted, low, high = await _fit_predict(split, columns, event_days)
-    nights = _test_nights(split, predicted, low, high, baselines=baselines)
-    return BacktestResult(
-        hotel_name=hotel.name,
-        inputs=columns,
-        event_days=event_days,
-        nights=nights,
-        metrics=score(nights["actual"], nights["predicted"], low, high),
-        baselines={
-            name: _score_baseline(nights, name) for name in BASELINES if baselines
-        },
-    )
-
-
-async def _split(
-    session: AsyncSession,
-    hotel: Hotel,
-    test_days: int,
-    start: date | None,
-) -> _Split:
-    """Past priced nights from `start`, split at `test_days` before the newest."""
     yesterday = date.today() - timedelta(days=1)
     data = await training_data(session, hotel, start=start, end=yesterday)
     if data.nights.empty:
@@ -137,27 +115,80 @@ async def _split(
         raise InvalidRequestError(
             f"no nights before the cutoff {cutoff}; use a smaller --test-days"
         )
-    return _Split(data, cutoff, seen)
+    return BacktestSplit(hotel.name, data, cutoff, seen)
+
+
+async def run_backtest(
+    split: BacktestSplit,
+    *,
+    baselines: bool = False,
+    inputs: Sequence[str] | None = None,
+    event_days: int | None = None,
+) -> BacktestResult:
+    """Predicts the test rows with a model trained on the rest.
+
+    `inputs` picks the features the model trains on; the default is every
+    input the training data has, like the model that's served. With
+    `baselines`, also scores the BASELINES on the same nights.
+
+    Raises InvalidRequestError if an input the training data doesn't have is
+    asked for, or baselines are asked for on booked rooms.
+    """
+    if event_days is not None and event_days < 1:
+        raise InvalidRequestError("--event-days must be at least 1")
+    data = split.data
+    have = list(data.x.columns)
+    columns = in_feature_order(have if inputs is None else inputs)
+    if missing := [c for c in columns if c not in have]:
+        raise InvalidRequestError(
+            f"no {', '.join(missing)} in this hotel's training data: "
+            f"it trains on nights because {data.reason}"
+        )
+    if baselines and data.from_bookings:
+        raise InvalidRequestError(
+            "baselines compare nights, but this hotel trains on booked rooms"
+        )
+    predicted, low, high = await _fit_predict(split, columns, event_days)
+    rows = _test_rows(split, predicted, low, high, baselines=baselines)
+    return BacktestResult(
+        hotel_name=split.hotel_name,
+        target=data.target,
+        inputs=columns,
+        event_days=event_days,
+        rows=rows,
+        metrics=score(rows["actual"], rows["predicted"], low, high),
+        baselines={
+            name: _score_baseline(rows, name) for name in BASELINES if baselines
+        },
+    )
 
 
 async def _fit_predict(
-    split: _Split, columns: list[str], event_days: int | None = None
+    split: BacktestSplit, columns: list[str], event_days: int | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Fits on the training nights' `columns`; predicts the test nights."""
+    """Fits on the training rows' `columns`; predicts the test rows.
+
+    Rows the model can't tell apart are merged before the fit, as training
+    does (decision 0056).
+    """
     x = split.data.x[columns]
     if event_days is not None:
         x = _limit_event_history(x, split, event_days)
     seen = split.seen
+    xc, yc, wc, _ = combine_identical_rows(
+        x[seen],
+        split.data.y[seen],
+        split.data.weights[seen],
+        split.data.nights.loc[seen, "stay_date"],
+    )
     model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
     # CPU-bound for seconds; a thread keeps the event loop free.
-    await asyncio.to_thread(
-        model.fit, x[seen], split.data.y[seen], sample_weight=split.data.weights[seen]
-    )
+    await asyncio.to_thread(model.fit, xc, yc, sample_weight=wc)
     return model.predict_interval(x[~seen])
 
 
 def _limit_event_history(
-    x: pd.DataFrame, split: _Split, event_days: int
+    x: pd.DataFrame, split: BacktestSplit, event_days: int
 ) -> pd.DataFrame:
     """Blanks the event inputs on nights more than `event_days` before the cutoff.
 
@@ -173,15 +204,15 @@ def _limit_event_history(
     return x
 
 
-def _test_nights(
-    split: _Split,
+def _test_rows(
+    split: BacktestSplit,
     predicted: np.ndarray,
     low: np.ndarray,
     high: np.ndarray,
     *,
     baselines: bool,
 ) -> pd.DataFrame:
-    """The test nights' actual and predicted rates, and the baselines' if asked."""
+    """The test rows' actual and predicted rates, and the baselines' if asked."""
     nights, seen = split.data.nights, split.seen
     history, targets = nights.loc[seen], nights.loc[~seen]
     result = pd.DataFrame(
@@ -194,6 +225,8 @@ def _test_nights(
             "high": high,
         }
     )
+    if split.data.from_bookings:
+        result[LEAD] = split.data.x.loc[~seen, LEAD].to_numpy()
     if baselines:
         # Baselines see only nights up to the cutoff, as the model did.
         result["last_year"] = same_weekday_last_year(history, targets)
