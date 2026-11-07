@@ -490,7 +490,8 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       training_data                             shared with the backtest (6.7)
         hotel_repo.list_nights                  every night, oldest first
         ml/weighting.training_mask              drop unpriced nights (0004)
-        ml/features.build_features              calendar inputs only (0051)
+        domain/model_inputs.events_for          counted events, backfilled nights, first seen
+        ml/features.build_features              calendar + events (0055)
         ml/weighting.sample_weights             occupancy of sellable rooms (0003)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
@@ -504,8 +505,8 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
 GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
   → domain/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
-      per night: build_features row
-      fingerprint = sha256(model id + that row)
+      per night: build_features row, the night's events, events_source
+      fingerprint = sha256(model id + those inputs)
       snapshot_repo.latest_snapshots            one query for the range
       fingerprint matches → reuse the snapshot; the model doesn't run
       otherwise → load the model once, score every such night in one batch,
@@ -616,9 +617,10 @@ cli.backtest
   ← scores (+ baseline table), and a PNG in backend/backtest-out/
 ```
 
-`ml/features.INPUT_GROUPS` sorts every input into groups (only calendar for
-now); `--inputs` takes group names or single features. Compare input sets by
-running it once per set. `--start` leaves out earlier nights.
+`ml/features.INPUT_GROUPS` sorts every input into groups (calendar and
+events); `--inputs` takes group names or single features. Compare input sets by
+running it once per set. `--start` leaves out earlier nights, and
+`--event-days` limits how much event history the model trains on.
 
 ### 6.8 How full a night was on an earlier date
 
@@ -713,16 +715,17 @@ sign-in is requested.
 | — | nothing at the moment |
 
 Flights, competitor rates and booking-pace inputs were removed
-([0050](decisions/0050-drop-flights-and-booking-pace.md)). Weather and events
-are ingested and listed but no longer reach the model
-([0051](decisions/0051-calendar-only-model.md)).
+([0050](decisions/0050-drop-flights-and-booking-pace.md)). Weather is ingested
+and listed but doesn't reach the model
+([0051](decisions/0051-calendar-only-model.md)); events do
+([0055](decisions/0055-events-back-in-the-model.md)).
 
 ---
 
 ## 10. Open questions
 
-1. **Which inputs the model needs.** It reads only the calendar (0051).
-   Weather and events come back if notebook experiments show they help.
+1. **Which inputs the model needs.** It reads the calendar and events (0055).
+   Weather stays out and its ingestion is to be removed.
 2. **Scheduling.** The routine refreshes (forecast, recent events) only run
    when called. Recommendations are stored as they're requested.
 3. **Tests.** The suite covers recommendations, freshness

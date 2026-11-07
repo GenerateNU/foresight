@@ -1,6 +1,6 @@
 # 0032. The events shown for a night follow the model's rule
 
-**Status:** Superseded by [0051](0051-calendar-only-model.md) · **Date:** 2026-10-26
+**Status:** Restored by [0055](0055-events-back-in-the-model.md), after 0051 removed it · **Date:** 2026-10-26
 
 ## Context
 The calendar and night detail list the events affecting each night. If that

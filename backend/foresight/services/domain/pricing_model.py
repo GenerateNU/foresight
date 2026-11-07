@@ -1,7 +1,7 @@
 """Pricing models: train a new version for a hotel, and read the versions.
 
-Training only reads what's already ingested (performance); it never
-fetches. Every run makes a new version, so earlier ones stay to compare
+Training only reads what's already ingested (performance and events); it
+never fetches. Every run makes a new version, so earlier ones stay to compare
 against. Activation follows decision 0009: a new version is saved inactive and
 becomes the hotel's active one only once training succeeded, unless the caller
 asks to keep the current one serving.
@@ -22,6 +22,7 @@ from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
@@ -65,6 +66,7 @@ class TrainingData:
     x: pd.DataFrame  # FEATURES
     y: pd.Series  # the rate
     weights: np.ndarray  # sample weights (decision 0003)
+    events_fetched: set[date]  # nights an events backfill covered (0041)
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,7 +194,15 @@ async def training_data(
     # so all three line up row for row.
     nights = nights.loc[training_mask(rate)].reset_index(drop=True)
 
-    x = build_features(nights)
+    days = sorted(set(nights["stay_date"]))
+    events = await events_for(session, hotel.city, days)
+    x = build_features(
+        nights,
+        events.frame,
+        events_fetched=events.fetched,
+        events_impacts=events.impacts,
+        hotel_location=hotel_location(hotel),
+    )
     sellable = nights["rooms_available"] - nights["rooms_out_of_service"].fillna(0)
     occupancy = nights["rooms_sold"] / sellable
     return TrainingData(
@@ -200,6 +210,7 @@ async def training_data(
         x=x,
         y=nights["rate"],
         weights=sample_weights(occupancy.clip(0, 1)),
+        events_fetched=events.fetched,
     )
 
 

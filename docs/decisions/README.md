@@ -52,7 +52,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0029](0029-every-training-run-is-a-new-version.md) | Every training run is a new, described version | ML |
 | [0030](0030-schema-descriptions-and-examples.md) | Every field is described; examples are built from the fields | API |
 | [0031](0031-pms-reports-for-training.md) | ~~Guestline reports used for training~~ (superseded by 0037) | data |
-| [0032](0032-events-on-a-night-follow-the-model.md) | ~~The events shown for a night follow the model's rule~~ (superseded by 0051) | API |
+| [0032](0032-events-on-a-night-follow-the-model.md) | The events shown for a night follow the model's rule (restored by 0055) | API |
 | [0033](0033-data-freshness-rules.md) | ~~Freshness comes from jobs; the service decides what's stale~~ (superseded by 0039) | API |
 | [0034](0034-snapshot-only-when-changed.md) | ~~A snapshot is saved only when the model, rate or range changed~~ (superseded by 0038) | data model |
 | [0035](0035-users-keyed-on-google-id.md) | Users are identified by their Google account id | data model |
@@ -61,7 +61,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0038](0038-recommendations-reused-while-inputs-hold.md) | A recommendation is stored when made, and reused while its inputs hold | data model |
 | [0039](0039-freshness-reports-dates-only.md) | Freshness reports dates only, recommendations included | API |
 | [0040](0040-google-sign-in-cookie-sessions.md) | Google sign-in, with a signed session cookie | API / auth |
-| [0041](0041-events-in-the-model.md) | ~~Events reach the model; nights no backfill covered are unknown~~ (superseded by 0051) | ML |
+| [0041](0041-events-in-the-model.md) | Events reach the model; nights no backfill covered are unknown (restored by 0055) | ML |
 | [0042](0042-how-the-backtest-judges-the-model.md) | The backtest judges the model against baselines and smaller input sets | ML |
 | [0043](0043-manager-feedback-is-versioned.md) | Manager feedback is added to, never changed | data model |
 | [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight | ML |
@@ -71,7 +71,8 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0048](0048-rooms-booked-rebuilt-when-asked.md) | How full a night was is rebuilt when asked | data model |
 | [0049](0049-booking-pace-measured-before-served.md) | ~~Booking pace is measured in the backtest before it's served~~ (superseded by 0050) | ML |
 | [0050](0050-drop-flights-and-booking-pace.md) | Flights, competitor rates and booking pace are removed | ML / data model |
-| [0051](0051-calendar-only-model.md) | The model reads only the calendar until experiments say otherwise | ML |
+| [0051](0051-calendar-only-model.md) | The model reads only the calendar until experiments say otherwise (events back in 0055) | ML |
 | [0052](0052-one-upload-route-and-a-queue-per-hotel.md) | One upload route for every hotel CSV, and a job queue per hotel | jobs / API |
 | [0053](0053-drop-base-rate.md) | Room types have no base rate | data model |
+| [0055](0055-events-back-in-the-model.md) | Events are back in the model, counted from when PredictHQ first saw them | ML |
 | [0054](0054-hosted-on-render.md) | The backend is hosted on Render's free plan | operations |

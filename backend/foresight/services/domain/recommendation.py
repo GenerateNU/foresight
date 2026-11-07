@@ -1,11 +1,14 @@
 """Nightly rate recommendations from the hotel's active pricing model.
 
-Reads only the database; it never fetches.
+Reads only what's already ingested; it never fetches. If data is missing for
+a night, the model gets an empty value (it learned an effect for that) rather
+than this call pulling the data in.
 
 Every night priced from today on is saved as a snapshot, and reused while its
 inputs don't change (decision 0038):
 
-1. Build each night's inputs: the model's input row.
+1. Load each night's inputs: the model's input row, the events on the night
+   and whether an events backfill covered it. Database reads only.
 2. Fingerprint them with the active model's id.
 3. A night whose fingerprint matches its latest snapshot returns that snapshot;
    the model doesn't run. The rest are scored together, in one batch, and each
@@ -22,18 +25,22 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
+from foresight.database.enums import EventCategory
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
+from foresight.services.domain import event as event_service
 from foresight.services.domain.city import local_today
+from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import build_features
@@ -64,7 +71,7 @@ _MONTHS = [
 class Factor:
     """One term's pull on the recommended rate."""
 
-    detail: str  # the factor, e.g. "Saturday" or "18.3°C max"
+    detail: str  # the factor, e.g. "Saturday" or "event count 3"
     amount: Decimal  # contribution in currency; terms + baseline = the rate
 
 
@@ -97,6 +104,8 @@ class Recommendation:
     uncertainty: Decimal  # sub-model disagreement; high = review (decision 0006)
     model_id: int
     model_version: str
+    events: list[NightEvent]  # the events on the night, largest first
+    events_source: str | None  # "fetched" or "missing"; None on older snapshots
     snapshot_id: int | None  # None for a past night priced but not saved
     priced_at: datetime  # when the model produced this rate
 
@@ -107,6 +116,8 @@ class _Night:
 
     stay_date: date
     features: pd.DataFrame  # the model's input, one row
+    events: list[NightEvent]
+    events_source: str  # "fetched" or "missing"
     inputs: dict[str, Any]  # what's stored with the snapshot
     inputs_hash: str
 
@@ -209,19 +220,36 @@ async def _load_nights(
     start: date,
     end: date,
 ) -> list[_Night]:
-    """Every night's inputs and their fingerprint."""
+    """Every night's inputs and their fingerprint, from the database only."""
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    events = await event_service.events_by_night(
+        session, hotel.city_id, start=start, end=end
+    )
+    city_events = await events_for(session, hotel.city, days)
     frame = pd.DataFrame({"stay_date": days, "room_type": room_type.name})
-    x = build_features(frame)
+    x = build_features(
+        frame,
+        city_events.frame,
+        events_fetched=city_events.fetched,
+        events_impacts=city_events.impacts,
+        hotel_location=hotel_location(hotel),
+    )
 
     nights = []
     for i, day in enumerate(days):
         features = x.iloc[[i]]  # a one-row frame keeps each column's dtype
-        inputs = {"features": {k: _plain(v) for k, v in features.iloc[0].items()}}
+        events_source = "fetched" if day in city_events.fetched else "missing"
+        inputs = {
+            "features": {k: _plain(v) for k, v in features.iloc[0].items()},
+            "events": [_event_json(e) for e in events[day]],
+            "events_source": events_source,
+        }
         nights.append(
             _Night(
                 stay_date=day,
                 features=features,
+                events=events[day],
+                events_source=events_source,
                 inputs=inputs,
                 inputs_hash=_fingerprint(stored.id, inputs),
             )
@@ -248,6 +276,14 @@ def _plain(value: Any) -> Any:
     if isinstance(value, bool | int | float):
         return value
     return None if pd.isna(value) else str(value)
+
+
+def _event_json(event: NightEvent) -> dict[str, Any]:
+    return {**asdict(event), "category": event.category.value}
+
+
+def _event_from_json(data: dict[str, Any]) -> NightEvent:
+    return NightEvent(**{**data, "category": EventCategory(data["category"])})
 
 
 # --- scoring ----------------------------------------------------------------
@@ -329,7 +365,7 @@ def _describe(term: str, row: pd.Series) -> str:
 
 def _value(feature: str, value: float | int | str | None) -> str:
     """One feature's value for this night, in words. Values are scalars:
-    numbers for the calendar, a name for the room type."""
+    numbers for the calendar and events, a name for the room type."""
     if value is None or pd.isna(value):
         return f"{feature.replace('_', ' ')} unknown"
     if feature == "day_of_week":
@@ -383,6 +419,7 @@ def _from_snapshot(
     snap: RecommendationSnapshot, hotel: Hotel, room_type: RoomType
 ) -> Recommendation:
     """A stored snapshot, read back as a recommendation."""
+    inputs = snap.inputs or {}  # empty on snapshots from before decision 0038
     return Recommendation(
         hotel_id=hotel.id,
         stay_date=snap.stay_date,
@@ -397,6 +434,8 @@ def _from_snapshot(
         uncertainty=snap.uncertainty,
         model_id=snap.model_id,
         model_version=snap.model_version,
+        events=[_event_from_json(e) for e in inputs.get("events", [])],
+        events_source=inputs.get("events_source"),
         snapshot_id=snap.id,
         priced_at=snap.created_at,
     )
@@ -422,6 +461,8 @@ def _unsaved(
         uncertainty=scored.uncertainty,
         model_id=stored.id,
         model_version=_version(stored),
+        events=night.events,
+        events_source=night.events_source,
         snapshot_id=None,
         priced_at=datetime.now(UTC),
     )

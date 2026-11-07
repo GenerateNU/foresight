@@ -44,8 +44,9 @@ class RecommendationSnapshot(Base):
     interval_level: Mapped[float]  # coverage of the interval, e.g. 0.8
     uncertainty: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     factors: Mapped[dict[str, Any]] = mapped_column(JSONB)  # baseline + factor list
-    # What the model read for this night: {"features": its input row}. Older
-    # snapshots also hold the night's events and weather sources (decision 0051).
+    # What the model read for this night: its input row, the events on the
+    # night and whether a backfill covered it. Returned with the recommendation.
+    # Snapshots from 0051 hold only features; older ones also hold weather.
     inputs: Mapped[dict[str, Any]] = mapped_column(JSONB)
     # SHA-256 of the model id and `inputs`. A request whose hash matches the
     # latest snapshot reuses it instead of running the model (decision 0038).
