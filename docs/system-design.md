@@ -116,8 +116,8 @@ backend/foresight/
     migrations/
 ```
 
-`example_widget.py` in each layer is a small reference slice that shows every
-pattern in this document.
+`city.py` in each layer is a small, complete slice to copy when adding a
+domain.
 
 ---
 
@@ -647,7 +647,6 @@ hotel that's from 21 Dec 2024 ([guestline-data.md](guestline-data.md)).
 | POST | `/hotels/{id}/ingest/performance` | job, 202; multipart files + `base_rate` |
 | GET | `/jobs/{id}` | |
 | GET | `/hotels/{id}/jobs` | paginated, newest first |
-| POST, GET | `/example/widgets`, `/example/widgets/{id}` | reference slice |
 
 Status codes: `201` create, `202` job queued, `302` sign-in redirects, `204`
 logout, `200` otherwise, and the error codes in 3.2. Every route except

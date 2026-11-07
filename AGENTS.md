@@ -34,8 +34,7 @@ Rule: a layer may only call the layer directly below it. Routes never touch the
 ORM; services never build HTTP responses. Code lives in the installable package
 `backend/foresight/`.
 
-There's a working reference slice to copy — the `Widget` example threads all
-four layers (`example_widget.py` in each).
+For a small slice to copy, follow `city.py` through all four layers.
 
 ## Commands (run from repo root)
 
@@ -69,7 +68,7 @@ API: http://localhost:8000 · docs: http://localhost:8000/docs
 ## Do / don't for agents
 
 - **Do** follow the existing pattern in the layer you're editing — see
-  `docs/system-design.md` and the `Widget` slice before writing code.
+  `docs/system-design.md` and the `city.py` slice before writing code.
 - **Do** keep business logic in services and data access in the repository.
 - **Don't** skip layers, add dependencies without updating `pyproject.toml`, or
   change the schema without a migration.
