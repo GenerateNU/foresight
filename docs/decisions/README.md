@@ -40,8 +40,8 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0017](0017-cities-are-the-market.md) | Cities are the market every signal belongs to | data model |
 | [0018](0018-idempotent-upserts.md) | Every outside write is an upsert on a natural key | data model |
 | [0019](0019-events-merged-across-sources.md) | Events are merged across sources; raw sightings are kept | data model |
-| [0020](0020-jobs-in-the-api-process.md) | Long work runs as jobs inside the API, through the API only | jobs |
-| [0021](0021-one-ingest-job-per-signal.md) | One ingest job per signal; the dates decide refresh or backfill | jobs |
+| [0020](0020-jobs-in-the-api-process.md) | ~~Long work runs as jobs inside the API, through the API only~~ (superseded by 0052) | jobs |
+| [0021](0021-one-ingest-job-per-signal.md) | ~~One ingest job per signal; the dates decide refresh or backfill~~ (superseded by 0052) | jobs |
 | [0022](0022-no-retries-resume-instead.md) | No automatic retries; jobs commit per chunk and record where to resume | jobs |
 | [0023](0023-stay-nights-are-local-dates.md) | A stay night is a local date in the city's timezone | data model |
 | [0024](0024-weather-for-future-nights.md) | ~~Weather for future nights: forecast, then typical weather~~ (superseded by 0051) | ML |
@@ -72,3 +72,5 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0049](0049-booking-pace-measured-before-served.md) | ~~Booking pace is measured in the backtest before it's served~~ (superseded by 0050) | ML |
 | [0050](0050-drop-flights-and-booking-pace.md) | Flights, competitor rates and booking pace are removed | ML / data model |
 | [0051](0051-calendar-only-model.md) | The model reads only the calendar until experiments say otherwise | ML |
+| [0052](0052-one-upload-route-and-a-queue-per-hotel.md) | One upload route for every hotel CSV, and a job queue per hotel | jobs / API |
+| [0053](0053-drop-base-rate.md) | Room types have no base rate | data model |

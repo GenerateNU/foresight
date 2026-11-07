@@ -182,7 +182,7 @@ async def train_model(
         activate=data.activate,
         ebm_params=data.settings.model_dump(exclude_none=True),
     )
-    tasks.add_task(worker.run_job, job.id)
+    tasks.add_task(worker.enqueue, job.id, job.hotel_id)
     return JobResponse.model_validate(job)
 
 

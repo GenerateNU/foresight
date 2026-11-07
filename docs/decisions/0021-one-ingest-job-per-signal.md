@@ -1,6 +1,6 @@
 # 0021. One ingest job per signal; the dates decide refresh or backfill
 
-**Status:** Accepted · **Date:** 2026-10-15
+**Status:** Superseded by [0052](0052-one-upload-route-and-a-queue-per-hotel.md) · **Date:** 2026-10-15
 
 ## Context
 There were separate "ingest" and "backfill" endpoints and job kinds per

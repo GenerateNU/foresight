@@ -48,7 +48,6 @@ class RoomType(Base):
     hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(120))
     room_count: Mapped[int]  # how many physical rooms of this type
-    base_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # normal price
 
     hotel: Mapped["Hotel"] = relationship(back_populates="room_types", lazy="raise")
     nights: Mapped[list["DailyPerformance"]] = relationship(

@@ -21,7 +21,6 @@ from foresight.repository.upsert import Outcome, upsert_rows
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from datetime import date
-    from decimal import Decimal
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,19 +71,11 @@ async def upsert_room_type(
     hotel_id: int,
     name: str,
     room_count: int,
-    base_rate: Decimal,
 ) -> int:
-    stmt = insert(RoomType).values(
-        hotel_id=hotel_id, name=name, room_count=room_count, base_rate=base_rate
-    )
+    stmt = insert(RoomType).values(hotel_id=hotel_id, name=name, room_count=room_count)
     stmt = stmt.on_conflict_do_update(
         constraint="uq_room_types_hotel_id_name",
-        set_={
-            "room_count": stmt.excluded.room_count,
-            # base_rate is the hotel's stated normal price (the export has none),
-            # so a reload correcting it has to win rather than be dropped.
-            "base_rate": stmt.excluded.base_rate,
-        },
+        set_={"room_count": stmt.excluded.room_count},
     ).returning(RoomType.id)
     return (await session.execute(stmt)).scalar_one()
 
@@ -138,14 +129,11 @@ async def create_room_type(
     hotel_id: int,
     name: str,
     room_count: int,
-    base_rate: Decimal,
 ) -> RoomType | None:
     """Insert a room type; None if the hotel already has one with this name."""
     return await session.scalar(
         insert(RoomType)
-        .values(
-            hotel_id=hotel_id, name=name, room_count=room_count, base_rate=base_rate
-        )
+        .values(hotel_id=hotel_id, name=name, room_count=room_count)
         .on_conflict_do_nothing(constraint="uq_room_types_hotel_id_name")
         .returning(RoomType)
     )

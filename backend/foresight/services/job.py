@@ -1,9 +1,10 @@
-"""Background jobs: one kind per signal, and the job lifecycle.
+"""Background jobs: one kind per signal or uploaded report, and the lifecycle.
 
-`start_*` validates up front (the API key is set, the window resolves, the
-files parse) so a bad request fails with 4xx instead of a queued job that
-fails later. Handlers are async generators: they save through
-`services/ingest/` and yield a `Step` after each chunk. The worker
+`start_*` validates up front (the API key is set, the window resolves, every
+file is recognised and parses) so a bad request fails with 4xx instead of a
+queued job that fails later. A hotel's jobs run one at a time, oldest first,
+and a queued job can be cancelled. Handlers are async generators: they save
+through `services/ingest/` and yield a `Step` after each chunk. The worker
 (`foresight/worker.py`) commits at every step, so a job's progress always
 matches what is saved, and records the last step's `resume_from` if the run
 ends early.
@@ -17,7 +18,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_cls
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from foresight.config import settings
@@ -34,7 +34,7 @@ from foresight.services.errors import (
     NotFoundError,
 )
 from foresight.services.ingest import event as event_ingest
-from foresight.services.ingest import performance as performance_ingest
+from foresight.services.ingest import files as file_ingest
 from foresight.services.ingest import weather as weather_ingest
 from foresight.services.ingest.window import InvalidWindowError, Window, resolve_window
 
@@ -124,25 +124,21 @@ async def start_events_job(
     return await _queue(session, hotel, JobKind.EVENTS, params)
 
 
-async def start_performance_job(
-    session: AsyncSession,
-    hotel_id: int,
-    *,
-    files: Sequence[tuple[str, bytes]],
-    base_rate: Decimal,
-) -> tuple[Job, list[performance_ingest.ParsedFile]]:
-    """Parse every file now; the job saves them. Returns the job and the
-    parsed files, which the caller hands to the worker.
+async def start_file_jobs(
+    session: AsyncSession, hotel_id: int, *, files: Sequence[tuple[str, bytes]]
+) -> list[tuple[Job, file_ingest.ParsedFile]]:
+    """One job per file, in upload order. Every file is recognised and parsed
+    first, so one bad file queues nothing. Returns each job with its parsed
+    file, which the caller hands to the worker.
 
     Raises:
         NotFoundError: Unknown hotel.
-        InvalidRequestError: A file doesn't parse.
-        ConflictError: A performance job is already queued or running.
+        InvalidRequestError: A file matches no report, more than one, or
+            doesn't parse.
     """
     hotel = await get_hotel(session, hotel_id)
-    parsed = performance_ingest.parse_files(list(files))
-    params = {"files": [f.name for f in parsed], "base_rate": str(base_rate)}
-    return await _queue(session, hotel, JobKind.PERFORMANCE, params), parsed
+    parsed = file_ingest.parse_files(files)
+    return [(await _queue(session, hotel, f.report.kind, f.params), f) for f in parsed]
 
 
 async def start_train_job(
@@ -190,14 +186,34 @@ async def list_jobs(
     return await job_repo.list_jobs(session, hotel_id, limit=limit, offset=offset)
 
 
+async def cancel_job(session: AsyncSession, job_id: int) -> Job:
+    """Take a queued job out of the queue.
+
+    Raises:
+        NotFoundError: Unknown job.
+        ConflictError: The job is running or finished.
+    """
+    if not await job_repo.cancel_queued_job(session, job_id):
+        job = await get_job(session, job_id)
+        raise ConflictError(
+            f"job {job.id} is {job.status.value}; only a queued job can be cancelled"
+        )
+    return await get_job(session, job_id)
+
+
 async def _queue(
     session: AsyncSession, hotel: Hotel, kind: JobKind, params: dict[str, Any]
 ) -> Job:
-    running = await job_repo.find_unfinished_job(session, hotel_id=hotel.id, kind=kind)
-    if running is not None:
-        raise ConflictError(
-            f"job {running.id} ({kind.value}) is already {running.status.value}"
+    # Uploads stack up in the queue; a second weather, events or training run
+    # would only repeat the first (and spend API credits or training time).
+    if kind not in file_ingest.FILE_KINDS:
+        running = await job_repo.find_unfinished_job(
+            session, hotel_id=hotel.id, kind=kind
         )
+        if running is not None:
+            raise ConflictError(
+                f"job {running.id} ({kind.value}) is already {running.status.value}"
+            )
     return await job_repo.create_job(
         session, hotel_id=hotel.id, kind=kind, params=params
     )
@@ -211,7 +227,7 @@ async def run(
 ) -> AsyncIterator[Step]:
     """Run the job's handler, yielding after each saved chunk.
 
-    `payload` is whatever the request handed over in memory (parsed files).
+    `payload` is whatever the request handed over in memory (a parsed file).
     """
     hotel = await get_hotel(session, job.hotel_id)
     async for step in _HANDLERS[job.kind](session, hotel, job.params, payload):
@@ -226,10 +242,9 @@ def initial_resume_from(job: Job) -> date | None:
     return window.end if window.backwards else window.start
 
 
-async def mark_running(session: AsyncSession, job_id: int) -> None:
-    await job_repo.update_job(
-        session, job_id, status=JobStatus.RUNNING, started_at=_now()
-    )
+async def mark_running(session: AsyncSession, job_id: int) -> bool:
+    """Start a queued job; False if it is no longer queued (cancelled)."""
+    return await job_repo.start_queued_job(session, job_id, started_at=_now())
 
 
 async def record_progress(
@@ -348,26 +363,26 @@ async def _events(
         )
 
 
-async def _performance(
+async def _file(
     session: AsyncSession,
     hotel: Hotel,
-    params: Mapping[str, Any],
-    parsed: list[performance_ingest.ParsedFile] | None,
+    _: Mapping[str, Any],
+    parsed: file_ingest.ParsedFile | None,
 ) -> AsyncIterator[Step]:
+    """Save an uploaded file's rows a chunk at a time. If it ends early, the
+    manager uploads the file again: saving is an upsert."""
     if parsed is None:
-        raise RuntimeError("the uploaded files didn't reach the worker")
+        raise RuntimeError("the uploaded file didn't reach the worker")
 
     total: dict[str, int] = {}
-    for i, parsed_file in enumerate(parsed, start=1):
-        outcomes = await performance_ingest.save_file(
-            session, hotel, parsed_file, base_rate=Decimal(params["base_rate"])
-        )
+    done = 0
+    for chunk in file_ingest.chunks(parsed.rows):
+        outcomes = await parsed.report.save(session, hotel, chunk, parsed.extra)
         for name, n in _counts(outcomes).items():
             total[name] = total.get(name, 0) + n
-        yield Step(
-            {"files_done": i, "files_total": len(parsed), "outcomes": dict(total)},
-            None,
-        )
+        done += len(chunk)
+        progress = {"rows_done": done, "rows_total": len(parsed.rows)}
+        yield Step({**progress, "outcomes": dict(total)}, None)
 
 
 async def _train(
@@ -410,7 +425,9 @@ async def _train(
 _HANDLERS: dict[JobKind, Handler] = {
     JobKind.WEATHER: _weather,
     JobKind.EVENTS: _events,
-    JobKind.PERFORMANCE: _performance,
+    JobKind.ACTUAL_FORECAST: _file,
+    JobKind.RESERVATIONS: _file,
+    JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,
 }
 

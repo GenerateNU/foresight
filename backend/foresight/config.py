@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # External event sources
     predicthq_token: str = ""
 
+    # Hotel CSV uploads (POST /hotels/{id}/ingest/files). Parsed files wait in
+    # memory until their job runs, so these bound what one upload can hold.
+    upload_max_files: int = 10
+    upload_max_file_mb: int = 50
+
     # Sign-in
     google_client_id: str = ""
     google_client_secret: str = ""

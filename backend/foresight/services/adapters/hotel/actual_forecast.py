@@ -1,7 +1,7 @@
 """Guestline Actual & Forecast export: parse a nightly CSV into
 `daily_performance` rows.
 
-Never touches the database; `services/ingest/performance.py` saves the rows.
+Never touches the database; `services/ingest/actual_forecast.py` saves the rows.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ class HotelDataParser:
         3. transform_data()
         4. validate_data()
 
-    The parser never touches the database; `services/ingest/performance.py`
+    The parser never touches the database; `services/ingest/actual_forecast.py`
     saves what it returns.
 
     Main usage:

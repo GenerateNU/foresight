@@ -100,7 +100,8 @@ backend/foresight/
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                booking, city, hotel, user, weather, weather_coverage, event,
                            pricing_model, recommendation, feedback, freshness
-    ingest/                weather, event, performance, bookings, window
+    ingest/                weather, event, window; files (report kinds, header
+                           recognition), actual_forecast, bookings
     adapters/              open_meteo, predicthq, normalize
       hotel/               one per CSV report: actual_forecast, reservations,
                            cancellations; common (shared reading)
@@ -331,9 +332,9 @@ and does a full downgrade and upgrade.
 
 ## 5. Jobs
 
-Long work runs as jobs inside the API process
-([0020](decisions/0020-jobs-in-the-api-process.md)), one kind per signal
-([0021](decisions/0021-one-ingest-job-per-signal.md)).
+Long work runs as jobs inside the API process, one kind per signal or
+uploaded report, through one queue per hotel
+([0052](decisions/0052-one-upload-route-and-a-queue-per-hotel.md)).
 
 ### 5.1 Kinds
 
@@ -341,7 +342,10 @@ Long work runs as jobs inside the API process
 |---|---|---|---|---|
 | `weather` | `WEATHER` | next 16 days of forecast | recorded weather for past days, forecast for the next 16 | one year of recorded; the forecast |
 | `events` | `EVENTS` | events PredictHQ revised since the last refresh (7 days the first time) | every event active in the window | one month |
-| `performance` (multipart) | `PERFORMANCE` | — (takes CSV files and `base_rate`) | — | one file |
+| `files` (multipart) | one per file: `ACTUAL_FORECAST`, `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
+
+Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
+queue.
 
 **Window rules** (`services/ingest/window.py`):
 
@@ -355,8 +359,15 @@ Weather days beyond the forecast have no source; they're listed in the job's
 `progress.beyond_forecast` instead of being fetched.
 
 Events use a 10km radius around the city centre and need `PREDICTHQ_TOKEN`
-(a 503 if it isn't set). Performance files are all parsed before the job is
-queued, so one bad file is a 422 and nothing is saved.
+(a 503 if it isn't set).
+
+**Uploaded files** (`services/ingest/files.py`): `REPORTS` lists each report
+kind with the columns it needs. A file is the kind whose columns its header
+holds; none or more than one is a 422. Every file is recognised and parsed
+before any job is queued, so one bad file is a 422 naming it and nothing is
+queued. More than `UPLOAD_MAX_FILES` files, or one over `UPLOAD_MAX_FILE_MB`,
+is a 413. Each file's job records its name, sha256, rows, rows skipped and
+date range in `params`; a repeated hash is allowed.
 
 ### 5.2 Lifecycle
 
@@ -367,20 +378,24 @@ POST /hotels/7/ingest/events {"start": "2025-01-01"}
         get_hotel                                   → 404
         API key set?                                → 503
         resolve_window                              → 422
-        same kind already queued or running?        → 409
+        same kind already queued or running?        → 409 (not for file jobs)
         job_repo.create_job(params = resolved inputs)
-    → tasks.add_task(worker.run_job, job.id)
+    → tasks.add_task(worker.enqueue, job.id, hotel_id)
   ← 202 {job}                    get_session commits the row first
 
-worker.run_job(id)               after the response, its own session
-  status = running; commit
+worker.enqueue(id, hotel_id)     after the response: back of the hotel's queue;
+                                 starts the hotel's runner if none is running
+worker._drain(hotel_id)          one job at a time, oldest first, until empty
+worker.run_job(id)               its own session
+  queued → running; commit       (not queued any more, i.e. cancelled → skip)
   for each Step the handler yields:
       save progress; commit; remember step.resume_from
   on a quota error   → rollback; status = stopped, error, resume_from
   on any other error → rollback; status = failed,  error, resume_from
   otherwise          → status = succeeded
 
-GET /jobs/{id}    → status, params, progress, error, resume_from
+GET /jobs/{id}          → status, params, progress, error, resume_from
+POST /jobs/{id}/cancel   → queued → cancelled; 409 if running or finished
 ```
 
 A job's `progress` is committed together with the chunk it describes, so it
@@ -392,11 +407,15 @@ safe.
 
 **Limits:**
 
-- Jobs start immediately and run side by side; there's no ordering.
-- One unfinished job per kind per hotel; a second request gets a 409.
-- A restart kills running jobs. On startup they're marked failed.
-- Production runs a single uvicorn worker, because jobs and a performance
-  job's parsed files live in that process.
+- A hotel's jobs run one at a time, first in, first out; different hotels
+  run side by side. A long backfill holds up the hotel's queue behind it.
+- A failed job doesn't stop the jobs queued after it.
+- One unfinished weather, events or training job per hotel; a second gets a
+  409. File jobs stack up in the queue instead.
+- A restart loses the queues and the parsed files waiting in them. On startup
+  every queued or running job is marked failed.
+- Production runs a single uvicorn worker, because the queues and parsed files
+  live in that process.
 - Nothing runs on a schedule; the routine refreshes run when called.
 
 ---
@@ -415,17 +434,22 @@ routes/weather.list_weather
   → paginate(WeatherResponse, rows, total, page)
 ```
 
-### 6.2 A performance import
+### 6.2 A hotel file upload
 
 ```
-POST /hotels/7/ingest/performance  files=a.csv,b.csv  base_rate=150
-  → start_performance_job
-      → ingest/performance.parse_files: HotelDataParser per file
-          load → clean → transform → validate (pandas); any failure → 422
-      → queue the job; parsed rows go to the worker in memory
-  worker, per file:
-      upsert_room_type("Standard", room_count from the file, base_rate)
-      upsert_daily_performance(rows)                     → commit
+POST /hotels/7/ingest/files  files=Actual & Forecast.csv, Cancellation.csv
+  → too many files, or one too big?                      → 413
+  → job_service.start_file_jobs
+      → ingest/files.parse_files, per file:
+          recognise by header (no or several matches)    → 422
+          the report's parse; any failure                → 422
+      → one job per file (ACTUAL_FORECAST, CANCELLATIONS), in upload order
+  ← 202 [job, job]; each joins the hotel's queue with its parsed rows
+  worker, per job, 5,000 rows at a time:
+      actual_forecast: upsert_room_type("Standard", room_count from the file)
+                       upsert_daily_performance(rows)    → commit
+      reservations / cancellations: upsert_bookings / upsert_cancellations
+                                                         → commit
 ```
 
 The client's export has one room type, so every night is stored under
@@ -646,8 +670,9 @@ hotel that's from 21 Dec 2024 ([guestline-data.md](guestline-data.md)).
 | GET | `/models/{id}` | one version, no artifact |
 | POST | `/models/{id}/activate` | serve this version |
 | POST | `/hotels/{id}/ingest/{weather,events}` | job, 202; optional `{start, end}` |
-| POST | `/hotels/{id}/ingest/performance` | job, 202; multipart files + `base_rate` |
+| POST | `/hotels/{id}/ingest/files` | a job per file, 202; multipart files only, each recognised by its header |
 | GET | `/jobs/{id}` | |
+| POST | `/jobs/{id}/cancel` | a queued job only; 409 otherwise |
 | GET | `/hotels/{id}/jobs` | paginated, newest first |
 
 Status codes: `201` create, `202` job queued, `302` sign-in redirects, `204`
@@ -669,6 +694,7 @@ setting is listed in `.env.example`.
 | `GOOGLE_CLIENT_ID`, `_SECRET`, `GOOGLE_REDIRECT_URI` | the OAuth client in `routes/auth.py`; the 503 check in `services/domain/user.py` |
 | `SESSION_SECRET`, `SESSION_MAX_AGE_SECONDS`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE` | the session middleware in `main.py` (the secret also in the 503 check) |
 | `FRONTEND_URL` | the CORS origin in `main.py`, and where the callback redirects |
+| `UPLOAD_MAX_FILES`, `UPLOAD_MAX_FILE_MB` | the 413 checks in `routes/ingest.py` |
 
 `services/job.py` and `services/domain/user.py` read settings; `main.py` reads
 them to build the middleware. A missing key is a 503 when the job or the
@@ -680,7 +706,7 @@ sign-in is requested.
 
 | Piece | State |
 |---|---|
-| `ingest/bookings.py` | parses and saves bookings and cancellations; no upload route yet (#89) |
+| — | nothing at the moment |
 
 Flights, competitor rates and booking-pace inputs were removed
 ([0050](decisions/0050-drop-flights-and-booking-pace.md)). Weather and events

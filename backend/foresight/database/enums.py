@@ -64,7 +64,10 @@ class JobKind(StrEnum):
 
     WEATHER = "weather"  # Open-Meteo forecast and recorded weather
     EVENTS = "events"  # PredictHQ events
-    PERFORMANCE = "performance"  # the hotel's own nightly CSV exports
+    # One per uploaded Guestline report (`services/ingest/files.py`)
+    ACTUAL_FORECAST = "actual_forecast"  # nightly rooms sold and revenue
+    RESERVATIONS = "reservations"  # Daily New Reservations
+    CANCELLATIONS = "cancellations"  # Cancellations
     TRAIN = "train"  # a new pricing model version
 
 
@@ -74,6 +77,7 @@ class JobStatus(StrEnum):
     SUCCEEDED = "succeeded"
     STOPPED = "stopped"  # a source's quota or rate limit; resume from `resume_from`
     FAILED = "failed"  # any other error; `resume_from` says where to pick up
+    CANCELLED = "cancelled"  # removed from the queue before it ran
 
 
 class FeedbackVerdict(StrEnum):

@@ -1,6 +1,6 @@
 # 0020. Long work runs as jobs inside the API, through the API only
 
-**Status:** Accepted · **Date:** 2026-10-15
+**Status:** Superseded by [0052](0052-one-upload-route-and-a-queue-per-hotel.md) · **Date:** 2026-10-15
 
 ## Context
 Ingests ran from scripts, outside the API, with no record of what ran or how

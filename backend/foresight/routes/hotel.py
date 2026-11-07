@@ -110,11 +110,6 @@ class RoomTypeRequest(RequestSchema):
     room_count: int = Field(
         gt=0, description="Physical rooms of this type", examples=[50]
     )
-    base_rate: Decimal = Field(
-        gt=0,
-        description="The standard nightly price (rack rate), in EUR",
-        examples=["100.00"],
-    )
 
 
 class RoomTypeResponse(ResponseSchema):
@@ -122,7 +117,6 @@ class RoomTypeResponse(ResponseSchema):
     hotel_id: int = Field(description="The hotel it belongs to")
     name: str = Field(description="The room type's name")
     room_count: int = Field(description="Physical rooms of this type")
-    base_rate: Decimal = Field(description="The standard nightly price, in EUR")
 
 
 class DailyPerformanceResponse(ResponseSchema):
