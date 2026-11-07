@@ -1,8 +1,10 @@
-"""Jobs: read the background jobs that ingest queues (routes/ingest.py).
+"""Jobs: read and cancel the background jobs that ingest and training queue.
 
-Poll `GET /jobs/{id}` for status and progress. If a job stops or fails
-part-way, `resume_from` says where to pick up: send it to the same ingest
-endpoint as `start` again (or as `end` for a run walking backwards).
+Each hotel's jobs run one at a time, oldest first. Poll `GET /jobs/{id}` for
+status and progress; `POST /jobs/{id}/cancel` takes a queued job out. If a job
+stops or fails part-way, `resume_from` says where to pick up: send it to the
+same ingest endpoint as `start` again (or as `end` for a run walking
+backwards). A file job that ends early is finished by uploading the file again.
 
 `GET /hotels/{id}/freshness` reads the same jobs to say when each kind of data
 last refreshed.
@@ -11,9 +13,10 @@ last refreshed.
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import Field
 
+from foresight import worker
 from foresight.database.enums import JobKind, JobStatus
 from foresight.routes.access import HotelId, JobId
 from foresight.routes.helpers import (
@@ -39,7 +42,8 @@ class JobResponse(ResponseSchema):
     hotel_id: int = Field(description="The hotel it runs for")
     kind: JobKind = Field(description="What the job does")
     status: JobStatus = Field(
-        description="queued → running → succeeded, or stopped (a quota) or failed"
+        description="queued → running → succeeded, or stopped (a quota) or "
+        "failed; a queued job can instead be cancelled"
     )
     params: dict[str, Any] = Field(description="Inputs, as resolved when queued")
     progress: dict[str, Any] = Field(description="Counts so far; matches what's saved")
@@ -89,6 +93,17 @@ class FreshnessResponse(ResponseSchema):
 async def get_job(job_id: JobId, session: SessionDep) -> JobResponse:
     """One job's status, progress and resume point."""
     return JobResponse.model_validate(await job_service.get_job(session, job_id))
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+async def cancel_job(
+    job_id: JobId, session: SessionDep, tasks: BackgroundTasks
+) -> JobResponse:
+    """Take a queued job out of its hotel's queue. A running or finished job
+    can't be cancelled (409)."""
+    job = await job_service.cancel_job(session, job_id)
+    tasks.add_task(worker.discard, job.id)
+    return JobResponse.model_validate(job)
 
 
 @router.get("/hotels/{hotel_id}/jobs", response_model=PageResponse[JobResponse])

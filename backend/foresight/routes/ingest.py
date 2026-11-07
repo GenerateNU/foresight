@@ -1,7 +1,9 @@
-"""Ingest: pull a signal in for a hotel as a background job.
+"""Ingest: pull a signal in, or load uploaded files, as background jobs.
 
-Each POST validates and queues a job, returns 202 with it, and runs it after
-the response. Poll `GET /jobs/{id}` (routes/job.py) for status and progress.
+Each POST validates and queues its job (one per file for uploads), returns 202,
+and the job joins the back of the hotel's queue after the response: a hotel's
+jobs run one at a time, oldest first. Poll `GET /jobs/{id}` (routes/job.py)
+for status and progress.
 
 Dates (weather and events): send neither for the routine refresh, or either to
 backfill a window:
@@ -15,7 +17,6 @@ as `start` again (or as `end` for a run walking backwards).
 """
 
 from datetime import date
-from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import (
@@ -23,13 +24,14 @@ from fastapi import (
     BackgroundTasks,
     Body,
     File,
-    Form,
+    HTTPException,
     UploadFile,
     status,
 )
 from pydantic import Field
 
 from foresight import worker
+from foresight.config import settings
 from foresight.routes.access import HotelId
 from foresight.routes.helpers import RequestSchema, SessionDep, example_body
 from foresight.routes.job import JobResponse
@@ -111,8 +113,8 @@ async def ingest_weather(
     job = await job_service.start_weather_job(
         session, hotel_id, start=data.start, end=data.end
     )
-    # Runs after the response, by which time get_session has committed the row.
-    tasks.add_task(worker.run_job, job.id)
+    # Queued after the response, by which time get_session has committed the row.
+    tasks.add_task(worker.enqueue, job.id, job.hotel_id)
     return JobResponse.model_validate(job)
 
 
@@ -132,36 +134,56 @@ async def ingest_events(
     job = await job_service.start_events_job(
         session, hotel_id, start=data.start, end=data.end
     )
-    tasks.add_task(worker.run_job, job.id)
+    tasks.add_task(worker.enqueue, job.id, job.hotel_id)
     return JobResponse.model_validate(job)
 
 
-@router.post("/hotels/{hotel_id}/ingest/performance", **_ACCEPTED)
-async def ingest_performance(
+@router.post(
+    "/hotels/{hotel_id}/ingest/files",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=list[JobResponse],
+)
+async def ingest_files(
     hotel_id: HotelId,
     session: SessionDep,
     tasks: BackgroundTasks,
     files: Annotated[
-        list[UploadFile], File(description="Client nightly exports (CSV)")
-    ],
-    base_rate: Annotated[
-        Decimal,
-        Form(
-            gt=0,
-            description="The standard nightly price (rack rate), in EUR. Stored "
-            "on the room type; re-importing with a new value replaces it",
-            examples=["100.00"],
+        list[UploadFile],
+        File(
+            description="Guestline CSV exports: Actual & Forecast, Daily New "
+            "Reservations or Cancellations, in any mix. Each file's report is "
+            "recognised from its header"
         ),
     ],
-) -> JobResponse:
-    """Load client exports onto the hotel's standard room type, one file per
-    step. Every file is parsed before the job is queued, so a bad file is a
-    422 and nothing is saved. Re-importing a file changes nothing."""
+) -> list[JobResponse]:
+    """Queue one job per file, in upload order, behind the hotel's other jobs.
+
+    Every file is recognised and parsed before anything is queued, so a file
+    that matches no report, matches more than one, or doesn't parse is a 422
+    naming it, and nothing is queued. Re-uploading a file changes nothing.
+    """
+    if len(files) > settings.upload_max_files:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"at most {settings.upload_max_files} files per upload",
+        )
     contents = [
-        (f.filename or f"file {i}", await f.read()) for i, f in enumerate(files)
+        (f.filename or f"file {i}", await _read_capped(f)) for i, f in enumerate(files)
     ]
-    job, parsed = await job_service.start_performance_job(
-        session, hotel_id, files=contents, base_rate=base_rate
-    )
-    tasks.add_task(worker.run_job, job.id, parsed)
-    return JobResponse.model_validate(job)
+    queued = await job_service.start_file_jobs(session, hotel_id, files=contents)
+    # Added after the response, by which time get_session has committed the rows.
+    for job, parsed in queued:
+        tasks.add_task(worker.enqueue, job.id, job.hotel_id, parsed)
+    return [JobResponse.model_validate(job) for job, _ in queued]
+
+
+async def _read_capped(upload: UploadFile) -> bytes:
+    """The file's bytes; 413 if it is over the size limit."""
+    limit = settings.upload_max_file_mb * 1024 * 1024
+    content = await upload.read(limit + 1)
+    if len(content) > limit:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"{upload.filename} is over {settings.upload_max_file_mb} MB",
+        )
+    return content

@@ -37,7 +37,7 @@ One line per file: what it's for. For how the pieces fit together, see
 |---|---|
 | `main.py` | Builds the FastAPI app: routers, session/CORS middleware, error handlers, `/docs` |
 | `config.py` | All settings (pydantic-settings), read from `.env` |
-| `worker.py` | Runs background jobs; commits after each chunk |
+| `worker.py` | One in-memory job queue per hotel; runs jobs one at a time, commits after each chunk |
 | `cli.py` | Operator commands: `link-user`, `backtest` (+ plot) |
 
 ## routes/ — HTTP layer
@@ -53,8 +53,8 @@ One line per file: what it's for. For how the pieces fit together, see
 | `hotel.py` | Hotels, room types, performance, linking users, recommendations |
 | `weather.py` | List weather; recorded-weather coverage gaps |
 | `event.py` | List events in a hotel's city |
-| `ingest.py` | Start weather, events or performance ingest jobs |
-| `job.py` | Read jobs; data freshness |
+| `ingest.py` | Start weather or events jobs; upload hotel CSVs (one job per file) |
+| `job.py` | Read and cancel jobs; data freshness |
 | `pricing_model.py` | Train, list, read and activate model versions |
 | `feedback.py` | Add and list manager feedback on rates |
 
@@ -90,8 +90,9 @@ One line per file: what it's for. For how the pieces fit together, see
 | `window.py` | Works out the date window from optional start/end |
 | `weather.py` | Fetch and save forecast and recorded weather |
 | `event.py` | Fetch and save PredictHQ events (recent or by window) |
-| `performance.py` | Parse and save nightly performance CSVs |
-| `bookings.py` | Parse and save Guestline bookings/cancellations (no route yet) |
+| `files.py` | The list of uploadable reports; recognises each file by its header, parses it, records it on its job |
+| `actual_forecast.py` | Parse and save the Actual & Forecast export (nightly performance) |
+| `bookings.py` | Parse and save the Daily New Reservations and Cancellations exports |
 
 ### services/adapters/ — outside APIs and files, no DB
 

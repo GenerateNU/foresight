@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 KINDS = {
     "events": (JobKind.EVENTS, {"mode": "recent"}),
     "weather": (JobKind.WEATHER, {"mode": "forecast"}),
-    "hotel_data": (JobKind.PERFORMANCE, {}),
+    "hotel_data": (JobKind.ACTUAL_FORECAST, {}),
     "training": (JobKind.TRAIN, {}),
 }
 

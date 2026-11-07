@@ -12,7 +12,6 @@ from foresight.services.errors import ConflictError, NotFoundError
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import date
-    from decimal import Decimal
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -114,7 +113,6 @@ async def create_room_type(
     *,
     name: str,
     room_count: int,
-    base_rate: Decimal,
 ) -> RoomType:
     """Raises NotFoundError for an unknown hotel, ConflictError for a duplicate."""
     await get_hotel(session, hotel_id)
@@ -123,7 +121,6 @@ async def create_room_type(
         hotel_id=hotel_id,
         name=name,
         room_count=room_count,
-        base_rate=base_rate,
     )
     if room_type is None:
         raise ConflictError(f"Hotel {hotel_id} already has a room type named {name!r}")

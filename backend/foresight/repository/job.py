@@ -47,6 +47,28 @@ async def update_job(session: AsyncSession, job_id: int, **values: Any) -> None:
     await session.execute(update(Job).where(Job.id == job_id).values(**values))
 
 
+async def start_queued_job(
+    session: AsyncSession, job_id: int, *, started_at: datetime
+) -> bool:
+    """Mark a queued job running; False if it isn't queued any more."""
+    result = await session.execute(
+        update(Job)
+        .where(Job.id == job_id, Job.status == JobStatus.QUEUED)
+        .values(status=JobStatus.RUNNING, started_at=started_at)
+    )
+    return result.rowcount == 1
+
+
+async def cancel_queued_job(session: AsyncSession, job_id: int) -> bool:
+    """Mark a queued job cancelled; False if it isn't queued (or doesn't exist)."""
+    result = await session.execute(
+        update(Job)
+        .where(Job.id == job_id, Job.status == JobStatus.QUEUED)
+        .values(status=JobStatus.CANCELLED, finished_at=func.now())
+    )
+    return result.rowcount == 1
+
+
 async def fail_unfinished_jobs(session: AsyncSession, error: str) -> int:
     """Mark every queued or running job failed; returns how many."""
     result = await session.execute(
@@ -93,11 +115,13 @@ async def latest_finished_job(
     params: dict[str, Any],
     status: JobStatus | None = None,
 ) -> Job | None:
-    """The newest finished job of this kind whose params contain `params`."""
+    """The newest finished job of this kind whose params contain `params`.
+    A cancelled job never ran, so it isn't counted."""
     stmt = select(Job).where(
         Job.hotel_id == hotel_id,
         Job.kind == kind,
         Job.finished_at.is_not(None),
+        Job.status != JobStatus.CANCELLED,
         Job.params.contains(params),
     )
     if status is not None:
