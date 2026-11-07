@@ -99,7 +99,7 @@ backend/foresight/
                            NotSignedIn / Forbidden
     job.py                 job kinds, validation, handlers, lifecycle
     domain/                booking, city, hotel, user, weather, weather_coverage, event,
-                           model_inputs, pricing_model, recommendation, feedback, freshness
+                           pricing_model, recommendation, feedback, freshness
     ingest/                weather, event, performance, bookings, window
     adapters/              open_meteo, predicthq, hotel_csv, guestline, normalize
     ml/                    base, ebm, features, weighting, baselines
@@ -460,9 +460,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       training_data                             shared with the backtest (6.7)
         hotel_repo.list_nights                  every night, oldest first
         ml/weighting.training_mask              drop unpriced nights (0004)
-        domain/model_inputs.weather_for         recorded weather only
-        domain/model_inputs.events_for          counted events + fetched nights (0041)
-        ml/features.build_features              unfetched nights' events empty
+        ml/features.build_features              calendar inputs only (0051)
         ml/weighting.sample_weights             occupancy of sellable rooms (0003)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
@@ -476,14 +474,13 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
 GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
   → domain/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
-      per night: build_features row, events_by_night (0032), weather source (0024),
-                 events source (0041)
-      fingerprint = sha256(model id + those inputs)
+      per night: build_features row
+      fingerprint = sha256(model id + that row)
       snapshot_repo.latest_snapshots            one query for the range
       fingerprint matches → reuse the snapshot; the model doesn't run
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
-  ← one per night: rate, 80% interval, factors in €, events, weather source
+  ← one per night: rate, 80% interval, factors in €
 ```
 
 A recommendation is stored when it's made and reused while its inputs hold
@@ -568,8 +565,8 @@ user.
 
 ### 6.7 Backtest
 
-`just backtest 7 [--baselines] [--inputs …] [--test-days N] [--event-days N]
-[--start DATE]` checks whether the model, and each input, is
+`just backtest 7 [--baselines] [--inputs …] [--test-days N] [--start DATE]`
+checks whether the model, and each input, is
 worth having
 ([0042](decisions/0042-how-the-backtest-judges-the-model.md)). Read-only:
 models are trained in memory and thrown away.
@@ -580,8 +577,6 @@ cli.backtest
       pricing_model.training_data               the same inputs training sees
       cutoff = newest night − test_days (default 90)
       one EBM on --inputs (default: all FEATURES)
-      only with --event-days:
-        event inputs blanked before cutoff − N  other inputs keep all history
       ml/base.score                             every test night
       only with --baselines:
         ml/baselines on nights ≤ cutoff         same weekday last year,
@@ -591,11 +586,9 @@ cli.backtest
   ← scores (+ baseline table), and a PNG in backend/backtest-out/
 ```
 
-`ml/features.INPUT_GROUPS` sorts every input into calendar, weather, events
-(holiday flags included); `--inputs` takes group names or single features.
-Compare input sets by running it once per set. `--event-days N` limits only
-the event inputs to the N days before the cutoff, to see how much event
-history the model needs. `--start` leaves out earlier nights.
+`ml/features.INPUT_GROUPS` sorts every input into groups (only calendar for
+now); `--inputs` takes group names or single features. Compare input sets by
+running it once per set. `--start` leaves out earlier nights.
 
 ### 6.8 How full a night was on an earlier date
 
@@ -689,17 +682,19 @@ sign-in is requested.
 | `ingest/bookings.py` | parses and saves bookings and cancellations; no upload route yet (#89) |
 
 Flights, competitor rates and booking-pace inputs were removed
-([0050](decisions/0050-drop-flights-and-booking-pace.md)).
+([0050](decisions/0050-drop-flights-and-booking-pace.md)). Weather and events
+are ingested and listed but no longer reach the model
+([0051](decisions/0051-calendar-only-model.md)).
 
 ---
 
 ## 10. Open questions
 
-1. **Events in the model.** They have feature columns but little history to
-   train on (PredictHQ shows only recent months).
+1. **Which inputs the model needs.** It reads only the calendar (0051).
+   Weather and events come back if notebook experiments show they help.
 2. **Scheduling.** The routine refreshes (forecast, recent events) only run
    when called. Recommendations are stored as they're requested.
-3. **Tests.** The suite covers recommendations, events on a night, freshness
+3. **Tests.** The suite covers recommendations, freshness
    and users, but not ingest or training. Nothing has been run against a real
    PredictHQ key.
 4. **Amended bookings.** A booking keeps the dates it had when first uploaded

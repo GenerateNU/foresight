@@ -1,6 +1,6 @@
 # 0041. Events reach the model; nights no backfill covered are unknown
 
-**Status:** Accepted · **Date:** 2026-11-01
+**Status:** Superseded by [0051](0051-calendar-only-model.md) · **Date:** 2026-11-01
 
 Updates [0028](0028-train-and-serve-on-ingested-data.md) (events are no longer
 passed empty) and [0007](0007-shared-feature-builder.md) (event inputs).

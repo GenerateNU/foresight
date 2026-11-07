@@ -3,8 +3,6 @@
 Runs against the real database (the `session` fixture rolls back). The model is
 replaced by a stand-in that prices a night at 200 plus its max temperature and
 counts how often it runs, so a test can tell a reused snapshot from a new one.
-The test city has no weather unless a test adds some, so every night's weather
-is "missing" until then.
 """
 
 from __future__ import annotations
@@ -17,20 +15,21 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from foresight.database.models import Hotel, Weather
+from foresight.database.models import PricingModel
+from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
 from foresight.services.domain import recommendation as service
 
 
 class FakeModel:
-    """Rate = 200 + temp_max_c (0 when unknown), ±20; counts its runs."""
+    """Rate = 200, ±20; counts its runs."""
 
     alpha = 0.2
     intercept = 180.0
     runs = 0
 
     def _rates(self, x: pd.DataFrame) -> np.ndarray:
-        return 200.0 + x["temp_max_c"].astype(float).fillna(0).to_numpy()
+        return np.full(len(x), 200.0)
 
     def predict_interval(self, x):
         FakeModel.runs += 1
@@ -68,21 +67,6 @@ async def _stored(session, priced, night: date):
     return found.get(night)
 
 
-async def _set_forecast(session, priced, night: date, temp: float) -> None:
-    """Give the night a forecast, changing its inputs."""
-    hotel = await session.get(Hotel, priced.hotel_id)
-    session.add(
-        Weather(
-            city_id=hotel.city_id,
-            weather_date=night,
-            temp_max_c=temp,
-            is_forecast=True,
-            source="test",
-        )
-    )
-    await session.flush()
-
-
 async def test_a_range_saves_one_snapshot_per_night(session, priced):
     today = _today()
 
@@ -106,19 +90,31 @@ async def test_unchanged_inputs_reuse_the_snapshot_without_running_the_model(
     assert FakeModel.runs == 1  # the second request never ran the model
 
 
-async def test_only_the_night_whose_inputs_changed_is_priced_again(session, priced):
+async def test_a_newly_active_model_prices_every_night_again(session, priced):
     today = _today()
-    tomorrow = today + timedelta(days=1)
     first = await _recommend(session, priced, today, today + timedelta(days=2))
-    await _set_forecast(session, priced, tomorrow, 30.0)
+    newer = PricingModel(
+        hotel_id=priced.hotel_id,
+        version=2,
+        algorithm="ebm",
+        artifact=b"not a real model",
+        features=[],
+        metrics={},
+        lib_versions={},
+        data_start=date(2025, 1, 1),
+        data_end=date(2025, 12, 31),
+    )
+    session.add(newer)
+    await session.flush()
+    await model_repo.activate_pricing_model(session, newer.id)
 
     again = await _recommend(session, priced, today, today + timedelta(days=2))
 
-    assert again[0].snapshot_id == first[0].snapshot_id
-    assert again[2].snapshot_id == first[2].snapshot_id
-    assert again[1].snapshot_id != first[1].snapshot_id
-    assert again[1].recommended_rate == Decimal("230.00")
-    assert again[1].weather_source == "forecast"
+    assert all(
+        a.snapshot_id != f.snapshot_id for a, f in zip(again, first, strict=True)
+    )
+    assert {r.model_id for r in again} == {newer.id}
+    assert FakeModel.runs == 2
 
 
 @pytest.mark.parametrize(
@@ -126,13 +122,11 @@ async def test_only_the_night_whose_inputs_changed_is_priced_again(session, pric
     [
         (1, {}, True),
         (2, {}, False),  # a newly activated model
-        (1, {"weather_source": "forecast"}, False),
-        (1, {"features": {"temp_max_c": 19.0}}, False),
-        (1, {"events": [{"title": "Festival"}]}, False),
+        (1, {"features": {"month": 12}}, False),
     ],
 )
 def test_the_fingerprint_covers_the_model_and_every_input(model_id, change, same):
-    inputs = {"features": {"temp_max_c": 18.0}, "events": [], "weather_source": "x"}
+    inputs = {"features": {"month": 11}}
 
     before = service._fingerprint(1, inputs)
     after = service._fingerprint(model_id, {**inputs, **change})

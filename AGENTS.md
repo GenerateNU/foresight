@@ -45,7 +45,7 @@ just dev --neon       # same, against Neon; `--neon` works on run/migrate*/test 
 just migrate          # apply migrations
 just migrate-create "msg"   # new Alembic migration after model changes
 just migrate-down     # roll back last migration
-just backtest <hotel_id> [--baselines] [--inputs …] [--test-days N] [--event-days N]   # score the model on recent nights
+just backtest <hotel_id> [--baselines] [--inputs …] [--test-days N]   # score the model on recent nights
 just lint             # ruff checks
 just format           # ruff format
 ```

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from sqlalchemy import Row
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.enums import EventCategory, EventStatus, Source
+    from foresight.database.enums import EventStatus, Source
 
 _EVENTS = Event.__table__
 _OBSERVATIONS = EventObservation.__table__
@@ -185,48 +185,3 @@ async def list_events(
         stmt = stmt.where(Event.start_local_date <= end)
     stmt = stmt.order_by(Event.start_local_date, Event.id)
     return await fetch_page(session, stmt, limit=limit, offset=offset)
-
-
-async def list_events_overlapping(
-    session: AsyncSession,
-    *,
-    city_id: int,
-    start: date,
-    end: date,
-    exclude_statuses: Collection[EventStatus],
-    categories: Collection[EventCategory],
-) -> Sequence[Event]:
-    """Events in `categories`, not in `exclude_statuses`, whose inclusive
-    local-date range overlaps [start, end]."""
-    result = await session.scalars(
-        select(Event).where(
-            Event.city_id == city_id,
-            Event.end_local_date >= start,
-            Event.start_local_date <= end,
-            Event.status.not_in(exclude_statuses),
-            Event.category.in_(categories),
-        )
-    )
-    return result.all()
-
-
-async def latest_payloads(
-    session: AsyncSession, event_ids: Collection[int], *, source: Source
-) -> dict[int, Mapping[str, Any]]:
-    """Each event's most recently updated raw record from `source`, by event id.
-    Events without one are left out."""
-    if not event_ids:
-        return {}
-    result = await session.execute(
-        select(_OBSERVATIONS.c.event_id, _OBSERVATIONS.c.payload)
-        .where(
-            _OBSERVATIONS.c.event_id.in_(event_ids),
-            _OBSERVATIONS.c.source == source,
-        )
-        .distinct(_OBSERVATIONS.c.event_id)
-        .order_by(
-            _OBSERVATIONS.c.event_id,
-            _OBSERVATIONS.c.source_updated_at.desc().nulls_last(),
-        )
-    )
-    return dict(result.tuples().all())

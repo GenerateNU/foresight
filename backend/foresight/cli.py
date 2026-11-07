@@ -44,7 +44,6 @@ async def backtest(
     out: Path,
     baselines: bool,
     inputs: list[str],
-    event_days: int | None,
     start: date | None,
 ) -> None:
     async with async_session_factory() as session:
@@ -54,14 +53,11 @@ async def backtest(
             test_days=test_days,
             baselines=baselines,
             inputs=inputs,
-            event_days=event_days,
             start=start,
         )
     nights = result.nights
     first, last = nights["stay_date"].min(), nights["stay_date"].max()
     described = _describe_inputs(result.inputs)
-    if result.event_days is not None:
-        described += f"; {result.event_days} days of event history"
     print(f"{len(nights)} test nights, {first} to {last}; inputs: {described}")
     scores = _format_metrics(result.metrics)
     for name, value in scores:
@@ -250,7 +246,6 @@ async def _run(args: argparse.Namespace) -> None:
                 args.out,
                 args.baselines,
                 args.inputs,
-                args.event_days,
                 args.start,
             )
     finally:
@@ -271,15 +266,6 @@ def main(argv: list[str] | None = None) -> int:
         "--test-days", type=int, default=90, help="How many recent nights to predict"
     )
     bt.add_argument(
-        "--event-days",
-        type=int,
-        default=None,
-        help=(
-            "Train on only this many days of event history before the cutoff, "
-            "e.g. 30. Other inputs keep all their history. Default: all"
-        ),
-    )
-    bt.add_argument(
         "--baselines",
         action="store_true",
         help="Also score simple baselines the model should beat",
@@ -297,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Comma-separated inputs to train on: groups "
             f"({', '.join(INPUT_GROUPS)}) and/or single features, e.g. "
-            "calendar,temp_max_c. Default: all, like the served model"
+            "calendar,month. Default: all, like the served model"
         ),
     )
     bt.add_argument(
