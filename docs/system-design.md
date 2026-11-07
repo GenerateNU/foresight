@@ -1,8 +1,8 @@
 # Foresight backend: system design
 
 How the backend fits together: the layers, the patterns each one uses, and how
-a request or a job moves through them. Written from the code as of 2026-10-15
-(`43-implement-ebm`). The reasons behind each choice are in
+a request or a job moves through them. Written from the code as of 2026-11-07.
+The reasons behind each choice are in
 [`decisions/`](decisions/README.md); this document links to them rather than
 repeating them.
 
