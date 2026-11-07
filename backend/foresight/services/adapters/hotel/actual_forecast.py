@@ -1,4 +1,5 @@
-"""Client hotel exports: parse a nightly CSV into `daily_performance` rows.
+"""Guestline Actual & Forecast export: parse a nightly CSV into
+`daily_performance` rows.
 
 Never touches the database; `services/ingest/performance.py` saves the rows.
 """

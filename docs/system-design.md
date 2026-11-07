@@ -101,7 +101,9 @@ backend/foresight/
     domain/                booking, city, hotel, user, weather, weather_coverage, event,
                            pricing_model, recommendation, feedback, freshness
     ingest/                weather, event, performance, bookings, window
-    adapters/              open_meteo, predicthq, hotel_csv, guestline, normalize
+    adapters/              open_meteo, predicthq, normalize
+      hotel/               one per CSV report: actual_forecast, reservations,
+                           cancellations; common (shared reading)
     ml/                    base, ebm, features, weighting, baselines
   repository/
     upsert.py pagination.py
