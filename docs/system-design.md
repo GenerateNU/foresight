@@ -486,18 +486,27 @@ Both read only what's already ingested; neither fetches
 ```
 POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   job_service.start_train_job       hotel exists, nights loaded in window → 422
-  → domain/pricing_model.train
+  → domain/pricing_model.prepare_training
       training_data                             shared with the backtest (6.7)
         hotel_repo.list_nights                  every night, oldest first
         ml/weighting.training_mask              drop unpriced nights (0004)
+        one room type and bookings in the window?   (0056)
+          yes → domain/booking.booking_rows     one row per booked room per night,
+                                                rate = adr_nett, weight 1, all FEATURES
+          no  → the nights, rate = ARR, occupancy weight (0003), no lead_days
         domain/model_inputs.events_for          counted events, backfilled nights, first seen
-        ml/features.build_features              calendar + events (0055)
-        ml/weighting.sample_weights             occupancy of sellable rooms (0003)
+        ml/features.build_features              calendar + events (0055) + lead_days from booked_on
       feedback_repo.training_feedback           current version per night, after the night only
-      ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
+      ml/feedback.apply_feedback                against the night's average rate; carried onto
+                                                its rooms as a ratio (0044, 0056)
+  progress = {stage: fitting}; commit           frees the connection during the fit (0056)
+  → domain/pricing_model.fit                    no database
+      ml/weighting.combine_identical_rows       same night, same inputs → one weighted row
       EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0045)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
-      model_repo.create_pricing_model           new version, inactive (0008, 0009)
+  → domain/pricing_model.save_version
+      model_repo.create_pricing_model           new version, inactive, with its own `features`
+                                                and `target` (adr_nett|arr) (0008, 0009, 0056)
       model_repo.link_feedback                  records which feedback this version used
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}
@@ -505,14 +514,20 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
 GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
   → domain/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
-      per night: build_features row, the night's events, events_source
+      per night: build_features row (booked_on = today), keep the version's
+                 `features`; the night's events, events_source
       fingerprint = sha256(model id + those inputs)
       snapshot_repo.latest_snapshots            one query for the range
       fingerprint matches → reuse the snapshot; the model doesn't run
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
-  ← one per night: rate, 80% interval, factors in €
+  ← one per night: rate, rate_basis, lead_days, 80% interval, factors in €
 ```
+
+A version trained on booked rooms also reads days booked ahead
+([0056](decisions/0056-lead-days-input.md)): the rate is the price if booked
+today, so each night re-prices daily and the response carries `lead_days`.
+Serving keeps each version's own `features`, so older versions are unchanged.
 
 A recommendation is stored when it's made and reused while its inputs hold
 ([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)). Asking
@@ -604,12 +619,15 @@ models are trained in memory and thrown away.
 
 ```
 cli.backtest
-  → domain/backtest.run_backtest
+  → domain/backtest.load_backtest               then the session closes
       pricing_model.training_data               the same inputs training sees
       cutoff = newest night − test_days (default 90)
-      one EBM on --inputs (default: all FEATURES)
-      ml/base.score                             every test night
-      only with --baselines:
+  → domain/backtest.run_backtest                no database
+      one EBM on --inputs (default: every input the training data has),
+        identical rows merged as in training
+      ml/base.score                             every test row: night or booked room
+      on booked rooms: MAE by days booked ahead
+      only with --baselines (refused on booked rooms):
         ml/baselines on nights ≤ cutoff         same weekday last year,
                                                 last 4 weeks' weekday mean
         ml/base.score                           each baseline vs the model
@@ -617,9 +635,11 @@ cli.backtest
   ← scores (+ baseline table), and a PNG in backend/backtest-out/
 ```
 
-`ml/features.INPUT_GROUPS` sorts every input into groups (calendar and
-events); `--inputs` takes group names or single features. Compare input sets by
-running it once per set. `--start` leaves out earlier nights, and
+`ml/features.INPUT_GROUPS` sorts every input into groups (calendar, events and
+lead_days); `--inputs` takes group names or single features. Compare input sets
+by running it once per set: `--inputs calendar,events` leaves out days booked
+ahead. For a hotel that trains on bookings the test rows are booked rooms, and
+its scores aren't comparable with one trained on nights. `--start` leaves out earlier nights, and
 `--event-days` limits how much event history the model trains on.
 
 ### 6.8 How full a night was on an earlier date
