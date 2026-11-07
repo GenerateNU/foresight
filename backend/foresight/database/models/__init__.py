@@ -3,7 +3,6 @@
 from foresight.database.base import Base
 from foresight.database.models.booking import Booking, BookingCancellation
 from foresight.database.models.city import City
-from foresight.database.models.example_widget import Widget
 from foresight.database.models.feedback import Feedback
 from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
 from foresight.database.models.job import Job
@@ -31,5 +30,4 @@ __all__ = [
     "UserHotel",
     "Weather",
     "RecommendationSnapshot",
-    "Widget",
 ]

@@ -16,7 +16,6 @@ from foresight.routes import (
     auth,
     city,
     event,
-    example_widget,
     feedback,
     health,
     hotel,
@@ -81,7 +80,6 @@ app.include_router(event.router, **login_required)
 app.include_router(ingest.router, **login_required)
 app.include_router(job.router, **login_required)
 app.include_router(pricing_model.router, **login_required)
-app.include_router(example_widget.router, **login_required)
 
 
 @app.get("/docs", include_in_schema=False)
