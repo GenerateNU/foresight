@@ -10,13 +10,11 @@ services:
     branch: main
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
-    # The free plan has no pre-deploy step, so migrations run before the server.
-    # If they fail the server never starts, and the deploy fails with the
-    # previous version still serving.
-    dockerCommand: >-
-      /bin/sh -c ".venv/bin/alembic upgrade head &&
-      exec .venv/bin/uvicorn foresight.main:app
-      --host 0.0.0.0 --port 8000 --workers 1"
+    # The free plan has no pre-deploy step, so start.sh migrates before serving.
+    # If that fails the server never starts, and the deploy fails with the
+    # previous version still serving. Render passes quotes through literally,
+    # so keep the steps in the script, not here.
+    dockerCommand: /bin/sh start.sh
     healthCheckPath: /health
     # A deploy kills running jobs, so only backend changes that passed CI deploy.
     autoDeployTrigger: checksPass
