@@ -1,4 +1,4 @@
-# 0050. The backend is hosted on Render's free plan
+# 0054. The backend is hosted on Render's free plan
 
 **Status:** Accepted · **Date:** 2026-11-07
 
@@ -29,11 +29,12 @@ budget yet, so cost matters more than uptime for now.
 
 ## Consequences
 - The service spins down after 15 minutes with no requests, and the next request
-  waits for it to start. **That kills a running job**, even one that is still
-  working, because only inbound traffic keeps it up. A long backfill needs
-  something requesting the API, or a paid plan.
-- Startup then fails the interrupted job ([0020](0020-jobs-in-the-api-process.md)),
-  so it can be started again from `resume_from`
+  waits for it to start. **That kills a running job and empties the hotel
+  queues**, even when work is still going, because only inbound traffic keeps it
+  up. A long backfill needs something requesting the API, or a paid plan.
+- Startup then fails every queued or running job
+  ([0052](0052-one-upload-route-and-a-queue-per-hotel.md)), so each can be
+  started again from `resume_from`
   ([0022](0022-no-retries-resume-instead.md)).
 - Every start checks for migrations, which adds a little to each cold start.
 - A migration runs while the previous version is still serving, so it has to
