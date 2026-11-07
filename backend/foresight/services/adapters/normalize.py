@@ -164,10 +164,6 @@ class NormalizedEvent:
         return normalize_title(self.title)
 
     @property
-    def city_slug(self) -> str:
-        return slugify_city(self.city)
-
-    @property
     def dedupe_key(self) -> str:
         return dedupe_key(
             title=self.title, city=self.city, start_local_date=self.start_local_date

@@ -221,18 +221,6 @@ def _importance(event: Event) -> tuple[int, int, int]:
     )
 
 
-async def market_totals(
-    session: AsyncSession, city_id: int
-) -> tuple[dict[str, int], dict[str, int]]:
-    """Events in the city by status, and their observations by source."""
-    by_status = await event_repo.count_events_by_status(session, city_id)
-    by_source = await event_repo.count_observations_by_source(session, city_id)
-    return (
-        {status.value: n for status, n in by_status.items()},
-        {source.value: n for source, n in by_source.items()},
-    )
-
-
 async def _absorb_key_collision(
     session: AsyncSession, event_id: int, new_key: str
 ) -> int:

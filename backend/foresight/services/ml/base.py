@@ -79,32 +79,6 @@ class Model(ABC):
         """
         raise NotImplementedError(f"{self.name} does not produce intervals")
 
-    def evaluate(
-        self, x: pd.DataFrame, y: pd.Series, alpha: float | None = None
-    ) -> dict[str, float | None]:
-        """Scores the model's predictions against the true values.
-
-        Args:
-            x (pd.DataFrame): Test features.
-            y (pd.Series): True target values.
-            alpha (float | None): Significance level for the interval coverage
-                check. None uses the model's own default.
-
-        Returns:
-            dict[str, float | None]: mae, rmse, mape, r2, bias (mean of
-                predicted - true; positive means it predicts too high), and
-                coverage (share of y inside the (1 - alpha) interval. None if the model
-                has no intervals).
-        """
-        try:
-            if alpha is None:
-                _, lo, hi = self.predict_interval(x)
-            else:
-                _, lo, hi = self.predict_interval(x, alpha)
-        except NotImplementedError:
-            lo = hi = None
-        return score(y, self.predict(x), lo, hi)
-
 
 def score(
     y_true: Any,
