@@ -86,6 +86,31 @@ For production, register `https://<api-domain>/auth/google/callback` too and
 set `GOOGLE_REDIRECT_URI`, `FRONTEND_URL` and the `SESSION_*` settings (see
 `.env.example`). The frontend must call the API with `credentials: "include"`.
 
+## Deploying to Render
+
+`render.yaml` declares the API on Render's free plan, with Neon as the database.
+See `docs/decisions/0054-hosted-on-render.md` for why.
+
+1. Check the Neon `production` host says `us-east-1`. For another region, change
+   `region` in `render.yaml` first, because Render can't change it afterwards.
+2. In Render, choose **New > Blueprint** and pick this repo. Enter the values it
+   asks for:
+   - `DATABASE_URL`: the pooled (`-pooler`) Neon URL
+   - `DATABASE_URL_UNPOOLED`: the direct Neon URL
+   - `PREDICTHQ_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_REDIRECT_URI`: `https://<service>.onrender.com/auth/google/callback`.
+     The service's URL appears once it exists, so correct this afterwards if the
+     name was taken.
+3. Add the same redirect URI to the Google OAuth client.
+4. Check it:
+   - `https://<service>.onrender.com/health` returns `{"status":"ok"}`.
+   - Open `/auth/google/login` and sign in. You land on `FRONTEND_URL`, which
+     is a dead page until a frontend is hosted. Then `/auth/me` shows your user.
+
+Each deploy applies migrations before the server starts, and a failed migration
+fails the deploy. The service sleeps after 15 minutes without requests, so the
+first request after that is slow, and any job still running is killed.
+
 ## Code Quality
 
 ```bash

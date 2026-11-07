@@ -75,3 +75,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0052](0052-one-upload-route-and-a-queue-per-hotel.md) | One upload route for every hotel CSV, and a job queue per hotel | jobs / API |
 | [0053](0053-drop-base-rate.md) | Room types have no base rate | data model |
 | [0055](0055-events-back-in-the-model.md) | Events are back in the model, counted from when PredictHQ first saw them | ML |
+| [0054](0054-hosted-on-render.md) | The backend is hosted on Render's free plan | operations |
