@@ -17,22 +17,13 @@ from foresight.services.domain.backtest import (
     in_feature_order,
 )
 from foresight.services.domain.pricing_model import TrainingData
-from foresight.services.ml.features import (
-    BACKTEST_INPUTS,
-    BOOKING_INPUTS,
-    FEATURES,
-    INPUT_GROUPS,
-)
+from foresight.services.ml.features import FEATURES, INPUT_GROUPS
 
 
 def test_groups_cover_every_input_once() -> None:
     grouped = Counter(c for columns in INPUT_GROUPS.values() for c in columns)
-    assert sorted(grouped) == sorted(BACKTEST_INPUTS)
+    assert sorted(grouped) == sorted(FEATURES)
     assert set(grouped.values()) == {1}
-
-
-def test_booking_inputs_are_not_served() -> None:
-    assert not set(BOOKING_INPUTS) & set(FEATURES)
 
 
 def test_parse_expands_groups_and_keeps_feature_order() -> None:
@@ -50,10 +41,6 @@ def test_parse_mixes_groups_and_features_without_repeats() -> None:
 def test_parse_rejects_unknown_or_empty(text: str) -> None:
     with pytest.raises(argparse.ArgumentTypeError):
         _parse_inputs(text)
-
-
-def test_parse_accepts_the_bookings_group() -> None:
-    assert _parse_inputs("calendar,bookings")[-2:] == BOOKING_INPUTS
 
 
 def test_describe_names_whole_groups() -> None:

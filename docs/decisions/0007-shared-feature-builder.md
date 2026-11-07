@@ -1,6 +1,6 @@
 # 0007. One feature builder for training and serving
 
-**Status:** Accepted; lead time revisited in [0049](0049-booking-pace-measured-before-served.md) · **Date:** 2026-10-13
+**Status:** Accepted; lead time revisited in [0049](0049-booking-pace-measured-before-served.md), flight columns removed in [0050](0050-drop-flights-and-booking-pace.md) · **Date:** 2026-10-13
 
 ## Context
 If training and serving compute features differently, the model sees inputs at

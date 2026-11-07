@@ -20,7 +20,7 @@ class Hotel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    # Its market. Timezone, airport and every outside signal come from here.
+    # Its market. Timezone and every outside signal come from here.
     # RESTRICT: a city can't be deleted while hotels are in it.
     city_id: Mapped[int] = mapped_column(ForeignKey("cities.id", ondelete="RESTRICT"))
     total_rooms: Mapped[int]

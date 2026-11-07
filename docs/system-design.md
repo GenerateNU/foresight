@@ -11,7 +11,7 @@ repeating them.
 ## 1. The system in one page
 
 Foresight stores a hotel's nightly sales history and the outside signals that
-move demand (weather, events, flights), so a pricing model can recommend a
+move demand (weather, events), so a pricing model can recommend a
 nightly rate.
 
 ```
@@ -90,7 +90,7 @@ backend/foresight/
   routes/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
-    city.py hotel.py weather.py event.py flight.py ingest.py job.py
+    city.py hotel.py weather.py event.py ingest.py job.py
     pricing_model.py feedback.py health.py
     auth.py                Google sign-in, logout, /auth/me
     access.py              CurrentUserDep
@@ -98,22 +98,21 @@ backend/foresight/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured /
                            NotSignedIn / Forbidden
     job.py                 job kinds, validation, handlers, lifecycle
-    domain/                booking, city, hotel, user, weather, weather_coverage, event, flight,
+    domain/                booking, city, hotel, user, weather, weather_coverage, event,
                            model_inputs, pricing_model, recommendation, feedback, freshness
     ingest/                weather, event, performance, bookings, window
-    adapters/              open_meteo, predicthq, aerodatabox, opensky, cso,
-                           hotel_csv, guestline, normalize, textdates
+    adapters/              open_meteo, predicthq, hotel_csv, guestline, normalize
     ml/                    base, ebm, features, weighting, baselines
   repository/
     upsert.py pagination.py
     booking.py city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
     user.py
-    signals/               weather, event, flight, competitor_rate
+    signals/               weather, event
   database/
     base.py enums.py session.py
     models/                booking, city, hotel, job, pricing_model, recommendation, feedback,
                            user
-      signals/             weather, event, flight, competitor_rate
+      signals/             weather, event
     migrations/
 ```
 
@@ -196,8 +195,6 @@ Every write from an outside source or a file is an upsert on a natural key
 | Table | Natural key |
 |---|---|
 | `weather` | city_id, weather_date, is_forecast, source |
-| `flight_arrivals` | city_id, arrival_date, source |
-| `competitor_rates` | city_id, hotel_name, stay_date, source |
 | `daily_performance` | room_type_id, stay_date |
 | `bookings` | hotel_id, book_ref |
 | `booking_cancellations` | hotel_id, cancel_ref |
@@ -233,7 +230,7 @@ HTTP schemas live in the route module that uses them
 
 Lists that grow without bound take `?limit=&offset=` (default 50, max 200) and
 return `{"items", "total", "limit", "offset"}`: performance, weather, events,
-flight arrivals and jobs. Cities, hotels and room types return a plain list.
+and jobs. Cities, hotels and room types return a plain list.
 
 ### 3.7 Outside HTTP
 
@@ -244,9 +241,7 @@ turns its source's quota responses into a named error:
 | Source | Quota error |
 |---|---|
 | PredictHQ | 402/403 → `OutOfCreditsError`; 429 → `RateLimitedError` |
-| AeroDataBox | 429 → `RateLimitedError`; paces requests 1.1s apart |
-| OpenSky | 429 → `CreditsExhaustedError`; refreshes its token on 401 |
-| Open-Meteo, CSO | none; any failure raises |
+| Open-Meteo | none; any failure raises |
 
 ---
 
@@ -264,9 +259,9 @@ cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hot
         │           └─< jobs                              (ingest runs)
         │
         ├─< weather                                       ┐
-        ├─< events ─< event_observations                  │ outside signals,
-        ├─< flight_arrivals                               │ shared by every hotel
-        └─< competitor_rates                              ┘ in the city
+        └─< events ─< event_observations                  ┘ outside signals,
+                                                            shared by every hotel
+                                                            in the city
 
 users ─< user_hotels >─ hotels                              (who works for which hotel)
 users ─< feedback >─ recommendation_snapshots               (who said it; the rate they saw)
@@ -274,7 +269,7 @@ users ─< feedback >─ recommendation_snapshots               (who said it; th
 
 **Cities are the market** ([0017](decisions/0017-cities-are-the-market.md)).
 A city holds its name, a unique normalized slug, country, IANA timezone,
-centre coordinates and both airport codes. Weather is read and events are
+and centre coordinates. Weather is read and events are
 searched at the centre; "today" for a job is today in the city's timezone. A
 hotel keeps its own coordinates for distance to venues.
 
@@ -467,9 +462,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
         ml/weighting.training_mask              drop unpriced nights (0004)
         domain/model_inputs.weather_for         recorded weather only
         domain/model_inputs.events_for          counted events + fetched nights (0041)
-        domain/model_inputs.bookings_for        rooms booked before each night (0049)
-        ml/features.build_features              unfetched nights' events empty; flights empty
-        ml/features.booking_features            backtest only, not in FEATURES (0049)
+        ml/features.build_features              unfetched nights' events empty
         ml/weighting.sample_weights             occupancy of sellable rooms (0003)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
@@ -576,7 +569,7 @@ user.
 ### 6.7 Backtest
 
 `just backtest 7 [--baselines] [--inputs …] [--test-days N] [--event-days N]
-[--start DATE] [--lead-days N]` checks whether the model, and each input, is
+[--start DATE]` checks whether the model, and each input, is
 worth having
 ([0042](decisions/0042-how-the-backtest-judges-the-model.md)). Read-only:
 models are trained in memory and thrown away.
@@ -599,14 +592,10 @@ cli.backtest
 ```
 
 `ml/features.INPUT_GROUPS` sorts every input into calendar, weather, events
-(holiday flags included), flights and bookings; `--inputs` takes group names or
-single features. Compare input sets by running it once per set.
-`--event-days N` limits only the event inputs to the N days before the
-cutoff, to see how much event history the model needs. Bookings are only
-measured here, never served
-([0049](decisions/0049-booking-pace-measured-before-served.md)): run them with
-`--start` set to the first night the booking export fully covers, and
-`--lead-days` for how far before each night they're read (default 14).
+(holiday flags included); `--inputs` takes group names or single features.
+Compare input sets by running it once per set. `--event-days N` limits only
+the event inputs to the N days before the cutoff, to see how much event
+history the model needs. `--start` leaves out earlier nights.
 
 ### 6.8 How full a night was on an earlier date
 
@@ -653,7 +642,6 @@ hotel that's from 21 Dec 2024 ([guestline-data.md](guestline-data.md)).
 | GET | `/hotels/{id}/weather` | paginated; forecast and recorded rows |
 | GET | `/hotels/{id}/coverage/weather` | recorded-weather gaps in a window |
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
-| GET | `/hotels/{id}/flight-arrivals` | paginated; one row per source per day |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
 | POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)) |
 | GET | `/hotels/{id}/feedback?start=&end=` | current feedback per night (≤ 366); `include_history=true` adds earlier versions |
@@ -684,8 +672,6 @@ setting is listed in `.env.example`.
 |---|---|
 | `DATABASE_URL`, `DEBUG` | `database/session.py` (`DEBUG` echoes SQL) |
 | `PREDICTHQ_TOKEN` | events job |
-| `XRAPIDAPI_KEY` | AeroDataBox adapter (no job yet) |
-| `OPENSKY_CLIENT_ID`, `_SECRET` | OpenSky adapter (no job yet) |
 | `GOOGLE_CLIENT_ID`, `_SECRET`, `GOOGLE_REDIRECT_URI` | the OAuth client in `routes/auth.py`; the 503 check in `services/domain/user.py` |
 | `SESSION_SECRET`, `SESSION_MAX_AGE_SECONDS`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE` | the session middleware in `main.py` (the secret also in the 503 check) |
 | `FRONTEND_URL` | the CORS origin in `main.py`, and where the callback redirects |
@@ -700,28 +686,23 @@ sign-in is requested.
 
 | Piece | State |
 |---|---|
-| `adapters/aerodatabox.py`, `opensky.py` | work; no flights job yet, so `flight_arrivals` stays empty |
-| `adapters/cso.py` | monthly airport passengers; needs a monthly table before it can be stored |
-| `competitor_rates` | table and upsert; no source |
 | `ingest/bookings.py` | parses and saves bookings and cancellations; no upload route yet (#89) |
-| `BOOKING_INPUTS` | built for training and scored by the backtest; not served until uploads exist (#89, 0049) |
+
+Flights, competitor rates and booking-pace inputs were removed
+([0050](decisions/0050-drop-flights-and-booking-pace.md)).
 
 ---
 
 ## 10. Open questions
 
-1. **Events and flights in the model.** Both have feature columns but no
-   history to train on (PredictHQ shows only recent months; no flights job).
-2. **Choosing between sources.** Weather is decided (recorded beats forecast).
-   Which flight source wins, and whether CSO's monthly totals are spread over
-   days, isn't.
-3. **Flights ingest.** Waiting on the CSO table and the choice in question 2.
-4. **Scheduling.** The routine refreshes (forecast, recent events) only run
+1. **Events in the model.** They have feature columns but little history to
+   train on (PredictHQ shows only recent months).
+2. **Scheduling.** The routine refreshes (forecast, recent events) only run
    when called. Recommendations are stored as they're requested.
-5. **Tests.** The suite covers recommendations, events on a night, freshness
-   and users, but not ingest or training. Nothing has been run against real
-   PredictHQ, AeroDataBox or OpenSky keys.
-6. **Amended bookings.** A booking keeps the dates it had when first uploaded
+3. **Tests.** The suite covers recommendations, events on a night, freshness
+   and users, but not ingest or training. Nothing has been run against a real
+   PredictHQ key.
+4. **Amended bookings.** A booking keeps the dates it had when first uploaded
    ([0047](decisions/0047-bookings-and-cancellations.md)), and how often dates
    change isn't known. The rebuild (6.8) matches final rooms sold, but nothing
    independent checks its counts at earlier dates.

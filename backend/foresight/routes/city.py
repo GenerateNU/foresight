@@ -1,4 +1,4 @@
-"""Cities: the markets hotels sit in. Weather, events and flights are kept per
+"""Cities: the markets hotels sit in. Weather and events are kept per
 city and shared by its hotels."""
 
 from typing import Annotated, Any
@@ -47,18 +47,6 @@ _LONGITUDE: dict[str, Any] = {
     "description": "Centre of the market, in degrees; east is positive, west negative",
     "examples": [-56.78],
 }
-_IATA: dict[str, Any] = {
-    "min_length": 3,
-    "max_length": 3,
-    "description": "IATA code of the city's main airport",
-    "examples": ["XXX"],
-}
-_ICAO: dict[str, Any] = {
-    "min_length": 4,
-    "max_length": 4,
-    "description": "ICAO code of the city's main airport",
-    "examples": ["XXXX"],
-}
 
 
 def _check_zone(value: str | None) -> str | None:
@@ -76,8 +64,6 @@ class CityRequest(RequestSchema):
     timezone: str = Field(**_TIMEZONE)
     latitude: float = Field(**_LATITUDE)
     longitude: float = Field(**_LONGITUDE)
-    airport_iata: str | None = Field(default=None, **_IATA)
-    airport_icao: str | None = Field(default=None, **_ICAO)
 
     _zone = field_validator("timezone")(_check_zone)
 
@@ -90,8 +76,6 @@ class CityUpdateRequest(RequestSchema):
     timezone: str | None = Field(default=None, **_TIMEZONE)
     latitude: float | None = Field(default=None, **_LATITUDE)
     longitude: float | None = Field(default=None, **_LONGITUDE)
-    airport_iata: str | None = Field(default=None, **_IATA)
-    airport_icao: str | None = Field(default=None, **_ICAO)
 
     _zone = field_validator("timezone")(_check_zone)
 
@@ -112,8 +96,6 @@ class CityResponse(ResponseSchema):
     timezone: str = Field(description="IANA timezone; stay nights are local to it")
     latitude: float = Field(description="Centre of the market, in degrees")
     longitude: float = Field(description="Centre of the market, in degrees")
-    airport_iata: str | None = Field(description="Main airport's IATA code")
-    airport_icao: str | None = Field(description="Main airport's ICAO code")
 
 
 CityId = Annotated[int, Path(description="The city's id", examples=[1])]

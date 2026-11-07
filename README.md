@@ -1,6 +1,6 @@
 # Foresight
 
-AI revenue intelligence platform for boutique hotels. Combines events, weather, flights, and competitor pricing to recommend optimal room rates.
+AI revenue intelligence platform for boutique hotels. Combines the hotel's history with events and weather to recommend optimal room rates.
 
 ## Prerequisites
 

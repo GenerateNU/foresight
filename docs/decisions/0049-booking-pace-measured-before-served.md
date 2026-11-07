@@ -1,6 +1,6 @@
 # 0049. Booking pace is measured in the backtest before it's served
 
-**Status:** Accepted · **Date:** 2026-11-02
+**Status:** Superseded by [0050](0050-drop-flights-and-booking-pace.md) · **Date:** 2026-11-02
 
 Revisits the lead-time exclusion in [0007](0007-shared-feature-builder.md).
 

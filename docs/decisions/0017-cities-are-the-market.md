@@ -1,6 +1,6 @@
 # 0017. Cities are the market every signal belongs to
 
-**Status:** Accepted · **Date:** 2026-10-15
+**Status:** Accepted; airport codes removed in [0050](0050-drop-flights-and-booking-pace.md) · **Date:** 2026-10-15
 
 Supersedes [0010](0010-hotel-airport-codes.md).
 

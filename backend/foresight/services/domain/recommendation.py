@@ -41,7 +41,6 @@ from foresight.services.domain.city import local_today
 from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import (
-    NO_FLIGHTS,
     events_for,
     hotel_location,
     weather_for,
@@ -239,7 +238,6 @@ async def _load_nights(
         frame,
         city_events.frame,
         weather.frame,
-        NO_FLIGHTS,
         events_fetched=city_events.fetched,
         events_impacts=city_events.impacts,
         hotel_location=hotel_location(hotel),
