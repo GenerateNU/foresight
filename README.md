@@ -89,7 +89,7 @@ set `GOOGLE_REDIRECT_URI`, `FRONTEND_URL` and the `SESSION_*` settings (see
 ## Deploying to Render
 
 `render.yaml` declares the API on Render's free plan, with Neon as the database.
-See `docs/decisions/0050-hosted-on-render.md` for why.
+See `docs/decisions/0054-hosted-on-render.md` for why.
 
 1. Check the Neon `production` host says `us-east-1`. For another region, change
    `region` in `render.yaml` first, because Render can't change it afterwards.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Production start: apply migrations, then serve (decision 0050).
+# Production start: apply migrations, then serve (decision 0054).
 # If a migration fails the server never starts, so the deploy fails.
 set -e
 .venv/bin/alembic upgrade head

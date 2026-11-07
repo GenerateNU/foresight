@@ -45,7 +45,7 @@ CMD ["uv", "run", "uvicorn", "foresight.main:app", \
 # One worker: background jobs run inside the API process and a job's uploaded
 # files live in its memory, so a second worker would split them.
 # Keep this stage last: render.yaml can't name a target, so the last one is built.
-# start.sh applies migrations first (decision 0050).
+# start.sh applies migrations first (decision 0054).
 FROM base AS prod
 
 CMD ["/bin/sh", "start.sh"]
