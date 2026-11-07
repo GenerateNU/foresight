@@ -6,27 +6,27 @@ from typing import TYPE_CHECKING
 
 from foresight.repository import booking as booking_repo
 from foresight.repository import hotel as hotel_repo
-from foresight.services.adapters import guestline
+from foresight.services.adapters.hotel import cancellations, reservations
 from foresight.services.errors import InvalidRequestError, NotFoundError
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.repository.upsert import Outcome
-    from foresight.services.adapters.guestline import Parsed
+    from foresight.services.adapters.hotel.common import Parsed
 
 
 def parse_bookings(name: str, content: bytes) -> Parsed:
     try:
-        return guestline.parse_bookings(content)
-    except guestline.PARSE_ERRORS as exc:
+        return reservations.parse(content)
+    except reservations.PARSE_ERRORS as exc:
         raise InvalidRequestError(f"could not import {name}: {exc}") from exc
 
 
 def parse_cancellations(name: str, content: bytes) -> Parsed:
     try:
-        return guestline.parse_cancellations(content)
-    except guestline.PARSE_ERRORS as exc:
+        return cancellations.parse(content)
+    except cancellations.PARSE_ERRORS as exc:
         raise InvalidRequestError(f"could not import {name}: {exc}") from exc
 
 

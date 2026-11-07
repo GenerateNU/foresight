@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from foresight.repository import hotel as hotel_repo
-from foresight.services.adapters.hotel_csv import (
+from foresight.services.adapters.hotel.actual_forecast import (
     PARSE_ERRORS,
     ROOM_TYPE,
     HotelDataParser,
