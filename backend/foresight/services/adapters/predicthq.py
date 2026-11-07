@@ -228,6 +228,15 @@ def accommodation(raw: Mapping[str, Any]) -> tuple[float | None, dict[date, floa
     return (None if spend is None else float(spend)), nights
 
 
+def first_seen(raw: Mapping[str, Any]) -> date | None:
+    """The UTC date PredictHQ first had the event in its dataset, or None if
+    the record doesn't say. PredictHQ notes this isn't an announcement date."""
+    value = raw.get("first_seen")
+    if not value:
+        return None
+    return _parse_instant(value).astimezone(UTC).date()
+
+
 def _parse_instant(value: str) -> datetime:
     moment = datetime.fromisoformat(value)
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
