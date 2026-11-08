@@ -69,6 +69,7 @@ class JobKind(StrEnum):
     RESERVATIONS = "reservations"  # Daily New Reservations
     CANCELLATIONS = "cancellations"  # Cancellations
     TRAIN = "train"  # a new pricing model version
+    TUNE = "tune"  # the active model corrected with the manager's rates
 
 
 class JobStatus(StrEnum):
@@ -81,7 +82,11 @@ class JobStatus(StrEnum):
 
 
 class FeedbackVerdict(StrEnum):
-    """What the manager thinks of the recommended rate for a night."""
+    """How the manager's rate compares with the one we recommended.
+
+    Worked out by the server from the two rates, never sent by the client
+    (decision 0056): a higher rate means ours was too low, and so on.
+    """
 
     TOO_HIGH = "too_high"
     TOO_LOW = "too_low"
@@ -112,4 +117,7 @@ class FeedbackReasonTag(StrEnum):
     COMPETITOR_PRICING = "competitor_pricing"
     LOCAL_KNOWLEDGE = "local_knowledge"
     GUT_FEEL = "gut_feel"
+    # Something that won't happen again (a buyout, a private event), so the
+    # model shouldn't learn a pattern from it.
+    ONE_OFF = "one_off"
     OTHER = "other"
