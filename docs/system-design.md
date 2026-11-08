@@ -289,13 +289,16 @@ Creating a hotel links its creator, and any member can link a colleague with
 `POST /hotels/{id}/users`.
 A hotel is reachable only through its link.
 
-**Feedback** ([0043](decisions/0043-manager-feedback-is-versioned.md)) is what
-the manager says about a night's rate: a required verdict, an optional rate,
-and a reason as tags from a fixed list, free text, or both. Rows are only added;
-a change is the next `version` for that room type and night, the highest is
-current, and earlier ones keep their times. It records the snapshot the manager
-saw (null for a past night never saved), whether it came before or after the
-night (set by the server), and who gave it (null for feedback saved before sign-in was required).
+**Feedback** ([0043](decisions/0043-manager-feedback-is-versioned.md),
+[0050](decisions/0050-manager-sends-the-rate-they-chose.md)) is the rate the
+manager chose for a night, sent only when they change ours, with an optional
+reason as tags from a fixed list, free text, or both. It names the snapshot the
+manager saw, and the server sets the verdict by comparing the two rates: higher
+means ours was too low, lower too high, the same about right. Rows are only
+added; a change is the next `version` for that room type and night, the highest
+is current, and earlier ones keep their times. It also records whether it came
+before or after the night (set by the server), and who gave it (null for
+feedback saved before sign-in was required).
 
 **Foreign keys** always state `ON DELETE`:
 
@@ -506,6 +509,15 @@ A rate on the right side of the verdict replaces the night's training rate
 weight and "about right" doubles it. Feedback from before the night isn't
 used. Each model version records the feedback it used in
 `pricing_model_feedback`, and its `metrics` count it.
+
+A daily tune-up (`POST /hotels/{id}/tune`, a `tune` job;
+[0051](decisions/0051-daily-tune-up.md)) corrects the active model without
+retraining it. `domain/tuning.tune` keeps the active model's base as it is and
+fits a small EBM on the gap between its predictions and the manager's current
+rates, before or after the night. `ml/ebm.TunedEBMModel` adds the two, and is
+saved as a new `ebm-tuned` version that serves by default. Each tune-up starts
+again from the base, so corrections never stack; with fewer than 5 rates it
+saves nothing.
 
 Every training run is a new version
 ([0029](decisions/0029-every-training-run-is-a-new-version.md)):

@@ -66,7 +66,7 @@ _NIGHT_COLUMNS = [
     "rooms_out_of_service",
 ]
 _FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "verdict", "rate"]
-_LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
+LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +163,7 @@ async def train(
         artifact=artifact,
         features=FEATURES,
         metrics=metrics,
-        lib_versions={lib: version(lib) for lib in _LIBS},
+        lib_versions={lib: version(lib) for lib in LIBS},
         data_start=nights["stay_date"].min(),
         data_end=nights["stay_date"].max(),
     )

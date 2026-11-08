@@ -8,7 +8,7 @@ Every run makes a new version, so earlier ones stay for comparison. Poll
 from datetime import date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, status
+from fastapi import APIRouter, BackgroundTasks, Body, Query, status
 from pydantic import Field
 
 from foresight import worker
@@ -182,6 +182,32 @@ async def train_model(
         activate=data.activate,
         ebm_params=data.settings.model_dump(exclude_none=True),
     )
+    tasks.add_task(worker.run_job, job.id)
+    return JobResponse.model_validate(job)
+
+
+@router.post(
+    "/hotels/{hotel_id}/tune",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=JobResponse,
+)
+async def tune_model(
+    hotel_id: HotelId,
+    session: SessionDep,
+    tasks: BackgroundTasks,
+    activate: Annotated[
+        bool,
+        Query(description="Serve the tuned version once it's saved"),
+    ] = True,
+) -> JobResponse:
+    """Correct the active model with the manager's rates, without retraining it.
+
+    Meant to run daily. A small model learns the gap between the active
+    model's rates and the manager's, and the two are saved as a new version.
+    Skipped, saving nothing, with too few manager rates; the job's progress
+    says why. 422 if the hotel has no active model.
+    """
+    job = await job_service.start_tune_job(session, hotel_id, activate=activate)
     tasks.add_task(worker.run_job, job.id)
     return JobResponse.model_validate(job)
 

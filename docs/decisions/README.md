@@ -70,3 +70,5 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0047](0047-bookings-and-cancellations.md) | Bookings and cancellations are stored as Guestline gives them | data model |
 | [0048](0048-rooms-booked-rebuilt-when-asked.md) | How full a night was is rebuilt when asked | data model |
 | [0049](0049-booking-pace-measured-before-served.md) | Booking pace is measured in the backtest before it's served | ML |
+| [0050](0050-manager-sends-the-rate-they-chose.md) | The manager sends the rate they chose; the verdict is worked out from it | API |
+| [0051](0051-daily-tune-up.md) | A daily tune-up corrects the active model with the manager's rates | ML |

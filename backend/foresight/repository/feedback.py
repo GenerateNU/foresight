@@ -135,3 +135,34 @@ async def training_feedback(
         .order_by(current.c.stay_date, RoomType.id)
     )
     return (await session.execute(stmt)).mappings().all()
+
+
+async def tuning_feedback(
+    session: AsyncSession, hotel_id: int
+) -> Sequence[Mapping[str, Any]]:
+    """The manager's rates a tune-up learns from, one row per room type and night.
+
+    Takes each night's current (highest) version, given before or after the
+    night, and keeps it if it has a rate (decision 0051). Rows carry id,
+    stay_date, room_type_id, room_type (its name) and rate, oldest night first.
+    """
+    current = (
+        select(Feedback)
+        .where(Feedback.hotel_id == hotel_id)
+        .distinct(Feedback.room_type_id, Feedback.stay_date)
+        .order_by(Feedback.room_type_id, Feedback.stay_date, Feedback.version.desc())
+        .subquery()
+    )
+    stmt = (
+        select(
+            current.c.id,
+            current.c.stay_date,
+            current.c.room_type_id,
+            RoomType.name.label("room_type"),
+            current.c.rate,
+        )
+        .join(RoomType, current.c.room_type_id == RoomType.id)
+        .where(current.c.rate.is_not(None))
+        .order_by(current.c.stay_date, RoomType.id)
+    )
+    return (await session.execute(stmt)).mappings().all()

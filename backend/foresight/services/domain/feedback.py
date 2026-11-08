@@ -2,13 +2,15 @@
 
 Feedback is only ever added: changing it adds the next version for that room
 type and night, and the highest version is the current one (decision 0043).
+The manager sends the rate they chose; whether ours was too high, too low or
+about right is worked out from it (decision 0050).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from foresight.database.enums import FeedbackTiming
+from foresight.database.enums import FeedbackTiming, FeedbackVerdict
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import recommendation as snapshot_repo
 from foresight.services.domain.city import local_today
@@ -22,10 +24,20 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.enums import FeedbackReasonTag, FeedbackVerdict
+    from foresight.database.enums import FeedbackReasonTag
     from foresight.database.models.feedback import Feedback
 
 MAX_NIGHTS = 366
+
+
+def verdict_for(rate: Decimal, recommended: Decimal) -> FeedbackVerdict:
+    """How the manager's rate compares with ours: if they charge more, ours
+    was too low; if less, too high; the same to the cent, about right."""
+    if rate > recommended:
+        return FeedbackVerdict.TOO_LOW
+    if rate < recommended:
+        return FeedbackVerdict.TOO_HIGH
+    return FeedbackVerdict.ABOUT_RIGHT
 
 
 async def add_feedback(
@@ -34,15 +46,16 @@ async def add_feedback(
     *,
     room_type_id: int,
     stay_date: date,
-    verdict: FeedbackVerdict,
-    rate: Decimal | None,
+    rate: Decimal,
     reason_tags: list[FeedbackReasonTag],
     reason_text: str | None,
-    snapshot_id: int | None,
+    snapshot_id: int,
     user_id: int | None = None,
 ) -> Feedback:
     """Save the next version of the feedback for this room type and night.
 
+    `rate` is what the manager chose to charge, and `snapshot_id` the
+    recommendation they saw; the verdict is worked out by comparing the two.
     Whether it came before or after the night is set here, from the stay date
     in the hotel's timezone: a night before today is over; today and later are
     still ahead. A repeated tag is kept once.
@@ -58,14 +71,13 @@ async def add_feedback(
     if room_type.hotel_id != hotel.id:
         raise NotFoundError("Room type", room_type_id)
 
-    if snapshot_id is not None:
-        snapshot = await snapshot_repo.get_snapshot(session, snapshot_id)
-        if snapshot is None or snapshot.hotel_id != hotel.id:
-            raise NotFoundError("Snapshot", snapshot_id)
-        if snapshot.room_type_id != room_type.id or snapshot.stay_date != stay_date:
-            raise InvalidRequestError(
-                f"snapshot {snapshot_id} is for another room type or night"
-            )
+    snapshot = await snapshot_repo.get_snapshot(session, snapshot_id)
+    if snapshot is None or snapshot.hotel_id != hotel.id:
+        raise NotFoundError("Snapshot", snapshot_id)
+    if snapshot.room_type_id != room_type.id or snapshot.stay_date != stay_date:
+        raise InvalidRequestError(
+            f"snapshot {snapshot_id} is for another room type or night"
+        )
 
     timing = (
         FeedbackTiming.AFTER
@@ -79,7 +91,7 @@ async def add_feedback(
         stay_date=stay_date,
         snapshot_id=snapshot_id,
         user_id=user_id,
-        verdict=verdict,
+        verdict=verdict_for(rate, snapshot.rate),
         rate=rate,
         reason_tags=list(dict.fromkeys(reason_tags)),
         reason_text=reason_text,
