@@ -24,6 +24,15 @@ Calendar (`room_type`, `day_of_week`, `month`) plus Irish public holidays, hotel
   a lagged value.
 - Anything from PredictHQ is tested differently, because its history is only
   about 90 days.
+- Features are built as they would be known 30 days before each night.
+- Nights without a price are skipped (about 20 each December), and 2026 stays
+  out of the tests.
+- A feature more than 25% empty overall is dropped before LASSO. The rule was
+  set before seeing any scores.
+- Blank is not zero. Counts can be 0. Averages stay blank. For LASSO only,
+  blanks are filled with the median plus a "was missing" flag. The EBM keeps
+  blanks.
+- Nights before the booking data is trustworthy are left out of screening.
 
 ## All features
 
@@ -101,15 +110,45 @@ Tags: **[in model]**, **[PHQ]** from PredictHQ, **[have data]**, **[no data]**,
   and so affect the events test? How should we order the tests?
 - Which candidates do we test, and which do we skip?
 
+- Which start date for screening the booking and cancellation features? A rule,
+  not a hand-picked date: first booking date plus a lead-time percentile.
+- Are cancelled rooms also in the bookings table? If so, the cancellation rate
+  counts them twice.
+- Why does the cancellation rate jump in 2024?
+- No-shows, and week over week. Leaning towards skipping both.
+
+## Dropped (more than 25% empty)
+
+- `rooms_blocked`, `rooms_out_of_service` and `waitlist` are 100% empty in every
+  year.
+
+## Findings on empty values
+
+Source: `feature_screening.ipynb`, hotel 1, priced nights 2022-2025.
+
+- The booking features are 2.3% empty overall, all before 2022-02-03, where the
+  booking data starts.
+- The cancellation rate is 1.0 for every night before 2022-02-03, because the
+  booking side is empty. The blank test did not catch this.
+- It then falls from 0.68 (February 2022) to 0.36 (June 2022), so bookings made
+  before the data starts are missing for about 5 months.
+- Yearly average cancellation rate: 2022 0.47, 2023 0.45, 2024 0.58, 2025 0.59.
+- `non_leisure_share`, `company_share` and `agent_share` pass the blank test but
+  are nearly constant, so they need a variation check.
+- The blank test checks presence, not correctness, so values need a check too.
+
 ## Known data issues
 
 - 2026 has only 12 nights per month, so it is left out of the tests.
 - No priced nights around Christmas, about Dec 22-28 each year. Cause unknown,
   and we are asking the TL.
+- Booking data starts in February 2022, so early 2022 nights look more cancelled
+  than they were.
 
 ## Next steps
 
-1. Check coverage per source on Neon.
-2. Decide which candidates to test.
-3. Build their columns, then screen with LASSO on the rate left over after the
-   calendar.
+1. Check whether cancelled rooms are also in the bookings table.
+2. Set the screening start with a rule, and drop the nights before it.
+3. Add a variation check for near-constant features.
+4. Build the real candidate columns, then screen with LASSO on the rate left
+   over after the calendar.
