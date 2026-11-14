@@ -229,6 +229,11 @@ print(by_season.loc[list(SEASON_COLORS)].round(2))
 #   2025 only: 18.76, within about 10 cents of the year test, so the baseline
 #   is stable and we freeze it.
 # Season breakdown (6 months each, so read it as a rough guide):
-#   <season table goes here>
+#           months  avg_mae  worst_mae  avg_bias
+# season
+# Winter       6    17.02      27.72      1.93
+# Spring       6    19.25      27.02     -2.65
+# Summer       6    22.56      34.79     -0.95
+# Autumn       6    19.21      28.55      7.18
 # Later features are judged against these numbers, and a change smaller than
 # the monthly spread is treated as noise.
