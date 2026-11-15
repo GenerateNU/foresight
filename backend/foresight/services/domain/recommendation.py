@@ -25,7 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pandas as pd
 
 from foresight.database.enums import EventCategory
+from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
@@ -108,6 +109,9 @@ class Recommendation:
     events_source: str | None  # "fetched" or "missing"; None on older snapshots
     snapshot_id: int | None  # None for a past night priced but not saved
     priced_at: datetime  # when the model produced this rate
+    # The rate the manager set for the night; None if they haven't. Read live,
+    # never stored in a snapshot, so it never triggers a new one (decision 0059).
+    manager_rate: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,7 +196,10 @@ async def get_recommendations(
             out.append(_from_snapshot(snap, hotel, room_type))
         else:
             out.append(_unsaved(hotel, room_type, stored, night, result))
-    return out
+    rates = await feedback_repo.manager_rates(
+        session, room_type.id, start=start, end=end
+    )
+    return [replace(r, manager_rate=rates.get(r.stay_date)) for r in out]
 
 
 # --- inputs -----------------------------------------------------------------

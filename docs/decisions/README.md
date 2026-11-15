@@ -64,7 +64,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0041](0041-events-in-the-model.md) | Events reach the model; nights no backfill covered are unknown (restored by 0055) | ML |
 | [0042](0042-how-the-backtest-judges-the-model.md) | The backtest judges the model against baselines and smaller input sets | ML |
 | [0043](0043-manager-feedback-is-versioned.md) | Manager feedback is added to, never changed | data model |
-| [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight | ML |
+| [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight (superseded by 0059) | ML |
 | [0045](0045-refit-on-every-row.md) | The kept model is refit on every row; the holdout only sets the interval and scores | ML |
 | [0046](0046-record-training-cost.md) | Every version records its fit's time and peak memory | ML |
 | [0047](0047-bookings-and-cancellations.md) | Bookings and cancellations are stored as Guestline gives them | data model |
@@ -79,3 +79,5 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0056](0056-manager-sends-the-rate-they-chose.md) | The manager sends the rate they chose; the verdict is worked out from it | API |
 | [0057](0057-daily-tune-up.md) | A daily tune-up corrects the active model with the manager's rates | ML |
 | [0058](0058-one-off-nights-teach-the-model-nothing.md) | A night tagged one-off teaches the model nothing | ML |
+| [0059](0059-manager-rate-is-the-target-everywhere.md) | The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation | ML |
+| [0060](0060-tune-up-learns-untouched-nights-as-unchanged.md) | The tune-up also learns the nights the manager left alone, as "no change" | ML |

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Date, func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from foresight.database.enums import FeedbackReasonTag, FeedbackTiming
+from foresight.database.enums import FeedbackReasonTag
 from foresight.database.models.feedback import Feedback
 from foresight.database.models.hotel import RoomType
+from foresight.database.models.recommendation import RecommendationSnapshot
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.enums import FeedbackVerdict
+    from foresight.database.enums import FeedbackTiming, FeedbackVerdict
 
 
 async def create_feedback(
@@ -102,16 +103,21 @@ async def list_feedback(
     return (await session.scalars(stmt)).all()
 
 
-async def training_feedback(
-    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
+async def tuning_feedback(
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    start: date | None = None,
+    end: date | None = None,
 ) -> Sequence[Mapping[str, Any]]:
-    """The feedback a training run may use, one row per room type and night.
+    """The manager's rates a tune-up or a full retrain learns from.
 
-    Takes each night's current (highest) version, and keeps it only if it was
-    given after the night: a night whose current version is from before it has
-    no feedback that training can use (decision 0044). A version tagged
-    ONE_OFF is left out: training drops that night (decision 0058). Rows carry
-    id, stay_date, room_type (its name), verdict and rate.
+    One row per room type and night. Takes each night's current (highest)
+    version, given before or after the night, and keeps it if it has a rate
+    (decisions 0057 and 0059) and isn't
+    tagged ONE_OFF (decision 0058). Rows carry id, stay_date, room_type_id,
+    room_type (its name) and rate, oldest night first. `start` and `end` limit
+    the nights.
     """
     current = select(Feedback).where(Feedback.hotel_id == hotel_id)
     if start is not None:
@@ -120,41 +126,6 @@ async def training_feedback(
         current = current.where(Feedback.stay_date <= end)
     current = (
         current.distinct(Feedback.room_type_id, Feedback.stay_date)
-        .order_by(Feedback.room_type_id, Feedback.stay_date, Feedback.version.desc())
-        .subquery()
-    )
-    stmt = (
-        select(
-            current.c.id,
-            current.c.stay_date,
-            RoomType.name.label("room_type"),
-            current.c.verdict,
-            current.c.rate,
-        )
-        .join(RoomType, current.c.room_type_id == RoomType.id)
-        .where(
-            current.c.timing == FeedbackTiming.AFTER,
-            ~current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]),
-        )
-        .order_by(current.c.stay_date, RoomType.id)
-    )
-    return (await session.execute(stmt)).mappings().all()
-
-
-async def tuning_feedback(
-    session: AsyncSession, hotel_id: int
-) -> Sequence[Mapping[str, Any]]:
-    """The manager's rates a tune-up learns from, one row per room type and night.
-
-    Takes each night's current (highest) version, given before or after the
-    night, and keeps it if it has a rate (decision 0057) and isn't tagged
-    ONE_OFF (decision 0058). Rows carry id, stay_date, room_type_id, room_type
-    (its name) and rate, oldest night first.
-    """
-    current = (
-        select(Feedback)
-        .where(Feedback.hotel_id == hotel_id)
-        .distinct(Feedback.room_type_id, Feedback.stay_date)
         .order_by(Feedback.room_type_id, Feedback.stay_date, Feedback.version.desc())
         .subquery()
     )
@@ -200,5 +171,57 @@ async def one_off_nights(
         .join(RoomType, current.c.room_type_id == RoomType.id)
         .where(current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]))
         .order_by(current.c.stay_date, RoomType.id)
+    )
+    return (await session.execute(stmt)).mappings().all()
+
+
+async def manager_rates(
+    session: AsyncSession, room_type_id: int, *, start: date, end: date
+) -> dict[date, Decimal]:
+    """The rate the manager has set for each night in [start, end], if any.
+
+    Takes each night's current (highest) version and keeps it if it has a rate,
+    so a night whose latest version has no rate has none (decision 0059).
+    """
+    current = (
+        select(Feedback.stay_date, Feedback.rate)
+        .where(
+            Feedback.room_type_id == room_type_id,
+            Feedback.stay_date >= start,
+            Feedback.stay_date <= end,
+        )
+        .distinct(Feedback.stay_date)
+        .order_by(Feedback.stay_date, Feedback.version.desc())
+        .subquery()
+    )
+    rows = await session.execute(
+        select(current.c.stay_date, current.c.rate).where(current.c.rate.is_not(None))
+    )
+    return {day: rate for day, rate in rows}
+
+
+async def alignment_by_week(
+    session: AsyncSession, hotel_id: int
+) -> Sequence[Mapping[str, Any]]:
+    """How far the manager's rates were from the rates they were shown, by week.
+
+    Every version of feedback that has a rate and still has its snapshot counts
+    once, in the week (Monday, UTC) it was given. Rows carry week, nights,
+    mean_gap (manager minus model, so positive means the model priced low) and
+    mean_abs_gap, oldest week first (decision 0059).
+    """
+    gap = Feedback.rate - RecommendationSnapshot.rate
+    week = func.date_trunc("week", Feedback.created_at)
+    stmt = (
+        select(
+            func.cast(week, Date).label("week"),
+            func.count().label("nights"),
+            func.avg(gap).label("mean_gap"),
+            func.avg(func.abs(gap)).label("mean_abs_gap"),
+        )
+        .join(RecommendationSnapshot, Feedback.snapshot_id == RecommendationSnapshot.id)
+        .where(Feedback.hotel_id == hotel_id, Feedback.rate.is_not(None))
+        .group_by(week)
+        .order_by(week)
     )
     return (await session.execute(stmt)).mappings().all()

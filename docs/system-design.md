@@ -497,8 +497,8 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
         domain/model_inputs.events_for          counted events, backfilled nights, first seen
         ml/features.build_features              calendar + events (0055)
         ml/weighting.sample_weights             occupancy of sellable rooms (0003)
-      feedback_repo.training_feedback           current version per night, after the night only
-      ml/feedback.apply_feedback                manager's rate replaces the rate; verdict weights (0044)
+      feedback_repo.tuning_feedback             current version per night with a rate, before or after
+      ml/feedback.apply_feedback                manager's rate replaces the rate, flat weight (0059)
       EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0045)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
       model_repo.create_pricing_model           new version, inactive (0008, 0009)
@@ -515,7 +515,8 @@ GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id
       fingerprint matches → reuse the snapshot; the model doesn't run
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
-  ← one per night: rate, 80% interval, factors in €
+      feedback_repo.manager_rates               the manager's rate per night, read live (0059)
+  ← one per night: rate, manager_rate, 80% interval, factors in €
 ```
 
 A recommendation is stored when it's made and reused while its inputs hold
@@ -523,20 +524,30 @@ A recommendation is stored when it's made and reused while its inputs hold
 for a night again returns its stored snapshot while nothing it reads has
 changed, so there's no separate route for a night's factors.
 
-Training learns from the manager's feedback
-([0044](decisions/0044-train-on-feedback-given-after-the-night.md)): for each
-night, the current version of its feedback, if it was given after the night.
-A rate on the right side of the verdict replaces the night's training rate
-(within 30% of what was recorded); a verdict with no rate halves the night's
-weight and "about right" doubles it. Feedback from before the night isn't
-used. Each model version records the feedback it used in
-`pricing_model_feedback`, and its `metrics` count it.
+Training learns from the manager's rates
+([0059](decisions/0059-manager-rate-is-the-target-everywhere.md)): for each
+night, the current version of its feedback, if it has a rate, before or after
+the night. That rate replaces the night's training rate, at a flat weight;
+nights without one train as recorded. The daily tune-up follows the same rule.
+Each model version records the rates it used in `pricing_model_feedback`, and
+its `metrics` count them.
+
+Each recommendation also carries `manager_rate`, the rate the manager set for
+the night (null if none). It's read live, not stored in the snapshot, so a new
+rate never starts a new snapshot.
+
+`GET /hotels/{id}/feedback/alignment` and `just alignment` show whether the
+model is getting closer to the manager: by week, how far the manager's rates
+were from the recommendations they saw.
 
 A daily tune-up (`POST /hotels/{id}/tune`, a `tune` job;
 [0057](decisions/0057-daily-tune-up.md)) corrects the active model without
 retraining it. `domain/tuning.tune` keeps the active model's base as it is and
 fits a small EBM on the gap between its predictions and the manager's current
-rates, before or after the night. `ml/ebm.TunedEBMModel` adds the two, and is
+rates, before or after the night. Nights with a snapshot within 30 days of
+today that the manager left alone join with a gap of 0
+([0060](decisions/0060-tune-up-learns-untouched-nights-as-unchanged.md)), so
+the correction doesn't shift every night. `ml/ebm.TunedEBMModel` adds the two, and is
 saved as a new `ebm-tuned` version that serves by default. Each tune-up starts
 again from the base, so corrections never stack; with fewer than 5 rates it
 saves nothing.
@@ -687,6 +698,7 @@ hotel that's from 21 Dec 2024 ([guestline-data.md](guestline-data.md)).
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
 | POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)) |
+| GET | `/hotels/{id}/feedback/alignment` | by week, the mean gap between the manager's rates and the recommendations they saw ([0059](decisions/0059-manager-rate-is-the-target-everywhere.md)) |
 | GET | `/hotels/{id}/feedback?start=&end=` | current feedback per night (≤ 366); `include_history=true` adds earlier versions |
 | GET | `/hotels/{id}/freshness` | when each kind of data last succeeded (recommendations: last rate change), and the latest failure ([0039](decisions/0039-freshness-reports-dates-only.md)) |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |

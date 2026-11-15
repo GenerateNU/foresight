@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import timedelta
 from importlib.metadata import version
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,8 @@ import pandas as pd
 
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import pricing_model as model_repo
+from foresight.repository import recommendation as snapshot_repo
+from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.domain.pricing_model import LIBS
@@ -33,6 +36,9 @@ if TYPE_CHECKING:
 ALGORITHM = "ebm-tuned"
 # Fewer manager rates than this and the tune-up is skipped.
 MIN_TUNE_NIGHTS = 5
+# Nights the manager left alone teach the correction "no change here": every
+# night with a snapshot this many days back and ahead (decision 0060).
+UNTOUCHED_DAYS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,7 @@ class TuneResult:
     model: PricingModel | None  # None when skipped
     activated: bool
     nights_used: int  # manager rates the correction learned from
+    untouched_used: int = 0  # nights left alone, learned as "no change"
     skipped: str | None = None  # why nothing was saved
 
 
@@ -74,11 +81,10 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
             None,
             False,
             len(rows),
-            f"{len(rows)} manager rates; need at least {MIN_TUNE_NIGHTS}",
+            skipped=f"{len(rows)} manager rates; need at least {MIN_TUNE_NIGHTS}",
         )
     feedback = pd.DataFrame(rows)
-    x = await _features(session, hotel, feedback)
-    y = feedback["rate"].astype(float)
+    untouched = await _untouched(session, hotel, active, feedback)
 
     # Tuning a tuned version starts again from its base (TunedEBMModel).
     base_id = active.metrics.get("base_model_id", active.id)
@@ -88,9 +94,24 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         raise NotFoundError("Pricing model", active.id)
     base = EBMModel.from_bytes(artifact)
 
+    # The manager's nights first, then the nights they left alone, whose
+    # target is the base's own prediction (a gap of 0).
+    both = pd.concat(
+        [feedback[["stay_date", "room_type"]], untouched], ignore_index=True
+    )
+    x = await _features(session, hotel, both)
+    x_manager = x.iloc[: len(feedback)]
+    y = pd.concat(
+        [
+            feedback["rate"].astype(float),
+            pd.Series(base.predict(x.iloc[len(feedback) :]), dtype=float),
+        ],
+        ignore_index=True,
+    )
+
     # CPU-bound; a thread keeps the API answering meanwhile.
     model = await asyncio.to_thread(TunedEBMModel(base).fit, x, y)
-    correction = model.correction(x)
+    correction = model.correction(x_manager)
 
     saved = await model_repo.create_pricing_model(
         session,
@@ -103,6 +124,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
             "base_model_id": base_row.id,
             "base_version": base_row.version,
             "tune_nights": len(feedback),
+            "untouched_nights": len(untouched),
             "mean_correction": round(float(correction.mean()), 2),
             # The interval served is the base's.
             "interval_level": base_row.metrics.get("interval_level"),
@@ -129,7 +151,38 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         activated = await model_repo.activate_pricing_model(session, saved.id)
         assert activated is not None  # saved just above, in this transaction
         saved = activated
-    return TuneResult(saved, activate, len(feedback))
+    return TuneResult(saved, activate, len(feedback), len(untouched))
+
+
+async def _untouched(
+    session: AsyncSession,
+    hotel: Hotel,
+    active: PricingModel,
+    feedback: pd.DataFrame,
+) -> pd.DataFrame:
+    """The nights the manager left alone: stay_date and room_type, one row each.
+
+    Every room type and night with a snapshot within UNTOUCHED_DAYS of today
+    that has no manager rate, and whose room type the model was trained on.
+    """
+    today = local_today(hotel.city)
+    nights = await snapshot_repo.snapshotted_nights(
+        session,
+        hotel.id,
+        start=today - timedelta(days=UNTOUCHED_DAYS),
+        end=today + timedelta(days=UNTOUCHED_DAYS),
+    )
+    trained_on = active.training_summary.get("room_types", [])
+    touched = set(zip(feedback["stay_date"], feedback["room_type"], strict=True))
+    return pd.DataFrame(
+        [
+            {"stay_date": n["stay_date"], "room_type": n["room_type"]}
+            for n in nights
+            if (n["stay_date"], n["room_type"]) not in touched
+            and (not trained_on or n["room_type"] in trained_on)
+        ],
+        columns=pd.Index(["stay_date", "room_type"]),
+    )
 
 
 async def _model(session: AsyncSession, model_id: int) -> PricingModel:

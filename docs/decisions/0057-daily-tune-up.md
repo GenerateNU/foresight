@@ -1,6 +1,6 @@
 # 0057. A daily tune-up corrects the active model with the manager's rates
 
-**Status:** Accepted · **Date:** 2026-11-07
+**Status:** Accepted, amended by [0060](0060-tune-up-learns-untouched-nights-as-unchanged.md) · **Date:** 2026-11-07
 
 ## Context
 The manager records the rate they chose for a night

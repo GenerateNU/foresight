@@ -3,29 +3,15 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from foresight.database.enums import FeedbackVerdict
-
 
 @dataclass(frozen=True, slots=True)
 class FeedbackSettings:
-    """How far the manager's feedback may move training (decision 0044).
+    """How the manager's rates enter training (decision 0059)."""
 
-    Every number here caps what a few pieces of feedback can do to the model.
-    """
-
-    # Weight multiplier for a night the manager called about right: its rate is
-    # confirmed, so the model leans on it more.
-    about_right: float = 2.0
-    # Weight multiplier for a night called too high or too low when there is no
-    # usable manager rate: its rate is known to be off, but by how much isn't.
-    wrong_no_rate: float = 0.5
-    # Weight multiplier for a night whose rate was replaced: the replacement is
-    # the manager's judgement, so the vacancy-based weight no longer applies.
-    # Applied as a flat weight, not on top of it.
-    replaced: float = 1.0
-    # The manager's rate is kept within this share of the recorded rate, so one
-    # outlandish number can't drag a night far from what guests paid.
-    max_rate_change: float = 0.30
+    # Weight of a night the manager priced. Flat, like the tune-up (0057): the
+    # rate is the manager's judgement, so the vacancy-based weight no longer
+    # applies.
+    manager_weight: float = 1.0
 
 
 DEFAULT = FeedbackSettings()
@@ -34,8 +20,8 @@ DEFAULT = FeedbackSettings()
 @dataclass(frozen=True, slots=True)
 class FeedbackEffect:
     rate: pd.Series  # the training target, manager's rates swapped in
-    weights: np.ndarray  # sample weights, adjusted by feedback
-    used: pd.DataFrame  # one row per piece of feedback that changed a night
+    weights: np.ndarray  # sample weights, manager's nights set flat
+    used: pd.DataFrame  # one row per manager rate that replaced a night's rate
 
 
 USED_COLUMNS = ["feedback_id", "rate_replaced", "weight_factor", "training_rate"]
@@ -48,26 +34,21 @@ def apply_feedback(
     weights: np.ndarray,
     settings: FeedbackSettings = DEFAULT,
 ) -> FeedbackEffect:
-    """Changes the training rate and weight of nights the manager gave feedback on.
+    """Swaps the manager's rate in as the training rate of the nights they priced.
 
-    The caller passes only feedback given after the night, the latest version
-    of each. A night with no feedback is left exactly as it was.
-
-    - About right: the rate stands; the night's weight is multiplied up.
-    - Too high or too low with a rate on the right side of the recorded one:
-      the manager's rate replaces it (within `max_rate_change`), and the night
-      gets a flat weight.
-    - Too high or too low with no rate, or a rate that contradicts the verdict:
-      the rate stands; the night's weight is multiplied down.
+    The caller passes the latest version of each night's feedback that has a
+    rate, given before or after the night. A night with no manager rate is left
+    exactly as it was. This is the rule the daily tune-up follows too, so a full
+    retrain and a tune-up learn from the manager the same way.
 
     Args:
         nights (pd.DataFrame): The nights being trained on, with columns
             stay_date and room_type.
-        feedback (pd.DataFrame): Columns id, stay_date, room_type, verdict and
-            rate (NaN for none); at most one row per room type per night.
+        feedback (pd.DataFrame): Columns id, stay_date, room_type and rate; at
+            most one row per room type per night. Rows with no rate are ignored.
         rate (pd.Series): The recorded rate of each night, indexed like nights.
         weights (np.ndarray): Each night's weight before feedback.
-        settings (FeedbackSettings): How far feedback may move training.
+        settings (FeedbackSettings): How the manager's nights are weighted.
 
     Returns:
         FeedbackEffect: The new rate and weights, and which feedback was used.
@@ -75,44 +56,28 @@ def apply_feedback(
     Raises:
         ValueError: If a night has more than one piece of feedback.
     """
+    key = ["stay_date", "room_type"]
+    feedback = feedback[feedback["rate"].notna()]
     if feedback.empty:
         return FeedbackEffect(rate, weights, pd.DataFrame(columns=USED_COLUMNS))
-    key = ["stay_date", "room_type"]
     if feedback.duplicated(key).any():
         raise ValueError("expected at most one piece of feedback per room type night")
 
-    given = nights[key].merge(
-        feedback[[*key, "id", "verdict", "rate"]], on=key, how="left"
-    )
+    given = nights[key].merge(feedback[[*key, "id", "rate"]], on=key, how="left")
     has = given["id"].notna().to_numpy()
-    verdict = given["verdict"].to_numpy()
     manager = given["rate"].to_numpy(float)
     recorded = rate.to_numpy(float)
+    old_weights = np.asarray(weights, dtype=float)
 
-    right = has & (verdict == FeedbackVerdict.ABOUT_RIGHT)
-    lower = has & (verdict == FeedbackVerdict.TOO_HIGH) & (manager < recorded)
-    higher = has & (verdict == FeedbackVerdict.TOO_LOW) & (manager > recorded)
-    replaced = lower | higher  # NaN compares false, so no-rate nights drop out
-    wrong = has & ~right & ~replaced
+    training_rate = np.where(has, manager, recorded)
+    new_weights = np.where(has, settings.manager_weight, old_weights)
 
-    cap = settings.max_rate_change
-    training_rate = np.where(
-        replaced, np.clip(manager, recorded * (1 - cap), recorded * (1 + cap)), recorded
-    )
-    factor = np.ones(len(nights))
-    factor[right] = settings.about_right
-    factor[wrong] = settings.wrong_no_rate
-    new_weights = np.asarray(weights, dtype=float) * factor
-    new_weights[replaced] = settings.replaced
-    factor[replaced] = settings.replaced / np.asarray(weights, dtype=float)[replaced]
-
-    changed = right | replaced | wrong
     used = pd.DataFrame(
         {
-            "feedback_id": given["id"].to_numpy()[changed].astype(int),
-            "rate_replaced": replaced[changed],
-            "weight_factor": factor[changed],
-            "training_rate": training_rate[changed],
+            "feedback_id": given["id"].to_numpy()[has].astype(int),
+            "rate_replaced": True,
+            "weight_factor": settings.manager_weight / old_weights[has],
+            "training_rate": training_rate[has],
         }
     )
     return FeedbackEffect(

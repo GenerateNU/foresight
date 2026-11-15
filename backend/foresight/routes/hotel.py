@@ -253,6 +253,13 @@ class RecommendationResponse(ResponseSchema):
         "null on snapshots older than this field",
         examples=["fetched"],
     )
+    manager_rate: Decimal | None = Field(
+        default=None,
+        description="The rate the manager set for the night, in `currency`; null "
+        "if they haven't. Shown alongside `recommended_rate` so a calendar needs "
+        "one call",
+        examples=["210.00"],
+    )
     snapshot_id: int | None = Field(
         description="The snapshot this rate is stored as; null for a past night "
         "priced now, since past nights aren't saved after the fact"

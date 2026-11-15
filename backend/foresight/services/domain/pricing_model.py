@@ -54,7 +54,7 @@ _NIGHT_COLUMNS = [
     "rooms_available",
     "rooms_out_of_service",
 ]
-_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "verdict", "rate"]
+_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "rate"]
 LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
@@ -129,8 +129,9 @@ async def train(
             f"{MIN_TRAINING_NIGHTS}"
         )
 
-    # Decision 0044: what the manager said after a night changes how it trains.
-    feedback_rows = await feedback_repo.training_feedback(
+    # Decision 0059: the manager's rate is the target for a night they priced,
+    # the same rule the daily tune-up follows.
+    feedback_rows = await feedback_repo.tuning_feedback(
         session, hotel.id, start=start, end=end
     )
     feedback = pd.DataFrame(feedback_rows, columns=pd.Index(_FEEDBACK_COLUMNS))

@@ -14,6 +14,7 @@ from foresight.database.enums import (
 )
 from foresight.routes.access import CurrentUserDep, HotelId
 from foresight.routes.helpers import RequestSchema, ResponseSchema, SessionDep
+from foresight.services.domain import alignment as alignment_service
 from foresight.services.domain import feedback as feedback_service
 
 router = APIRouter(tags=["Feedback"])
@@ -94,6 +95,19 @@ class FeedbackResponse(ResponseSchema):
     created_at: datetime = Field(description="When this version was given, UTC")
 
 
+class AlignmentResponse(ResponseSchema):
+    week: date = Field(description="Monday of the week the feedback was given")
+    nights: int = Field(description="Pieces of feedback with a rate that week")
+    mean_gap: Decimal = Field(
+        description="Average of the manager's rate minus the recommended rate they "
+        "saw, in EUR; positive means the model priced low"
+    )
+    mean_abs_gap: Decimal = Field(
+        description="Average size of that gap, in EUR. Falling over the weeks "
+        "means the model is getting closer to the manager"
+    )
+
+
 #          ╭──────────────────────────────────────────────────────────╮
 #          │                        Endpoints                         │
 #          ╰──────────────────────────────────────────────────────────╯
@@ -164,3 +178,16 @@ async def list_feedback(
         include_history=include_history,
     )
     return [FeedbackResponse.model_validate(f) for f in feedback]
+
+
+@router.get(
+    "/hotels/{hotel_id}/feedback/alignment", response_model=list[AlignmentResponse]
+)
+async def feedback_alignment(
+    hotel_id: HotelId, session: SessionDep
+) -> list[AlignmentResponse]:
+    """How far the manager's rates were from the recommendations they saw, by
+    week, oldest first. A shrinking `mean_abs_gap` means the model is learning
+    how the manager prices. Weeks with no feedback are left out."""
+    weeks = await alignment_service.get_alignment(session, hotel_id)
+    return [AlignmentResponse.model_validate(w) for w in weeks]

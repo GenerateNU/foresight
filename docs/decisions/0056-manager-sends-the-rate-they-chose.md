@@ -40,7 +40,7 @@ sent with a lower rate).
   get feedback after it.
 - `verdict` now means "how the manager's rate compares with ours", not the
   manager's opinion. Old rows keep the verdict the manager chose.
-- **Training is unchanged, and the two don't fit together yet.**
+- **Training didn't fit this at first; [0059](0059-manager-rate-is-the-target-everywhere.md) fixes it.**
   [0044](0044-train-on-feedback-given-after-the-night.md) compares the
   manager's rate with the night's *recorded* rate, and only uses feedback
   given after the night. If the manager charged the rate they entered, the

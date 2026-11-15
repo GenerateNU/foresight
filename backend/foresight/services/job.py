@@ -448,6 +448,7 @@ async def _tune(
             "version": None if model is None else model.version,
             "activated": result.activated,
             "nights_used": result.nights_used,
+            "untouched_used": result.untouched_used,
             "skipped": result.skipped,
             "mean_correction": None
             if model is None
