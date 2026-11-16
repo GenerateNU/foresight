@@ -1,5 +1,6 @@
 """App setup: routers, error handling, lifespan, and the API reference."""
 
+import asyncio
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -32,7 +33,14 @@ from foresight.routes.errors import register_error_handlers
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Background jobs die with the process; anything left running is stale.
     await worker.fail_interrupted_jobs()
+    scheduler = (
+        asyncio.create_task(worker.schedule_forever())
+        if settings.scheduler_enabled
+        else None
+    )
     yield
+    if scheduler is not None:
+        scheduler.cancel()
 
 
 app = FastAPI(

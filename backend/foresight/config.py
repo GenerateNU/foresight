@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     upload_max_files: int = 10
     upload_max_file_mb: int = 50
 
+    # Runs each hotel's routine jobs when they're due. Off locally so a dev
+    # server doesn't call paid APIs on its own.
+    scheduler_enabled: bool = False
+
     # Sign-in
     google_client_id: str = ""
     google_client_secret: str = ""

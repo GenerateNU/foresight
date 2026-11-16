@@ -11,6 +11,9 @@ commits. A job outlives the request that queued it, and it commits after every
 chunk so a run that ends early keeps its finished work and records where to
 resume. Everything it does goes through `services/job.py`.
 
+With SCHEDULER_ENABLED, `schedule_forever` also queues each hotel's routine
+jobs once they're due.
+
 The queues live in the API process, so production runs a single uvicorn
 worker. A restart loses them; on startup `fail_interrupted_jobs` marks jobs
 left queued or running failed so they can be started again.
@@ -27,6 +30,8 @@ from foresight.database.session import async_session_factory
 from foresight.services import job as job_service
 
 log = logging.getLogger(__name__)
+
+SCHEDULE_CHECK_SECONDS = 15 * 60
 
 # hotel id → job ids waiting, oldest first
 _queues: dict[int, deque[int]] = {}
@@ -102,3 +107,16 @@ async def fail_interrupted_jobs() -> None:
         await session.commit()
     if count:
         log.warning("marked %d interrupted job(s) failed", count)
+
+
+async def schedule_forever() -> None:
+    while True:
+        try:
+            async with async_session_factory() as session:
+                jobs = await job_service.start_due_jobs(session)
+                await session.commit()
+            for job in jobs:
+                await enqueue(job.id, job.hotel_id)
+        except Exception:
+            log.exception("scheduled jobs could not be started")
+        await asyncio.sleep(SCHEDULE_CHECK_SECONDS)

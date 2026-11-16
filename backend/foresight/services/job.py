@@ -11,10 +11,14 @@ ends early.
 
 Dates: with neither `start` nor `end` a job does its signal's routine refresh;
 with either it backfills the window `services/ingest/window.py` resolves.
+
+`start_due_jobs` queues each hotel's routine refreshes once they're due, for
+the worker's scheduler.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_cls
@@ -27,9 +31,10 @@ from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
 from foresight.services.domain.city import local_today
-from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.hotel import get_hotel, list_hotels
 from foresight.services.errors import (
     ConflictError,
+    DomainError,
     NotConfiguredError,
     NotFoundError,
 )
@@ -39,7 +44,13 @@ from foresight.services.ingest import weather as weather_ingest
 from foresight.services.ingest.window import InvalidWindowError, Window, resolve_window
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+    from collections.abc import (
+        AsyncIterator,
+        Awaitable,
+        Callable,
+        Mapping,
+        Sequence,
+    )
     from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +63,11 @@ if TYPE_CHECKING:
         [AsyncSession, Hotel, Mapping[str, Any], Any], AsyncIterator[Step]
     ]
 
+log = logging.getLogger(__name__)
+
+# A routine job runs again this long after it succeeded, or after it didn't.
+ROUTINE_EVERY = timedelta(hours=24)
+RETRY_AFTER = timedelta(hours=1)
 # How far back the first routine events refresh looks for revisions.
 FIRST_REFRESH_DAYS = 7
 # A source's quota or rate limit: the job stops rather than fails.
@@ -171,6 +187,36 @@ async def start_train_job(
     return await _queue(session, hotel, JobKind.TRAIN, params)
 
 
+async def start_due_jobs(session: AsyncSession) -> list[Job]:
+    """Queue every hotel's routine jobs that are due, in the order they run.
+
+    A job is due ROUTINE_EVERY after its last success, or RETRY_AFTER a run
+    that didn't succeed. One that can't start (already queued, not
+    configured) is skipped until the next check.
+    """
+    # (kind, params that mark its routine run, how to start it)
+    routine: list[tuple[JobKind, dict[str, Any], Callable[[int], Awaitable[Job]]]]
+    routine = [
+        (
+            JobKind.WEATHER,
+            {"mode": "forecast"},
+            lambda h: start_weather_job(session, h, start=None, end=None),
+        ),
+    ]
+
+    queued: list[Job] = []
+    now = _now()
+    for hotel in await list_hotels(session):
+        for kind, params, start in routine:
+            if not await _due(session, hotel.id, kind, params, now):
+                continue
+            try:
+                queued.append(await start(hotel.id))
+            except DomainError as exc:
+                log.info("hotel %s: %s not started: %s", hotel.id, kind.value, exc)
+    return queued
+
+
 async def get_job(session: AsyncSession, job_id: int) -> Job:
     """Raises NotFoundError for an unknown job."""
     job = await job_repo.get_job(session, job_id)
@@ -199,6 +245,23 @@ async def cancel_job(session: AsyncSession, job_id: int) -> Job:
             f"job {job.id} is {job.status.value}; only a queued job can be cancelled"
         )
     return await get_job(session, job_id)
+
+
+async def _due(
+    session: AsyncSession,
+    hotel_id: int,
+    kind: JobKind,
+    params: dict[str, Any],
+    now: datetime,
+) -> bool:
+    last = await job_repo.latest_finished_job(
+        session, hotel_id=hotel_id, kind=kind, params=params
+    )
+    if last is None:
+        return True
+    assert last.finished_at is not None  # the query only returns finished jobs
+    wait = ROUTINE_EVERY if last.status == JobStatus.SUCCEEDED else RETRY_AFTER
+    return last.finished_at + wait <= now
 
 
 async def _queue(
