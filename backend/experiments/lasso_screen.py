@@ -30,383 +30,36 @@ calendar can't, and do the survivors help the EBM on 2025?"""
 #   year-test error.
 
 # %%
-from datetime import date, timedelta
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from dateutil.easter import easter
+from candidates import build_candidates
 from joblib import Parallel, delayed
+from matplotlib.patches import Patch
 from sklearn.linear_model import lasso_path
-from sqlalchemy import select
 
-from foresight.database.models.booking import Booking, BookingCancellation
-from foresight.database.session import async_session_factory
 from foresight.services.domain.backtest import ALPHA
-from foresight.services.domain.booking import booking_curves, rooms_on
-from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.pricing_model import HOLDOUT_FRAC, training_data
+from foresight.services.domain.pricing_model import HOLDOUT_FRAC
 from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
 
-HOTEL_ID = 1
-HORIZON = 30  # days before the night that every feature is known
-DATA_END = date(2025, 12, 31)
 SCREEN_START, SCREEN_END = pd.Timestamp("2023-01-01"), pd.Timestamp("2024-12-31")
-BOOKING_FROM = SCREEN_START  # the rebuild matches rooms sold from here
-DROPPED = (pd.Timestamp("2022-01-01"), pd.Timestamp("2022-01-31"))
 MIN_FLAGGED_NIGHTS = 10
 MAX_TOP_VALUE_SHARE = 0.95
 MIN_FOLDS = 9  # of 12
 
 
 # %%
-async def load():
-    async with async_session_factory() as session:
-        hotel = await get_hotel(session, HOTEL_ID)
-        data = await training_data(session, hotel, start=None, end=DATA_END)
-        booked = await session.execute(
-            select(
-                Booking.book_ref,
-                Booking.booked_at,
-                Booking.arrival,
-                Booking.departure,
-                Booking.rate_plan,
-                Booking.market_segment,
-                Booking.company_code,
-                Booking.agent_code,
-            ).where(Booking.hotel_id == HOTEL_ID)
-        )
-        bookings = pd.DataFrame(booked.all(), columns=list(booked.keys()))
-        cancelled = await session.execute(
-            select(
-                BookingCancellation.book_ref,
-                BookingCancellation.booked_at,
-                BookingCancellation.cancelled_at,
-                BookingCancellation.arrival,
-                BookingCancellation.departure,
-            ).where(BookingCancellation.hotel_id == HOTEL_ID)
-        )
-        cancellations = pd.DataFrame(cancelled.all(), columns=list(cancelled.keys()))
-        curves = await booking_curves(
-            session, HOTEL_ID, start=date(2022, 1, 1), end=DATA_END
-        )
-    return data, bookings, cancellations, curves
-
-
-data, bookings, cancellations, curves = await load()  # noqa: F704
-
-# January 2022 goes from every arm, lag sources included.
-stay_all = pd.to_datetime(data.nights["stay_date"])
-keep = ~((stay_all >= DROPPED[0]) & (stay_all <= DROPPED[1])).to_numpy()
-nights = data.nights[keep].reset_index(drop=True)
-stay = pd.to_datetime(nights["stay_date"])
-y = data.y[keep].astype(float).reset_index(drop=True)
-weights = np.asarray(data.weights)[keep]
-x_base = data.x.loc[keep, ["room_type", "day_of_week", "month"]].reset_index(drop=True)
+# The candidate columns are built in candidates.py, so the screen and the backtest
+# start from the same table. January 2022 is already dropped there.
+c = await build_candidates()  # noqa: F704
+nights, stay, y, weights = c.nights, c.stay, c.y, c.weights
+z_all, holiday_flag = c.z, c.holiday_flag
+x_base = c.model_inputs[["room_type", "day_of_week", "month"]]
+candidates = c.table
+GROUPS = c.groups
 print(f"{len(nights)} priced nights, {stay.min().date()} to {stay.max().date()}")
-print(f"{len(bookings)} bookings, {len(cancellations)} cancellations")
-
-
-# %% [markdown]
-# Calendar. Irish public holidays are the same list as baseline_testing.py.
-# School breaks are rules, not an official calendar, so they are approximate:
-#   Halloween mid-term: the Monday-Friday week starting on the last Monday of October.
-#   February mid-term: the week starting on the first Monday on or after 17 February.
-#   Easter: two weeks starting on the Monday before Easter Sunday.
-#   Christmas: 23 December to 5 January.
-# Each break counts from the Friday night before to the Saturday night after.
-# Long weekend: Friday, Saturday and Sunday nights before a Monday holiday, and
-#   Thursday, Friday and Saturday nights around a Friday holiday.
-# Payday weekend: Friday and Saturday nights on the 25th to the 2nd.
-
-
-# %%
-def first_monday(year, month):
-    d = date(year, month, 1)
-    return d + timedelta(days=(7 - d.weekday()) % 7)
-
-
-def last_monday(year, month):
-    d = date(year, month + 1, 1) - timedelta(days=1)
-    return d - timedelta(days=d.weekday())
-
-
-def irish_public_holidays(year):
-    days = {
-        date(year, 1, 1),
-        date(year, 3, 17),
-        easter(year) + timedelta(days=1),
-        first_monday(year, 5),
-        first_monday(year, 6),
-        first_monday(year, 8),
-        last_monday(year, 10),
-        date(year, 12, 25),
-        date(year, 12, 26),
-    }
-    if year >= 2023:  # St Brigid's Day
-        feb1 = date(year, 2, 1)
-        days.add(feb1 if feb1.weekday() == 4 else first_monday(year, 2))
-    return days
-
-
-def break_nights(monday, weeks):
-    friday = monday + timedelta(days=7 * (weeks - 1) + 4)
-    return pd.date_range(monday - timedelta(days=3), friday + timedelta(days=1))
-
-
-YEARS = range(2022, 2026)
-HOLIDAYS = sorted(set().union(*(irish_public_holidays(y_) for y_ in YEARS)))
-SCHOOL = {
-    "school_halloween": [break_nights(last_monday(y_, 10), 1) for y_ in YEARS],
-    "school_february": [
-        break_nights(
-            date(y_, 2, 17) + timedelta(days=(7 - date(y_, 2, 17).weekday()) % 7), 1
-        )
-        for y_ in YEARS
-    ],
-    "school_easter": [break_nights(easter(y_) - timedelta(days=6), 2) for y_ in YEARS],
-}
-
-
-def calendar_columns(dates):
-    """The baseline terms (z) and the calendar candidates, one row per night."""
-    month, dow = dates.dt.month.to_numpy(), dates.dt.dayofweek.to_numpy()
-    day = dates.dt.day.to_numpy()
-    # Days from each night to each holiday: 0 is the holiday night itself.
-    to_holiday = (
-        np.array(HOLIDAYS, dtype="datetime64[D]")[None, :]
-        - dates.to_numpy().astype("datetime64[D]")[:, None]
-    ).astype(int)
-    is_holiday = (to_holiday == 0).any(axis=1)
-
-    z = pd.DataFrame({"const": np.ones(len(dates))})
-    for m in range(2, 13):
-        z[f"month_{m}"] = (month == m).astype(float)
-    for d in range(1, 7):
-        z[f"dow_{d}"] = (dow == d).astype(float)
-    z["holiday"] = is_holiday.astype(float)
-    weekend = np.isin(dow, (4, 5))
-    for m in range(2, 13):
-        z[f"weekend_x_month_{m}"] = (weekend & (month == m)).astype(float)
-
-    long_weekend = set()
-    for h in HOLIDAYS:
-        offsets = {0: (-3, -2, -1), 4: (-1, 0, 1)}.get(h.weekday(), ())
-        long_weekend |= {pd.Timestamp(h) + pd.Timedelta(days=o) for o in offsets}
-
-    year_fraction = dates.dt.dayofyear.to_numpy() / 365.25
-    cal = pd.DataFrame(
-        {
-            "season_sin1": np.sin(2 * np.pi * year_fraction),
-            "season_cos1": np.cos(2 * np.pi * year_fraction),
-            "season_sin2": np.sin(4 * np.pi * year_fraction),
-            "season_cos2": np.cos(4 * np.pi * year_fraction),
-            "night_before_holiday": (to_holiday == 1).any(axis=1),
-            "night_after_holiday": (to_holiday == -1).any(axis=1),
-            "near_holiday_2_3_days": (
-                (np.abs(to_holiday) >= 2) & (np.abs(to_holiday) <= 3)
-            ).any(axis=1),
-            "long_weekend": dates.isin(long_weekend).to_numpy(),
-            "payday_weekend": weekend & ((day >= 25) | (day <= 2)),
-            "trend_years": (dates - SCREEN_START).dt.days.to_numpy() / 365.25,
-        }
-    ).astype(float)
-    for name, spans in SCHOOL.items():
-        cal[name] = dates.isin(spans[0].append(spans[1:])).to_numpy().astype(float)
-    cal["school_christmas"] = (
-        ((month == 12) & (day >= 23)) | ((month == 1) & (day <= 5))
-    ).astype(float)
-    return z, cal, is_holiday.astype(float)
-
-
-z_all, calendar_all, holiday_flag = calendar_columns(stay)
 print(f"{int(holiday_flag.sum())} holiday nights")
-
-
-# %% [markdown]
-# Recent history, lagged so every value was known 30 days before the night:
-#   rate and rooms sold on the same weekday 5, 6, 7 and 8 weeks back (mean of
-#   those present, at least 2), the same night last year (364 days back), and
-#   week over week: mean rooms sold on nights 31-37 days back minus nights 38-44
-#   days back. Unpriced nights (Christmas, and January 2022) are blank.
-
-
-# %%
-def history_columns(nights_, rate, sold):
-    nights_ = pd.DatetimeIndex(nights_)
-    days = pd.date_range(nights_.min(), nights_.max())
-    rate_d = pd.Series(rate.to_numpy(), index=nights_).reindex(days)
-    sold_d = pd.Series(sold.to_numpy(dtype=float), index=nights_).reindex(days)
-
-    def four_weeks(series):
-        lags = pd.concat([series.shift(k) for k in (35, 42, 49, 56)], axis=1)
-        return lags.mean(axis=1).where(lags.notna().sum(axis=1) >= 2)
-
-    week_of = lambda lag: sold_d.shift(lag).rolling(7, min_periods=4).mean()  # noqa: E731
-    out = pd.DataFrame(
-        {
-            "rate_4_weeks_same_weekday": four_weeks(rate_d),
-            "sold_4_weeks_same_weekday": four_weeks(sold_d),
-            "rate_last_year": rate_d.shift(364),
-            "sold_last_year": sold_d.shift(364),
-            "sold_week_over_week": week_of(31) - week_of(38),
-        }
-    )
-    return out.reindex(nights_).reset_index(drop=True)
-
-
-history_all = history_columns(stay, y, nights["rooms_sold"])
-
-
-# %% [markdown]
-# Bookings and cancellations, as on the books 30 days before each night.
-# Counts, lead time, length of stay, group size and cancellations use both tables
-# (decision 0047): the bookings table only holds rooms that were never cancelled,
-# so a count from it alone would miss every room cancelled after the cutoff.
-# The mix columns (rate plan, segment, company, agent) exist only for rooms that
-# were never cancelled, because the Cancellations report doesn't carry them. They
-# are measured on that survivor sample and flagged as such in the results.
-
-
-# %%
-def room_nights(bookings, cancellations):
-    """One row per room per night stayed, with when it was booked and cancelled."""
-    gone = cancellations.sort_values("cancelled_at").drop_duplicates(
-        "book_ref", keep="last"
-    )
-    live = bookings[~bookings["book_ref"].isin(gone["book_ref"])]
-    rooms = pd.concat([live, gone], ignore_index=True)
-    rooms["booked_on"] = pd.to_datetime(rooms["booked_at"]).dt.normalize()
-    rooms["cancelled_on"] = pd.to_datetime(rooms["cancelled_at"]).dt.normalize()
-    rooms["arrival"] = pd.to_datetime(rooms["arrival"])
-    rooms["stay_nights"] = (
-        pd.to_datetime(rooms["departure"]) - rooms["arrival"]
-    ).dt.days
-    reservation = rooms["book_ref"].str.split("/").str[0]
-    rooms["reservation_rooms"] = reservation.map(reservation.value_counts())
-
-    each = rooms["stay_nights"].to_numpy()
-    row = np.repeat(np.arange(len(rooms)), each)
-    offset = np.arange(each.sum()) - np.repeat(np.cumsum(each) - each, each)
-    out = rooms.iloc[row].reset_index(drop=True)
-    out["stay_date"] = rooms["arrival"].to_numpy()[row] + offset.astype(
-        "timedelta64[D]"
-    )
-    inside = (out["stay_date"] >= "2022-01-01") & (
-        out["stay_date"] <= DATA_END.isoformat()
-    )
-    return out[inside]
-
-
-def booking_columns(rn, nights_):
-    def on_books(days):
-        asof = rn["stay_date"] - pd.Timedelta(days=days)
-        live = rn["cancelled_on"].isna() | (rn["cancelled_on"] > asof)
-        return rn[(rn["booked_on"] <= asof) & live]
-
-    on30, on37 = on_books(HORIZON), on_books(HORIZON + 7)
-    asof30 = rn["stay_date"] - pd.Timedelta(days=HORIZON)
-    cancelled = rn[rn["cancelled_on"].notna() & (rn["cancelled_on"] <= asof30)]
-    survivors = on30[on30["cancelled_on"].isna()]
-    plan = survivors["rate_plan"]
-
-    by_night = lambda frame: frame.groupby("stay_date")  # noqa: E731
-    counts = (
-        pd.DataFrame(
-            {
-                "rooms_on_books": by_night(on30).size(),
-                "rooms_on_books_week_earlier": by_night(on37).size(),
-                "group_rooms": by_night(on30[on30["reservation_rooms"] >= 5]).size(),
-                "cancelled_rooms": by_night(cancelled).size(),
-            }
-        )
-        .reindex(nights_)
-        .fillna(0)
-    )
-    means = pd.DataFrame(
-        {
-            "avg_lead_on_books": by_night(
-                on30.assign(v=(on30["stay_date"] - on30["booked_on"]).dt.days)
-            )["v"].mean(),
-            "avg_stay_length_on_books": by_night(on30)["stay_nights"].mean(),
-            "cancel_lead_time": by_night(
-                cancelled.assign(
-                    v=(cancelled["stay_date"] - cancelled["cancelled_on"]).dt.days
-                )
-            )["v"].mean(),
-            "advance_share": by_night(
-                survivors.assign(v=plan.str.startswith("ADV", na=False))
-            )["v"].mean(),
-            "breakfast_share": by_night(
-                survivors.assign(v=plan.str.contains(r"(?:^|_)BB(?:_|$)", na=False))
-            )["v"].mean(),
-            "non_leisure_share": by_night(
-                survivors.assign(
-                    v=survivors["market_segment"].fillna("LEISURE") != "LEISURE"
-                )
-            )["v"].mean(),
-            "company_share": by_night(
-                survivors.assign(v=survivors["company_code"].notna())
-            )["v"].mean(),
-            "agent_share": by_night(
-                survivors.assign(v=survivors["agent_code"].notna())
-            )["v"].mean(),
-        }
-    ).reindex(nights_)
-    out = pd.concat([counts, means], axis=1)
-    out["booking_pickup_7d"] = out["rooms_on_books"] - out.pop(
-        "rooms_on_books_week_earlier"
-    )
-    total = out["cancelled_rooms"] + out["rooms_on_books"]
-    out["cancellation_rate"] = (out["cancelled_rooms"] / total).where(total > 0)
-    return out.drop(columns="cancelled_rooms").reset_index(drop=True), on30
-
-
-room_nights_all = room_nights(bookings, cancellations)
-booking_all, on_books_30 = booking_columns(room_nights_all, pd.DatetimeIndex(stay))
-
-# The count must equal the rebuild in services/domain/booking.py, night for night.
-rebuilt = pd.Series(
-    {
-        pd.Timestamp(n): rooms_on(c, n - timedelta(days=HORIZON))
-        for n, c in curves.items()
-    }
-).reindex(pd.DatetimeIndex(stay), fill_value=0)
-differs = (booking_all["rooms_on_books"].to_numpy() != rebuilt.to_numpy()).sum()
-print(f"on-books count differs from the rebuild on {differs} of {len(stay)} nights")
-
-# Nights before the rebuild is trustworthy are blank, not zero.
-booking_all[(stay < BOOKING_FROM).to_numpy()] = np.nan
-
-GROUPS = {
-    **{c: "calendar" for c in calendar_all.columns},
-    **{c: "school" for c in calendar_all.columns if c.startswith("school_")},
-    **{c: "recent history" for c in history_all.columns},
-    **{
-        c: "bookings"
-        for c in [
-            "rooms_on_books",
-            "booking_pickup_7d",
-            "group_rooms",
-            "avg_lead_on_books",
-            "avg_stay_length_on_books",
-        ]
-    },
-    **{c: "cancellations" for c in ["cancellation_rate", "cancel_lead_time"]},
-    **{
-        c: "mix (survivors only)"
-        for c in [
-            "advance_share",
-            "breakfast_share",
-            "non_leisure_share",
-            "company_share",
-            "agent_share",
-        ]
-    },
-}
-candidates = pd.concat([calendar_all, history_all, booking_all], axis=1)
-assert set(GROUPS) == set(candidates.columns)
 print(f"{candidates.shape[1]} candidate features")
 
 
@@ -617,38 +270,82 @@ print(f"Non-zero at the best penalty ({len(at_best)}): {at_best}")
 
 
 # %%
+# Survivor grid: which features each of the 12 monthly tests picked.
 BLUE, ORANGE = "#2a78d6", "#eb6834"  # validated colors, colorblind-safe pair
-SURFACE, GRID = "#fcfcfb", "#e5e4e0"
+SURFACE, GRID, INK, MUTED = "#fcfcfb", "#e5e4e0", "#1f1e1d", "#52514e"
 
-shown = table[table["weight (€ per SD)"] != 0].sort_values("weight (€ per SD)")
-if len(shown):
-    fig, ax = plt.subplots(figsize=(9, 0.4 * len(shown) + 1.6), facecolor=SURFACE)
-    values = shown["weight (€ per SD)"]
-    ax.barh(
-        shown.index,
-        values,
-        height=0.6,
-        color=[BLUE if v > 0 else ORANGE for v in values],
-    )
-    for position, (_, row) in enumerate(shown.iterrows()):
-        label = f"{int(row['folds picked'])}/12"
-        ax.text(
-            0,
-            position,
-            f" {label} " if row["weight (€ per SD)"] < 0 else f" {label}",
-            ha="left" if row["weight (€ per SD)"] > 0 else "right",
-            va="center",
-            fontsize=8,
-            color="#52514e",
+fold_weights = np.array([f[:, chosen] for f in fold_fits])  # months x features
+use = [
+    j
+    for j, n in enumerate(names)
+    if (fold_weights[:, j] != 0).any() and not n.endswith("_missing")
+]
+count = (fold_weights[:, use] != 0).sum(axis=0)
+average = fold_weights[:, use].sum(axis=0) / np.maximum(count, 1)
+order = np.lexsort((-np.abs(average), -count))  # most consistent first
+labels = [names[use[k]] for k in order]
+
+fig, ax = plt.subplots(figsize=(11, 0.38 * len(labels) + 2.4), facecolor=SURFACE)
+for row, k in enumerate(order):
+    for month in range(len(months)):
+        w = fold_weights[month, use[k]]
+        color = GRID if w == 0 else (BLUE if w > 0 else ORANGE)
+        ax.add_patch(
+            plt.Rectangle(
+                (month, row), 1, 1, facecolor=color, edgecolor=SURFACE, linewidth=2
+            )
         )
-    ax.axvline(0, color="#52514e", linewidth=1)
-    ax.set_xlabel("€ per one standard deviation, on top of the calendar")
-    ax.set_title("What the LASSO keeps (label: folds that also picked it)")
-    ax.set_facecolor(SURFACE)
-    ax.grid(axis="x", color=GRID)
-    ax.spines[["top", "right"]].set_visible(False)
-    plt.tight_layout()
-    plt.show()
+    ax.text(12.4, row + 0.5, f"{count[k]}/12", va="center", fontsize=9, color=INK)
+    ax.text(13.7, row + 0.5, f"{average[k]:+.1f}", va="center", fontsize=9, color=INK)
+    stays = table.loc[labels[row], "enters at"]
+    ax.text(15.2, row + 0.5, f"{stays:.2f}", va="center", fontsize=9, color=INK)
+
+for x_pos, head in [
+    (12.4, "months\npicked"),
+    (13.7, "avg weight\n(€ per SD)"),
+    (15.2, "penalty\nsurvived"),
+]:
+    ax.text(x_pos, -0.35, head, va="bottom", fontsize=8, color=MUTED)
+
+kept = int((count[order] >= MIN_FOLDS).sum())
+ax.axhline(kept, color=MUTED, linewidth=1)
+ax.text(
+    0,
+    kept + 0.45,
+    f"above the line: picked in {MIN_FOLDS}+ of 12 months",
+    fontsize=8,
+    color=MUTED,
+    va="center",
+)
+
+ax.set_xlim(0, 16.4)
+ax.set_ylim(len(labels), 0)
+ax.set_xticks([m + 0.5 for m in range(len(months))])
+ax.set_xticklabels([m.strftime("%b") for m in months], fontsize=9, color=MUTED)
+ax.set_yticks([r + 0.5 for r in range(len(labels))])
+ax.set_yticklabels(labels, fontsize=9, color=INK)
+ax.tick_params(length=0)
+ax.xaxis.tick_top()
+ax.spines[:].set_visible(False)
+ax.set_facecolor(SURFACE)
+ax.set_title(
+    "Which features the LASSO picked in each monthly test of 2024",
+    loc="left",
+    color=INK,
+)
+ax.legend(
+    handles=[
+        Patch(color=BLUE, label="pushes the rate up"),
+        Patch(color=ORANGE, label="pushes the rate down"),
+        Patch(color=GRID, label="not picked that month"),
+    ],
+    loc="upper center",
+    bbox_to_anchor=(0.4, -0.02),
+    ncol=3,
+    frameon=False,
+)
+plt.tight_layout()
+plt.show()
 
 
 # %% [markdown]
@@ -829,3 +526,5 @@ if len(results):
 # Year bias on the year test goes from +2.75 (baseline) to +6.06 with the
 # six-minus-trend set: the model leans higher. Everything is measured at one
 # horizon, 30 days before the night.
+
+# %%
