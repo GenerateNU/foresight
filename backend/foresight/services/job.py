@@ -27,11 +27,13 @@ from typing import TYPE_CHECKING, Any
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
+from foresight.repository import pricing_model as model_repo
 from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
+from foresight.services.domain import recommendation as recommendation_service
 from foresight.services.domain.city import local_today
-from foresight.services.domain.hotel import get_hotel, list_hotels
+from foresight.services.domain.hotel import get_hotel, list_hotels, list_room_types
 from foresight.services.errors import (
     ConflictError,
     DomainError,
@@ -68,6 +70,8 @@ log = logging.getLogger(__name__)
 # A routine job runs again this long after it ran, or after it failed.
 ROUTINE_EVERY = timedelta(hours=24)
 RETRY_AFTER = timedelta(hours=1)
+# Nights a price job saves recommendations for, from today.
+PRICE_NIGHTS = 30
 # How far back the first routine events refresh looks for revisions.
 FIRST_REFRESH_DAYS = 7
 # A source's quota or rate limit: the job stops rather than fails.
@@ -187,6 +191,20 @@ async def start_train_job(
     return await _queue(session, hotel, JobKind.TRAIN, params)
 
 
+async def start_price_job(session: AsyncSession, hotel_id: int) -> Job:
+    """Save recommendations for the next PRICE_NIGHTS nights, so the calendar
+    opens without pricing them first.
+
+    Raises:
+        NotFoundError: Unknown hotel, or no active model.
+        ConflictError: A price job is already queued or running.
+    """
+    hotel = await get_hotel(session, hotel_id)
+    if await model_repo.get_active_pricing_model(session, hotel.id) is None:
+        raise NotFoundError("Active pricing model for hotel", hotel.id)
+    return await _queue(session, hotel, JobKind.PRICE, {})
+
+
 async def start_due_jobs(session: AsyncSession) -> list[Job]:
     """Queue every hotel's routine jobs that are due, in the order they run.
 
@@ -207,6 +225,7 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             {"mode": "recent"},
             lambda h: start_events_job(session, h, start=None, end=None),
         ),
+        (JobKind.PRICE, {}, lambda h: start_price_job(session, h)),
     ]
 
     queued: list[Job] = []
@@ -491,6 +510,37 @@ async def _train(
     )
 
 
+async def _price(
+    session: AsyncSession, hotel: Hotel, _params: Mapping[str, Any], _: Any
+) -> AsyncIterator[Step]:
+    model = await model_repo.get_active_pricing_model(session, hotel.id)
+    if model is None:
+        raise NotFoundError("Active pricing model for hotel", hotel.id)
+    # Older versions list the room types they were trained on; newer ones all.
+    trained_on = model.training_summary.get("room_types", [])
+    room_types = [
+        r
+        for r in await list_room_types(session, hotel.id)
+        if not trained_on or r.name in trained_on
+    ]
+    start = local_today(hotel.city)
+    end = start + timedelta(days=PRICE_NIGHTS - 1)
+    for done, room_type in enumerate(room_types, 1):
+        await recommendation_service.get_recommendations(
+            session, hotel.id, start=start, end=end, room_type_id=room_type.id
+        )
+        yield Step(
+            {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "model_version": model.version,
+                "room_types_done": done,
+                "room_types_total": len(room_types),
+            },
+            None,
+        )
+
+
 _HANDLERS: dict[JobKind, Handler] = {
     JobKind.WEATHER: _weather,
     JobKind.EVENTS: _events,
@@ -498,6 +548,7 @@ _HANDLERS: dict[JobKind, Handler] = {
     JobKind.RESERVATIONS: _file,
     JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,
+    JobKind.PRICE: _price,
 }
 
 
