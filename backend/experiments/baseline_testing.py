@@ -115,7 +115,9 @@ print(f"RMSE {check_scores['rmse']:.2f}")
 # %%
 # Year test: train on 2022-2024, test on all of 2025.
 stay = data.nights["stay_date"]
-train = (stay < date(2025, 1, 1)).to_numpy()
+# drop January 2022 as not all features have that data 
+not_jan_2022 = ~((stay >= date(2022, 1, 1)) & (stay <= date(2022, 1, 31))).to_numpy()
+train = (stay < date(2025, 1, 1)).to_numpy() & not_jan_2022
 test = (stay >= date(2025, 1, 1)).to_numpy()
 
 year_scores, year_nights = run_fold(train, test)
@@ -175,7 +177,8 @@ rows = []
 for month_start in pd.date_range("2024-01-01", "2025-12-01", freq="MS"):
     start = month_start.date()
     end = (month_start + pd.offsets.MonthBegin(1)).date()
-    fit = (stay < start).to_numpy()
+    # January 2022 is left out of training, so every comparison uses the same nights.
+    fit = (stay < start).to_numpy() & not_jan_2022
     holdout = ((stay >= start) & (stay < end)).to_numpy()
     month_scores, _ = run_fold(fit, holdout)
     rows.append({"month": start, "nights": holdout.sum(), **month_scores})
@@ -221,19 +224,3 @@ by_season = rolling.groupby("season").agg(
     avg_bias=("bias", "mean"),
 )
 print(by_season.loc[list(SEASON_COLORS)].round(2))
-
-# %% [markdown]
-# Baseline results (calendar + public holidays, hotel 1, EBM, MAE in euros).
-# Year test (train 2022-2024, test 2025):   MAE 18.66, RMSE 29.80, R2 0.75
-# Rolling test (24 monthly windows):        average MAE 19.51, spread 6.37
-#   2025 only: 18.76, within about 10 cents of the year test, so the baseline
-#   is stable and we freeze it.
-# Season breakdown (6 months each, so read it as a rough guide):
-#           months  avg_mae  worst_mae  avg_bias
-# season
-# Winter       6    17.02      27.72      1.93
-# Spring       6    19.25      27.02     -2.65
-# Summer       6    22.56      34.79     -0.95
-# Autumn       6    19.21      28.55      7.18
-# Later features are judged against these numbers, and a change smaller than
-# the monthly spread is treated as noise.
