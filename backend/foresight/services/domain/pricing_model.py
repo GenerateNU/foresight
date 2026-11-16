@@ -13,7 +13,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from importlib.metadata import version
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -111,13 +111,15 @@ async def train(
     description: str | None,
     start: date | None,
     end: date | None,
-    activate: bool,
+    activate: bool | Literal["if_better"],
     params: dict[str, Any],
 ) -> TrainingResult:
     """Train, score and save a new version. Does not commit.
 
     `params` go to the EBM as-is (e.g. {"interactions": 0}); the job validated
-    them. Raises InvalidRequestError if too few nights are left to train on.
+    them. `activate="if_better"` activates it only if the hotel has no active
+    model, the active one has no MAE, or its MAE is no worse. Raises
+    InvalidRequestError if too few nights are left to train on.
     """
     began = time.monotonic()
     data = await training_data(session, hotel, start=start, end=end)
@@ -143,6 +145,9 @@ async def train(
     )
     metrics["feedback_nights"] = len(effect.used)
     metrics["feedback_rates_replaced"] = int(effect.used["rate_replaced"].sum())
+    if activate == "if_better":
+        active = await model_repo.get_active_pricing_model(session, hotel.id)
+        activate = active is None or _no_worse(metrics, active.metrics)
 
     saved = await model_repo.create_pricing_model(
         session,
@@ -255,6 +260,12 @@ def _fit(
     cut = int(len(x) * (1 - HOLDOUT_FRAC))
     metrics = _metrics(model, x.iloc[cut:], y.iloc[cut:], nights.iloc[cut:])
     return {**metrics, **cost}, model.to_bytes()
+
+
+def _no_worse(new: dict[str, Any], active: dict[str, Any]) -> bool:
+    return new.get("mae") is not None and (
+        active.get("mae") is None or new["mae"] <= active["mae"]
+    )
 
 
 def _metrics(

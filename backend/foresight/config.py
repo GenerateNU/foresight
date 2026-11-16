@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # Runs each hotel's routine jobs when they're due. Off locally so a dev
     # server doesn't call paid APIs on its own.
     scheduler_enabled: bool = False
+    # Also retrain daily. Training runs in the web process, so turn this on
+    # only on a plan with the memory for it.
+    scheduled_training: bool = False
 
     # Sign-in
     google_client_id: str = ""

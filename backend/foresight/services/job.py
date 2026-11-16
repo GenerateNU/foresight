@@ -22,7 +22,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_cls
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
@@ -168,7 +168,7 @@ async def start_train_job(
     description: str | None,
     start: date | None,
     end: date | None,
-    activate: bool,
+    activate: bool | Literal["if_better"],
     ebm_params: dict[str, Any],
 ) -> Job:
     """Train a new model version on what's already ingested.
@@ -224,6 +224,25 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             JobKind.EVENTS,
             {"mode": "recent"},
             lambda h: start_events_job(session, h, start=None, end=None),
+        ),
+        *(
+            [
+                (
+                    JobKind.TRAIN,
+                    {},
+                    lambda h: start_train_job(
+                        session,
+                        h,
+                        description="scheduled",
+                        start=None,
+                        end=None,
+                        activate="if_better",
+                        ebm_params={},
+                    ),
+                )
+            ]
+            if settings.scheduled_training
+            else []
         ),
         (JobKind.PRICE, {}, lambda h: start_price_job(session, h)),
     ]
