@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# A routine job runs again this long after it succeeded, or after it didn't.
+# A routine job runs again this long after it ran, or after it failed.
 ROUTINE_EVERY = timedelta(hours=24)
 RETRY_AFTER = timedelta(hours=1)
 # How far back the first routine events refresh looks for revisions.
@@ -190,9 +190,9 @@ async def start_train_job(
 async def start_due_jobs(session: AsyncSession) -> list[Job]:
     """Queue every hotel's routine jobs that are due, in the order they run.
 
-    A job is due ROUTINE_EVERY after its last success, or RETRY_AFTER a run
-    that didn't succeed. One that can't start (already queued, not
-    configured) is skipped until the next check.
+    A job is due ROUTINE_EVERY after its last run succeeded or stopped on a
+    quota, or RETRY_AFTER a run that failed. One that can't start (already
+    queued, not configured) is skipped until the next check.
     """
     # (kind, params that mark its routine run, how to start it)
     routine: list[tuple[JobKind, dict[str, Any], Callable[[int], Awaitable[Job]]]]
@@ -201,6 +201,11 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             JobKind.WEATHER,
             {"mode": "forecast"},
             lambda h: start_weather_job(session, h, start=None, end=None),
+        ),
+        (
+            JobKind.EVENTS,
+            {"mode": "recent"},
+            lambda h: start_events_job(session, h, start=None, end=None),
         ),
     ]
 
@@ -260,7 +265,8 @@ async def _due(
     if last is None:
         return True
     assert last.finished_at is not None  # the query only returns finished jobs
-    wait = ROUTINE_EVERY if last.status == JobStatus.SUCCEEDED else RETRY_AFTER
+    # A stopped run hit a quota; retrying within the hour would hit it again.
+    wait = RETRY_AFTER if last.status == JobStatus.FAILED else ROUTINE_EVERY
     return last.finished_at + wait <= now
 
 
