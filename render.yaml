@@ -32,6 +32,10 @@ services:
         sync: false
       - key: PREDICTHQ_TOKEN
         sync: false
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: SCHEDULED_TRAINING
+        value: "false"
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

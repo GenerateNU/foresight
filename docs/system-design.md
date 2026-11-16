@@ -21,7 +21,7 @@ nightly rate.
                                    │ plain arguments in, domain objects out
                     ┌──────────────▼───────────────────────────────┐
   worker.py ──────▶ │ services                                      │
-  (background jobs) │   domain/    rules and reads per domain       │
+  (jobs, schedule)  │   domain/    rules and reads per domain       │
                     │   ingest/    fetch + save, in chunks          │
                     │   adapters/  outside APIs and files, no DB    │──▶ outside APIs
                     │   job.py     job kinds + lifecycle            │
@@ -345,7 +345,8 @@ uploaded report, through one queue per hotel
 | `files` (multipart) | one per file: `ACTUAL_FORECAST`, `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
 
 Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
-queue.
+queue. `PRICE` saves recommendations for the next 30 nights; only the
+scheduler starts it (section 5.3).
 
 **Window rules** (`services/ingest/window.py`):
 
@@ -420,7 +421,23 @@ safe.
   ([0054](decisions/0054-hosted-on-render.md)). It sleeps after 15 minutes
   without requests, which kills running jobs and loses the queues the same
   way a restart does.
-- Nothing runs on a schedule; the routine refreshes run when called.
+
+### 5.3 Scheduled jobs
+
+With `SCHEDULER_ENABLED`, `worker.schedule_forever` runs from startup
+([0056](decisions/0056-scheduled-jobs.md)):
+
+```
+every 15 minutes
+  job_service.start_due_jobs(session)
+    for each hotel, in order: weather, events, train (SCHEDULED_TRAINING), price
+      last finished run of that kind: none, or 24h ago (1h if it failed)?
+        → the same start_* the routes call; skipped if it can't start
+  commit; worker.enqueue each job      same per-hotel queue as uploads
+```
+
+A scheduled training run goes live only if its MAE is no worse than the
+active model's.
 
 ---
 
