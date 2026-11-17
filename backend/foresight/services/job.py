@@ -50,6 +50,7 @@ if TYPE_CHECKING:
         AsyncIterator,
         Awaitable,
         Callable,
+        Collection,
         Mapping,
         Sequence,
     )
@@ -386,10 +387,15 @@ async def mark_ended_early(
     )
 
 
-async def fail_interrupted_jobs(session: AsyncSession) -> int:
-    """Jobs left queued or running by a restart can't continue; fail them."""
+async def fail_interrupted_jobs(session: AsyncSession, *, keep: Collection[int]) -> int:
+    """Jobs left queued or running by a stopped server can't continue; fail
+    them. `keep` is the jobs this server holds."""
     return await job_repo.fail_unfinished_jobs(
-        session, "interrupted by a server restart; start it again"
+        session,
+        "interrupted by a server restart or deploy; start it again",
+        keep=keep,
+        # A job is committed a moment before it joins a queue; leave new ones.
+        created_before=datetime.now(UTC) - timedelta(minutes=1),
     )
 
 

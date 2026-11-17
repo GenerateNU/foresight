@@ -54,7 +54,8 @@ process.
   model.
 - MAEs of models trained a day apart are scored on almost, not exactly, the
   same recent nights.
-- On a paid plan, a deploy starts the new instance before stopping the old.
-  Startup fails every unfinished job, including ones the old instance is still
-  running. Fix that before moving to a paid plan.
+- On a paid plan, a deploy starts the new instance before stopping the old. So
+  the new one waits 6 minutes, longer than Render's longest shutdown delay,
+  then fails only the unfinished jobs it doesn't hold. Until then a job the old
+  instance left looks unfinished, and the scheduler skips that kind for a check.
 - A failed run is visible in `jobs`, but nothing alerts on it yet.

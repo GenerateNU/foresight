@@ -413,8 +413,9 @@ safe.
 - A failed job doesn't stop the jobs queued after it.
 - One unfinished weather, events or training job per hotel; a second gets a
   409. File jobs stack up in the queue instead.
-- A restart loses the queues and the parsed files waiting in them. On startup
-  every queued or running job is marked failed.
+- A restart or deploy loses the queues and the parsed files waiting in them.
+  6 minutes after startup, every queued or running job the new process doesn't
+  hold is marked failed (0056).
 - Production runs a single uvicorn worker, because the queues and parsed files
   live in that process.
 - Production is a Render free-plan service

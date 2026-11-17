@@ -12,7 +12,7 @@ from foresight.database.models.job import Job
 from foresight.repository.pagination import fetch_page
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Collection, Sequence
     from datetime import datetime
 
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,11 +70,22 @@ async def cancel_queued_job(session: AsyncSession, job_id: int) -> bool:
     return result.rowcount == 1
 
 
-async def fail_unfinished_jobs(session: AsyncSession, error: str) -> int:
-    """Mark every queued or running job failed; returns how many."""
+async def fail_unfinished_jobs(
+    session: AsyncSession,
+    error: str,
+    *,
+    keep: Collection[int],
+    created_before: datetime,
+) -> int:
+    """Mark queued or running jobs failed, except those in `keep` or created
+    since `created_before`; returns how many."""
     result = await session.execute(
         update(Job)
-        .where(Job.status.in_(_UNFINISHED))
+        .where(
+            Job.status.in_(_UNFINISHED),
+            Job.id.not_in(keep),
+            Job.created_at < created_before,
+        )
         .values(status=JobStatus.FAILED, error=error, finished_at=func.now())
     )
     return result.rowcount
