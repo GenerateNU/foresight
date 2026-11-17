@@ -67,6 +67,7 @@ class TrainingData:
     y: pd.Series  # the rate
     weights: np.ndarray  # sample weights (decision 0003)
     events_fetched: set[date]  # nights an events backfill covered (0041)
+    one_off_dropped: int  # nights left out as one-off (decision 0058)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +144,7 @@ async def train(
     )
     metrics["feedback_nights"] = len(effect.used)
     metrics["feedback_rates_replaced"] = int(effect.used["rate_replaced"].sum())
+    metrics["one_off_nights"] = data.one_off_dropped
 
     saved = await model_repo.create_pricing_model(
         session,
@@ -194,6 +196,16 @@ async def training_data(
     # so all three line up row for row.
     nights = nights.loc[training_mask(rate)].reset_index(drop=True)
 
+    # Decision 0058: a night the manager marked one-off teaches nothing.
+    one_off = await feedback_repo.one_off_nights(
+        session, hotel.id, start=start, end=end
+    )
+    keys = pd.MultiIndex.from_frame(nights[["stay_date", "room_type"]])
+    marked = {(row["stay_date"], row["room_type"]) for row in one_off}
+    keep = ~keys.isin(list(marked))
+    one_off_dropped = int((~keep).sum())
+    nights = nights.loc[keep].reset_index(drop=True)
+
     days = sorted(set(nights["stay_date"]))
     events = await events_for(session, hotel.city, days)
     x = build_features(
@@ -211,6 +223,7 @@ async def training_data(
         y=nights["rate"],
         weights=sample_weights(occupancy.clip(0, 1)),
         events_fetched=events.fetched,
+        one_off_dropped=one_off_dropped,
     )
 
 

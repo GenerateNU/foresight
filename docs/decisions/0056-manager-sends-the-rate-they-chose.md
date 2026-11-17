@@ -24,7 +24,9 @@ sent with a lower rate).
   feedback keeps the recommendation: it counts as accepted, and the manager
   can change it later (a new version, as in 0043).
 - A new reason tag, `ONE_OFF`, for something that won't happen again (a
-  buyout, a private event). It is stored like the others; nothing uses it yet.
+  buyout, a private event). It is stored like the others;
+  [0058](0058-one-off-nights-teach-the-model-nothing.md) decides how training
+  uses it.
 - Tags and free text stay optional, as in 0043.
 - No schema change. `verdict` stays a required column, now always set by the
   server. `rate` and `snapshot_id` stay nullable in the database: rows saved

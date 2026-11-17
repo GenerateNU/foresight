@@ -493,6 +493,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       training_data                             shared with the backtest (6.7)
         hotel_repo.list_nights                  every night, oldest first
         ml/weighting.training_mask              drop unpriced nights (0004)
+        feedback_repo.one_off_nights            drop nights the manager tagged one-off (0058)
         domain/model_inputs.events_for          counted events, backfilled nights, first seen
         ml/features.build_features              calendar + events (0055)
         ml/weighting.sample_weights             occupancy of sellable rooms (0003)
@@ -539,6 +540,11 @@ rates, before or after the night. `ml/ebm.TunedEBMModel` adds the two, and is
 saved as a new `ebm-tuned` version that serves by default. Each tune-up starts
 again from the base, so corrections never stack; with fewer than 5 rates it
 saves nothing.
+
+A night whose current feedback is tagged `ONE_OFF` (a buyout, a private event)
+teaches the model nothing ([0058](decisions/0058-one-off-nights-teach-the-model-nothing.md)):
+`training_data` drops it, so neither a retrain nor the backtest sees it, and
+the tune-up leaves out its rate.
 
 Every training run is a new version
 ([0029](decisions/0029-every-training-run-is-a-new-version.md)):

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from foresight.database.enums import FeedbackTiming
+from foresight.database.enums import FeedbackReasonTag, FeedbackTiming
 from foresight.database.models.feedback import Feedback
 from foresight.database.models.hotel import RoomType
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.enums import FeedbackReasonTag, FeedbackVerdict
+    from foresight.database.enums import FeedbackVerdict
 
 
 async def create_feedback(
@@ -109,8 +109,9 @@ async def training_feedback(
 
     Takes each night's current (highest) version, and keeps it only if it was
     given after the night: a night whose current version is from before it has
-    no feedback that training can use (decision 0044). Rows carry id,
-    stay_date, room_type (its name), verdict and rate.
+    no feedback that training can use (decision 0044). A version tagged
+    ONE_OFF is left out: training drops that night (decision 0058). Rows carry
+    id, stay_date, room_type (its name), verdict and rate.
     """
     current = select(Feedback).where(Feedback.hotel_id == hotel_id)
     if start is not None:
@@ -131,7 +132,10 @@ async def training_feedback(
             current.c.rate,
         )
         .join(RoomType, current.c.room_type_id == RoomType.id)
-        .where(current.c.timing == FeedbackTiming.AFTER)
+        .where(
+            current.c.timing == FeedbackTiming.AFTER,
+            ~current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]),
+        )
         .order_by(current.c.stay_date, RoomType.id)
     )
     return (await session.execute(stmt)).mappings().all()
@@ -143,8 +147,9 @@ async def tuning_feedback(
     """The manager's rates a tune-up learns from, one row per room type and night.
 
     Takes each night's current (highest) version, given before or after the
-    night, and keeps it if it has a rate (decision 0057). Rows carry id,
-    stay_date, room_type_id, room_type (its name) and rate, oldest night first.
+    night, and keeps it if it has a rate (decision 0057) and isn't tagged
+    ONE_OFF (decision 0058). Rows carry id, stay_date, room_type_id, room_type
+    (its name) and rate, oldest night first.
     """
     current = (
         select(Feedback)
@@ -162,7 +167,38 @@ async def tuning_feedback(
             current.c.rate,
         )
         .join(RoomType, current.c.room_type_id == RoomType.id)
-        .where(current.c.rate.is_not(None))
+        .where(
+            current.c.rate.is_not(None),
+            ~current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]),
+        )
+        .order_by(current.c.stay_date, RoomType.id)
+    )
+    return (await session.execute(stmt)).mappings().all()
+
+
+async def one_off_nights(
+    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
+) -> Sequence[Mapping[str, Any]]:
+    """The nights the manager marked as one-off, which training leaves out.
+
+    A room type's night is one-off when its current (highest) version of
+    feedback carries the ONE_OFF tag, given before or after the night
+    (decision 0058). Rows carry stay_date and room_type (its name).
+    """
+    current = select(Feedback).where(Feedback.hotel_id == hotel_id)
+    if start is not None:
+        current = current.where(Feedback.stay_date >= start)
+    if end is not None:
+        current = current.where(Feedback.stay_date <= end)
+    current = (
+        current.distinct(Feedback.room_type_id, Feedback.stay_date)
+        .order_by(Feedback.room_type_id, Feedback.stay_date, Feedback.version.desc())
+        .subquery()
+    )
+    stmt = (
+        select(current.c.stay_date, RoomType.name.label("room_type"))
+        .join(RoomType, current.c.room_type_id == RoomType.id)
+        .where(current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]))
         .order_by(current.c.stay_date, RoomType.id)
     )
     return (await session.execute(stmt)).mappings().all()

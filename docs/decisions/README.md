@@ -78,3 +78,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0054](0054-hosted-on-render.md) | The backend is hosted on Render's free plan | operations |
 | [0056](0056-manager-sends-the-rate-they-chose.md) | The manager sends the rate they chose; the verdict is worked out from it | API |
 | [0057](0057-daily-tune-up.md) | A daily tune-up corrects the active model with the manager's rates | ML |
+| [0058](0058-one-off-nights-teach-the-model-nothing.md) | A night tagged one-off teaches the model nothing | ML |
