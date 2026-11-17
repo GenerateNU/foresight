@@ -92,7 +92,11 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     artifact = await model_repo.get_artifact(session, active.id)
     if artifact is None:
         raise NotFoundError("Pricing model", active.id)
-    base = EBMModel.from_bytes(artifact)
+    loaded = EBMModel.from_bytes(artifact)
+    # The active version may itself be tuned: unwrap it, so the untouched
+    # nights' "no change" target is the base's price, not base plus the old
+    # correction. Otherwise each tune-up carries the last one forward (0057).
+    base = loaded.base if isinstance(loaded, TunedEBMModel) else loaded
 
     # The manager's nights first, then the nights they left alone, whose
     # target is the base's own prediction (a gap of 0).
