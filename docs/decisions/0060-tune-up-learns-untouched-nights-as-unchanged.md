@@ -16,8 +16,9 @@ move without a reason.
   manager didn't act, and only moves nights that look like the ones they did.
 - **Which nights.** Every room type and night with a snapshot (so the manager
   was shown a rate) within `UNTOUCHED_DAYS` (30) of today, back and ahead, that
-  has no manager rate, and whose room type the model was trained on
-  (`repository/recommendation.snapshotted_nights`).
+  has no manager rate, isn't tagged `ONE_OFF`
+  ([0058](0058-one-off-nights-teach-the-model-nothing.md)), and whose room
+  type the model was trained on (`repository/recommendation.snapshotted_nights`).
 - **Weight.** Equal to the manager's nights; no cap yet.
 - **Skip rule.** `MIN_TUNE_NIGHTS` still counts manager rates only. A tune-up
   with fewer than 5 manager rates saves nothing, however many untouched nights

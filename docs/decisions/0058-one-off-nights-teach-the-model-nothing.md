@@ -22,7 +22,9 @@ as unusual.
   before features and weights. The features have no lags, so the other nights'
   inputs don't change. The model's `metrics` gain `one_off_nights`.
 - **Tune-up.** `feedback_repo.tuning_feedback` leaves out one-off feedback, so
-  its rate isn't learned and doesn't count toward `MIN_TUNE_NIGHTS`.
+  its rate isn't learned and doesn't count toward `MIN_TUNE_NIGHTS`. Nor is
+  the night used as an untouched "no change" night
+  ([0060](0060-tune-up-learns-untouched-nights-as-unchanged.md)).
 - `feedback_repo.training_feedback` leaves it out too. The night is dropped
   anyway, so this only keeps the two in step.
 - No schema change: tags are VARCHARs, filtered with Postgres `@>`.

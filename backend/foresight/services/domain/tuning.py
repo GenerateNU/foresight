@@ -167,17 +167,23 @@ async def _untouched(
     """The nights the manager left alone: stay_date and room_type, one row each.
 
     Every room type and night with a snapshot within UNTOUCHED_DAYS of today
-    that has no manager rate, and whose room type the model was trained on.
+    that has no manager rate, isn't tagged one-off (decision 0058), and whose
+    room type the model was trained on.
     """
     today = local_today(hotel.city)
+    start = today - timedelta(days=UNTOUCHED_DAYS)
+    end = today + timedelta(days=UNTOUCHED_DAYS)
     nights = await snapshot_repo.snapshotted_nights(
-        session,
-        hotel.id,
-        start=today - timedelta(days=UNTOUCHED_DAYS),
-        end=today + timedelta(days=UNTOUCHED_DAYS),
+        session, hotel.id, start=start, end=end
     )
     trained_on = active.training_summary.get("room_types", [])
     touched = set(zip(feedback["stay_date"], feedback["room_type"], strict=True))
+    # A one-off night isn't in `feedback`, but it isn't "no change" either:
+    # it teaches nothing.
+    one_off = await feedback_repo.one_off_nights(
+        session, hotel.id, start=start, end=end
+    )
+    touched |= {(row["stay_date"], row["room_type"]) for row in one_off}
     return pd.DataFrame(
         [
             {"stay_date": n["stay_date"], "room_type": n["room_type"]}
