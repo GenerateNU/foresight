@@ -651,6 +651,25 @@ events); `--inputs` takes group names or single features. Compare input sets by
 running it once per set. `--start` leaves out earlier nights, and
 `--event-days` limits how much event history the model trains on.
 
+`just tuning-backtest 7 [--test-days 60] [--sizes 5,10,20,30]` checks whether
+the daily tune-up beats the base model, and after how many days of manager
+rates ([0061](decisions/0061-how-the-backtest-judges-the-tune-up.md)).
+
+```
+cli.tuning_backtest
+  → domain/backtest.run_tuning_backtest
+      _split(priced_days)  cutoff = test_days priced days before the newest
+      base EBM on nights ≤ cutoff (all FEATURES)
+      scored = nights after the first max(sizes) priced days after the cutoff
+      for each size N:
+        manager   = first N priced days after the cutoff (recorded rate)
+        untouched = next UNTOUCHED_DAYS after day N, no rate (0060)
+        tuning.fit_correction  manager only, and + untouched (what ships)
+        ml/base.score          on the scored nights, beside the base
+  ← table: MAE and skill per size, the dates each size used, and a PNG in
+    backend/backtest-out/ of actual, base and each tune-up per scored night
+```
+
 ### 6.8 How full a night was on an earlier date
 
 Computed when asked, never stored

@@ -6,6 +6,7 @@ predicts those nights. The inputs come from `pricing_model.training_data`, the
 same loader training uses, so the backtest scores the model that would ship.
 
 `run_backtest` scores one set of inputs; compare sets by running it once per set.
+`run_tuning_backtest` scores the daily tune-up against the base (decision 0061).
 """
 
 from __future__ import annotations
@@ -19,6 +20,11 @@ import pandas as pd
 
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.pricing_model import HOLDOUT_FRAC, training_data
+from foresight.services.domain.tuning import (
+    MIN_TUNE_NIGHTS,
+    UNTOUCHED_DAYS,
+    fit_correction,
+)
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.base import score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
@@ -125,13 +131,28 @@ async def _split(
     hotel: Hotel,
     test_days: int,
     start: date | None,
+    *,
+    priced_days: bool = False,
 ) -> _Split:
-    """Past priced nights from `start`, split at `test_days` before the newest."""
+    """Past priced nights from `start`, split at `test_days` before the newest.
+
+    `test_days` counts calendar days, or with `priced_days` only days that
+    have a priced night, so the test nights are always `test_days` days of
+    data however gappy it is.
+    """
     yesterday = date.today() - timedelta(days=1)
     data = await training_data(session, hotel, start=start, end=yesterday)
     if data.nights.empty:
         raise InvalidRequestError("no priced nights to backtest")
-    cutoff = data.nights["stay_date"].max() - timedelta(days=test_days)
+    if priced_days:
+        days = sorted(set(data.nights["stay_date"]))
+        if len(days) <= test_days:
+            raise InvalidRequestError(
+                f"only {len(days)} priced days; use a smaller --test-days"
+            )
+        cutoff = days[-test_days - 1]  # the last training day
+    else:
+        cutoff = data.nights["stay_date"].max() - timedelta(days=test_days)
     seen = (data.nights["stay_date"] <= cutoff).to_numpy()
     if not seen.any():
         raise InvalidRequestError(
@@ -147,13 +168,19 @@ async def _fit_predict(
     x = split.data.x[columns]
     if event_days is not None:
         x = _limit_event_history(x, split, event_days)
+    model = await _fit(split, x)
+    return model.predict_interval(x[~split.seen])
+
+
+async def _fit(split: _Split, x: pd.DataFrame) -> EBMModel:
+    """An EBM fit on the training nights' rows of `x`, weighted as training is."""
     seen = split.seen
     model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
     # CPU-bound for seconds; a thread keeps the event loop free.
     await asyncio.to_thread(
         model.fit, x[seen], split.data.y[seen], sample_weight=split.data.weights[seen]
     )
-    return model.predict_interval(x[~seen])
+    return model
 
 
 def _limit_event_history(
@@ -213,3 +240,182 @@ def _score_baseline(nights: pd.DataFrame, column: str) -> BaselineScore:
     return BaselineScore(
         nights=len(covered), metrics=metrics, model_mae=model_mae, skill=skill
     )
+
+
+# --- Tune-up backtest (decision 0061) ---
+
+# Days of manager feedback the tuning backtest tries, by default.
+TUNING_SIZES = (5, 10, 20, 30)
+
+
+@dataclass(frozen=True, slots=True)
+class TuningRow:
+    """The tune-up after `feedback_days` days of manager rates, on the eval nights."""
+
+    feedback_days: int
+    feedback_nights: int  # rows (night x room type) the manager "priced"
+    untouched_nights: int  # rows learned as "no change" (decision 0060)
+    feedback_dates: tuple[date, date]  # first and last feedback night
+    untouched_dates: tuple[date, date] | None  # None when there were none
+    # As BacktestResult.metrics, no coverage; empty when skipped.
+    manager_only: dict[str, float | None]  # correction fit on the manager's rates
+    with_untouched: dict[str, float | None]  # plus untouched nights: what ships
+    skill_manager_only: float | None  # 1 - tuned MAE / base MAE; > 0 beats the base
+    skill_with_untouched: float | None
+    mean_correction: float | None  # shipped variant, over the eval nights
+    skipped: str | None = None  # why the size wasn't tuned
+
+
+@dataclass(frozen=True, slots=True)
+class TuningBacktestResult:
+    """The base model and each tune-up size, scored on the same eval nights."""
+
+    hotel_name: str
+    train_start: date  # the base trains on nights from here
+    cutoff: date  # to here
+    eval_start: date  # first scored night: after max(sizes) priced days
+    eval_end: date
+    eval_nights: int
+    base: dict[str, float | None]  # the untuned model on the eval nights
+    rows: list[TuningRow]
+    # Every held-out night: stay_date, room_type, actual, base, day (its
+    # priced-day number after the cutoff; the first max(sizes) are feedback),
+    # scored, and per tuned size N, mgr_only_N and tuned_N (what ships),
+    # NaN except on scored nights.
+    nights: pd.DataFrame
+
+
+async def run_tuning_backtest(
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    test_days: int = 60,
+    sizes: Sequence[int] = TUNING_SIZES,
+    start: date | None = None,
+) -> TuningBacktestResult:
+    """Does the tune-up beat the base model, and after how many days of feedback?
+
+    Trains the base on every night before the newest `test_days` priced
+    days, as if it went live then. For each size N, the recorded rates of the first N
+    priced days after the cutoff stand in for the manager's, the correction is
+    fit on them (with and without the untouched nights of decision 0060), and
+    both are scored, with the base, on the nights after the first max(sizes)
+    priced days, the same nights for every size.
+
+    Raises NotFoundError for an unknown hotel, and InvalidRequestError for bad
+    sizes or if no nights are left to score.
+    """
+    hotel = await get_hotel(session, hotel_id)
+    sizes = sorted(set(sizes))
+    if not sizes or sizes[0] < 1:
+        raise InvalidRequestError("--sizes must be positive numbers of days")
+    if test_days <= sizes[-1]:
+        raise InvalidRequestError(
+            f"--test-days {test_days} leaves no days to score after {sizes[-1]} "
+            "days of feedback; use more --test-days or smaller --sizes"
+        )
+    # Every count here is in priced days, not calendar days, so gaps in the
+    # data don't leave a size, or the scored nights, with nothing in them.
+    split = await _split(session, hotel, test_days, start, priced_days=True)
+    stay = split.data.nights["stay_date"]
+    days_after = sorted(set(stay[~split.seen]))  # exactly test_days of them
+    rank = stay.map({d: i for i, d in enumerate(days_after, start=1)})
+    rank = rank.fillna(0).astype(int).to_numpy()  # 0: a training night
+
+    x = split.data.x[FEATURES]
+    base = await _fit(split, x)
+    y = split.data.y.to_numpy(dtype=float)
+    trained_on = set(split.data.nights.loc[split.seen, "room_type"])
+    known_room = split.data.nights["room_type"].isin(trained_on).to_numpy()
+
+    scored = rank > sizes[-1]
+    x_eval = x[scored]
+    base_pred = base.predict(x_eval)
+    base_metrics = score(y[scored], base_pred)
+    base_mae = base_metrics["mae"]
+    held_out = ~split.seen
+    nights = pd.DataFrame(
+        {
+            "stay_date": stay[held_out].to_numpy(),
+            "room_type": split.data.nights.loc[held_out, "room_type"].to_numpy(),
+            "actual": y[held_out],
+            "base": base.predict(x[held_out]),
+            "day": rank[held_out],
+            "scored": scored[held_out],
+        }
+    )
+    on_scored = nights["scored"].to_numpy()
+
+    rows = []
+    for n in sizes:
+        # "Today" is the last feedback day; untouched nights are the ones
+        # shown over the next UNTOUCHED_DAYS (snapshots start at the cutoff).
+        today = days_after[n - 1]
+        manager = (rank >= 1) & (rank <= n)
+        horizon = (stay <= today + timedelta(days=UNTOUCHED_DAYS)).to_numpy()
+        untouched = (rank > n) & horizon & known_room
+        used = {
+            "feedback_days": n,
+            "feedback_nights": int(manager.sum()),
+            "untouched_nights": int(untouched.sum()),
+            "feedback_dates": (days_after[0], today),
+            "untouched_dates": (
+                (stay[untouched].min(), stay[untouched].max())
+                if untouched.any()
+                else None
+            ),
+        }
+        if manager.sum() < MIN_TUNE_NIGHTS:
+            rows.append(
+                TuningRow(
+                    **used,
+                    manager_only={},
+                    with_untouched={},
+                    skill_manager_only=None,
+                    skill_with_untouched=None,
+                    mean_correction=None,
+                    skipped=f"{int(manager.sum())} nights; need {MIN_TUNE_NIGHTS}",
+                )
+            )
+            continue
+        y_manager = pd.Series(y[manager])
+        only = await asyncio.to_thread(fit_correction, base, x[manager], y_manager)
+        both = await asyncio.to_thread(
+            fit_correction, base, x[manager], y_manager, x[untouched]
+        )
+        only_pred, both_pred = only.predict(x_eval), both.predict(x_eval)
+        only_metrics = score(y[scored], only_pred)
+        both_metrics = score(y[scored], both_pred)
+        for column, pred in ((f"mgr_only_{n}", only_pred), (f"tuned_{n}", both_pred)):
+            nights[column] = float("nan")
+            nights.loc[on_scored, column] = pred
+        rows.append(
+            TuningRow(
+                **used,
+                manager_only=only_metrics,
+                with_untouched=both_metrics,
+                skill_manager_only=_skill(only_metrics["mae"], base_mae),
+                skill_with_untouched=_skill(both_metrics["mae"], base_mae),
+                mean_correction=float(both.correction(x_eval).mean()),
+            )
+        )
+
+    eval_days = stay[scored]
+    return TuningBacktestResult(
+        hotel_name=hotel.name,
+        train_start=stay[split.seen].min(),
+        cutoff=split.cutoff,
+        eval_start=eval_days.min(),
+        eval_end=eval_days.max(),
+        eval_nights=int(scored.sum()),
+        base=base_metrics,
+        rows=rows,
+        nights=nights,
+    )
+
+
+def _skill(mae: float | None, base_mae: float | None) -> float | None:
+    """1 - mae / base_mae; above 0, the tune-up beats the base."""
+    if mae is None or not base_mae:
+        return None
+    return 1 - mae / base_mae

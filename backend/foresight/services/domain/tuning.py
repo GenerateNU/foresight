@@ -105,16 +105,15 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     )
     x = await _features(session, hotel, both)
     x_manager = x.iloc[: len(feedback)]
-    y = pd.concat(
-        [
-            feedback["rate"].astype(float),
-            pd.Series(base.predict(x.iloc[len(feedback) :]), dtype=float),
-        ],
-        ignore_index=True,
-    )
 
     # CPU-bound; a thread keeps the API answering meanwhile.
-    model = await asyncio.to_thread(TunedEBMModel(base).fit, x, y)
+    model = await asyncio.to_thread(
+        fit_correction,
+        base,
+        x_manager,
+        feedback["rate"].astype(float),
+        x.iloc[len(feedback) :],
+    )
     correction = model.correction(x_manager)
 
     saved = await model_repo.create_pricing_model(
@@ -156,6 +155,34 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         assert activated is not None  # saved just above, in this transaction
         saved = activated
     return TuneResult(saved, activate, len(feedback), len(untouched))
+
+
+def fit_correction(
+    base: EBMModel,
+    x_manager: pd.DataFrame,
+    y_manager: pd.Series,
+    x_untouched: pd.DataFrame | None = None,
+) -> TunedEBMModel:
+    """Fits the correction on the manager's rates and the untouched nights.
+
+    The untouched nights' target is the base's own prediction, a gap of 0
+    (decision 0060). Pure and CPU-bound: `tune` and the tuning backtest both
+    call it, so the backtest scores the tune-up that ships.
+    """
+    if isinstance(base, TunedEBMModel):
+        base = base.base
+    if x_untouched is None or x_untouched.empty:
+        x, y = x_manager, pd.Series(y_manager, dtype=float).reset_index(drop=True)
+    else:
+        x = pd.concat([x_manager, x_untouched], ignore_index=True)
+        y = pd.concat(
+            [
+                pd.Series(y_manager, dtype=float).reset_index(drop=True),
+                pd.Series(base.predict(x_untouched), dtype=float),
+            ],
+            ignore_index=True,
+        )
+    return TunedEBMModel(base).fit(x, y)
 
 
 async def _untouched(
