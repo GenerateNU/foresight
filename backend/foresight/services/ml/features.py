@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from foresight.database.enums import EventCategory
+from foresight.services.ml.holidays import night_before_holiday
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -26,6 +27,7 @@ FEATURES = [
     "room_type",
     "day_of_week",
     "month",
+    "night_before_holiday",
     "is_public_holiday",
     "is_school_holiday",
     "event_count",
@@ -40,9 +42,12 @@ FEATURES = [
 # FEATURES by kind, for choosing which inputs a backtest trains on. Every
 # input is in exactly one group. The holiday flags sit with events: they come
 # from the same PredictHQ data, and are unknown on the same nights. Weather
-# stays out of the model (decision 0055).
+# stays out of the model (decision 0055). `holidays` are worked out from the
+# date alone (decision 0067), so unlike events they are never unknown, and they
+# stay out of `calendar` so that group, the baseline's inputs, doesn't change.
 INPUT_GROUPS = {
     "calendar": ["room_type", "day_of_week", "month"],
+    "holidays": ["night_before_holiday"],
     "events": [
         "is_public_holiday",
         "is_school_holiday",
@@ -84,7 +89,8 @@ def build_features(
     Used for training (past nights) and serving (the night being priced), so
     both see identical features. The event columns stay empty on nights no
     events backfill covered; the model learns a separate effect for unknown
-    values.
+    values. `night_before_holiday` is never empty: it comes from the date
+    alone, not from events (decision 0067).
 
     An event counts on a night only if PredictHQ first saw it before that
     night (decision 0055), so training never learns from an event the market
@@ -129,6 +135,7 @@ def build_features(
     features["room_type"] = nights["room_type"].astype("category")
     features["day_of_week"] = stay_date.dt.dayofweek.to_numpy()
     features["month"] = stay_date.dt.month.to_numpy()
+    features["night_before_holiday"] = night_before_holiday(stay_date)
     features[LEAD] = _lead_days(stay_date, booked_on)
     return features.reindex(columns=FEATURES)
 

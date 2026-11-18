@@ -386,6 +386,10 @@ def _value(feature: str, value: float | int | str | None) -> str:
         if days == 0:
             return "booking today"
         return f"booking {days} day{'' if days == 1 else 's'} ahead"
+    if feature == "night_before_holiday":
+        if int(value):
+            return "the night before a public holiday"
+        return "not the night before a public holiday"
     if feature == "day_of_week":
         return _DAYS[int(value)]
     if feature == "month":
