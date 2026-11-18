@@ -105,7 +105,7 @@ backend/foresight/
     adapters/              open_meteo, predicthq, normalize
       hotel/               one per CSV report: actual_forecast, reservations,
                            cancellations; common (shared reading)
-    ml/                    base, ebm, features, weighting, baselines
+    ml/                    base, ebm, features, holidays, weighting, baselines
   repository/
     upsert.py pagination.py
     booking.py city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
@@ -495,7 +495,8 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
                                                 rate = adr_nett, weight 1, all FEATURES
           no  → the nights, rate = ARR, occupancy weight (0003), no lead_days
         domain/model_inputs.events_for          counted events, backfilled nights, first seen
-        ml/features.build_features              calendar + events (0055) + lead_days from booked_on
+        ml/features.build_features              calendar + holidays + events + lead_days from booked_on
+                                                (0055, 0056, 0067)
       feedback_repo.training_feedback           current version per night, after the night only
       ml/feedback.apply_feedback                against the night's average rate; carried onto
                                                 its rooms as a ratio (0044, 0056)
@@ -635,11 +636,12 @@ cli.backtest
   ← scores (+ baseline table), and a PNG in backend/backtest-out/
 ```
 
-`ml/features.INPUT_GROUPS` sorts every input into groups (calendar, events and
-lead_days); `--inputs` takes group names or single features. Compare input sets
-by running it once per set: `--inputs calendar,events` leaves out days booked
-ahead. For a hotel that trains on bookings the test rows are booked rooms, and
-its scores aren't comparable with one trained on nights. `--start` leaves out earlier nights, and
+`ml/features.INPUT_GROUPS` sorts every input into groups (calendar, holidays,
+events and lead_days); `--inputs` takes group names or single features. Compare
+input sets by running it once per set: `--inputs calendar,events` leaves out days
+booked ahead. For a hotel that trains on bookings the test rows are booked rooms,
+and its scores aren't comparable with one trained on nights. `--start` leaves out
+earlier nights, and
 `--event-days` limits how much event history the model trains on.
 
 ### 6.8 How full a night was on an earlier date
