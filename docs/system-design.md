@@ -544,10 +544,12 @@ A daily tune-up (`POST /hotels/{id}/tune`, a `tune` job;
 [0057](decisions/0057-daily-tune-up.md)) corrects the active model without
 retraining it. `domain/tuning.tune` keeps the active model's base as it is and
 fits a small EBM on the gap between its predictions and the manager's current
-rates, before or after the night. Nights with a snapshot within 30 days of
-today that the manager left alone join with a gap of 0
-([0060](decisions/0060-tune-up-learns-untouched-nights-as-unchanged.md)), so
-the correction doesn't shift every night. `ml/ebm.TunedEBMModel` adds the two, and is
+rates, before or after the night. Past nights with a snapshot in the 30 days
+before today that the manager left alone join with a gap of 0
+([0060](decisions/0060-tune-up-learns-untouched-nights-as-unchanged.md),
+[0062](decisions/0062-only-past-nights-are-no-change.md)), so the correction
+doesn't shift every night; future nights don't count, as the manager may still
+change them. `ml/ebm.TunedEBMModel` adds the two, and is
 saved as a new `ebm-tuned` version that serves by default. Each tune-up starts
 again from the base, so corrections never stack; with fewer than 5 rates it
 saves nothing.
@@ -651,9 +653,13 @@ events); `--inputs` takes group names or single features. Compare input sets by
 running it once per set. `--start` leaves out earlier nights, and
 `--event-days` limits how much event history the model trains on.
 
-`just tuning-backtest 7 [--test-days 60] [--sizes 5,10,20,30]` checks whether
-the daily tune-up beats the base model, and after how many days of manager
-rates ([0061](decisions/0061-how-the-backtest-judges-the-tune-up.md)).
+`just tuning-backtest 7 [--test-days 60] [--sizes 5,10,20,30]
+[--manager-share 0.5] [--manager-rule weekend+15%]` checks whether the daily
+tune-up beats the base model, and after how many days of manager rates
+([0061](decisions/0061-how-the-backtest-judges-the-tune-up.md)). A synthetic
+manager (`--manager-rule`) has a habit the base lacks, and the table shows how
+much of it the tune-up learned
+([0062](decisions/0062-only-past-nights-are-no-change.md)).
 
 ```
 cli.tuning_backtest
@@ -662,11 +668,13 @@ cli.tuning_backtest
       base EBM on nights ≤ cutoff (all FEATURES)
       scored = nights after the first max(sizes) priced days after the cutoff
       for each size N:
-        manager   = first N priced days after the cutoff (recorded rate)
-        untouched = next UNTOUCHED_DAYS after day N, no rate (0060)
+        manager   = reviewed days of the first N priced days after the cutoff
+                    (recorded rate, or the base with --manager-rule applied)
+        untouched = the rest of those N days, past nights left alone (0062)
         tuning.fit_correction  manager only, and + untouched (what ships)
         ml/base.score          on the scored nights, beside the base
-  ← table: MAE and skill per size, the dates each size used, and a PNG in
+  ← table: MAE and skill per size (+ Learned/Drift with a rule), the dates
+    each size used, and a PNG in
     backend/backtest-out/ of actual, base and each tune-up per scored night
 ```
 

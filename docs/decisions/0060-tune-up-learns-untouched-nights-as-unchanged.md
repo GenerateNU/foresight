@@ -1,6 +1,6 @@
 # 0060. The tune-up also learns the nights the manager left alone, as "no change"
 
-**Status:** Accepted · **Date:** 2026-11-15 · Amends [0057](0057-daily-tune-up.md)
+**Status:** Accepted, amended by [0062](0062-only-past-nights-are-no-change.md) (past nights only) · **Date:** 2026-11-15 · Amends [0057](0057-daily-tune-up.md)
 
 ## Context
 [0057](0057-daily-tune-up.md) trains the correction only on nights the manager

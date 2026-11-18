@@ -1,6 +1,6 @@
 # 0061. The tuning backtest replays the tune-up after N days of manager rates
 
-**Status:** Accepted · **Date:** 2026-11-17
+**Status:** Accepted, amended by [0062](0062-only-past-nights-are-no-change.md) (past untouched nights, synthetic manager) · **Date:** 2026-11-17
 
 ## Context
 The daily tune-up ([0057](0057-daily-tune-up.md),

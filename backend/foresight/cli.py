@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import sys
 from datetime import date, datetime
 from itertools import pairwise
@@ -21,7 +22,7 @@ from foresight.database.session import async_session_factory, engine
 from foresight.services.domain import alignment as alignment_service
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
-from foresight.services.errors import DomainError
+from foresight.services.errors import DomainError, InvalidRequestError
 from foresight.services.ml.features import FEATURES, INPUT_GROUPS
 
 if TYPE_CHECKING:
@@ -98,15 +99,31 @@ async def backtest(
 
 
 async def tuning_backtest(
-    hotel_id: int, test_days: int, sizes: list[int], start: date | None, out: Path
+    hotel_id: int,
+    test_days: int,
+    sizes: list[int],
+    start: date | None,
+    out: Path,
+    rule: backtest_service.ManagerRule | None = None,
+    manager_share: float = 1.0,
 ) -> None:
     async with async_session_factory() as session:
         result = await backtest_service.run_tuning_backtest(
-            session, hotel_id, test_days=test_days, sizes=sizes, start=start
+            session,
+            hotel_id,
+            test_days=test_days,
+            sizes=sizes,
+            start=start,
+            rule=rule,
+            manager_share=manager_share,
         )
     base_mae = result.base["mae"]
     assert base_mae is not None
+    manager = (
+        f"synthetic, {result.rule} on the base" if result.rule else "recorded rates"
+    )
     print(result.hotel_name)
+    print(f"  Manager          {manager}, prices {result.manager_share:.0%} of days")
     print(f"  Base trained on  {result.train_start} to {result.cutoff}")
     print(
         f"  Scored on        {result.eval_start} to {result.eval_end} "
@@ -114,7 +131,7 @@ async def tuning_backtest(
     )
     print(f"  Base model MAE   €{base_mae:.2f}")
     print()
-    print(_tuning_table(result.rows))
+    print(_tuning_table(result.rows, synthetic=result.rule is not None))
 
     tuned = [r for r in result.rows if not r.skipped]
     path = out / f"tuning-hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
@@ -122,6 +139,7 @@ async def tuning_backtest(
         result.nights.loc[result.nights["scored"]],
         [r.feedback_days for r in tuned],
         path,
+        actual_label=f"Manager ({result.rule})" if result.rule else "Actual",
         title=(
             f"Tune-up backtest: {result.hotel_name}, scored nights "
             f"{result.eval_start:%-d %b} – {result.eval_end:%-d %b %Y}"
@@ -134,12 +152,17 @@ async def tuning_backtest(
     print(f"Plot saved to {path}")
 
 
-def _tuning_table(rows: list[backtest_service.TuningRow]) -> str:
-    """Each feedback size's MAE and skill, without and with untouched nights."""
+def _tuning_table(
+    rows: list[backtest_service.TuningRow], *, synthetic: bool = False
+) -> str:
+    """Each feedback size's MAE and skill, without and with untouched nights.
+
+    With a synthetic manager, also how much of their habit was learned.
+    """
     lines = [
         f"{'Feedback':<10}{'Nights':>7}{'Untouched':>10}"
         f"{'MAE mgr-only':>14}{'Skill':>7}{'MAE +untouched':>16}{'Skill':>7}"
-        f"{'Mean corr.':>12}"
+        f"{'Mean corr.':>12}" + (f"{'Learned':>9}{'Drift':>10}" if synthetic else "")
     ]
     for r in rows:
         label = f"{r.feedback_days} days"
@@ -154,12 +177,23 @@ def _tuning_table(rows: list[backtest_service.TuningRow]) -> str:
             f"{label:<10}{r.feedback_nights:>7}{r.untouched_nights:>10}"
             f"{_euro(r.manager_only['mae']):>14}{_pct(r.skill_manager_only):>7}"
             f"{_euro(r.with_untouched['mae']):>16}{_pct(r.skill_with_untouched):>7}"
-            f"{('+' if corr >= 0 else '−') + '€' + format(abs(corr), '.2f'):>12}"
+            f"{_signed_euro(corr):>12}"
+            + (
+                f"{_share(r.recovery):>9}{_signed_euro(r.drift):>10}"
+                if synthetic
+                else ""
+            )
         )
     lines.append(
         "Skill > 0 means the tune-up beats the base. '+untouched' is what ships "
         "(decision 0060)."
     )
+    if synthetic:
+        lines.append(
+            "Learned: share of the manager's habit the shipped tune-up adds on the "
+            "nights it applies to (100% is all of it). Drift: mean change on the "
+            "other nights (€0 is right). Decision 0062."
+        )
     lines.append("")
     lines.append(f"{'Feedback':<10}{'Feedback nights':<26}Untouched nights")
     for r in rows:
@@ -169,6 +203,16 @@ def _tuning_table(rows: list[backtest_service.TuningRow]) -> str:
             f"{untouched}"
         )
     return "\n".join(lines)
+
+
+def _signed_euro(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return ("+" if value >= 0 else "−") + "€" + format(abs(value), ".2f")
+
+
+def _share(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.0%}"
 
 
 def _date_range(dates: tuple[date, date]) -> str:
@@ -185,7 +229,13 @@ _TUNED_RAMP = ["#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]
 
 
 def _save_tuning_plot(
-    nights: pd.DataFrame, sizes: list[int], path: Path, *, title: str, subtitle: str
+    nights: pd.DataFrame,
+    sizes: list[int],
+    path: Path,
+    *,
+    title: str,
+    subtitle: str,
+    actual_label: str = "Actual",
 ) -> None:
     """Actual, base and each shipped tune-up's rate per scored night, as a PNG.
 
@@ -222,7 +272,7 @@ def _save_tuning_plot(
     series.append(
         ("actual", {"color": "#0b0b0b", "linewidth": 2, "marker": "o",
                     "markersize": 5, "markeredgecolor": "white",
-                    "markeredgewidth": 1, "label": "Actual", "zorder": 3})
+                    "markeredgewidth": 1, "label": actual_label, "zorder": 3})
     )  # fmt: skip
 
     room_types = list(dict.fromkeys(nights["room_type"]))
@@ -286,6 +336,22 @@ def _euro(value: float | None) -> str:
 
 def _pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value:+.0%}"
+
+
+def _parse_manager_rule(text: str) -> backtest_service.ManagerRule:
+    """`--manager-rule`: nights, then a signed percent, e.g. weekend+15%.
+
+    Raises argparse.ArgumentTypeError for anything else.
+    """
+    match = re.fullmatch(r"([a-z]+)([+-]\d+(?:\.\d+)?)%?", text.strip().lower())
+    if match is None:
+        raise argparse.ArgumentTypeError(
+            f"expected nights and a percent, e.g. weekend+15%; got {text!r}"
+        )
+    try:
+        return backtest_service.ManagerRule(match.group(1), float(match.group(2)) / 100)
+    except InvalidRequestError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def _parse_sizes(text: str) -> list[int]:
@@ -488,7 +554,13 @@ async def _run(args: argparse.Namespace) -> None:
             )
         elif args.command == "tuning-backtest":
             await tuning_backtest(
-                args.hotel_id, args.test_days, args.sizes, args.start, args.out
+                args.hotel_id,
+                args.test_days,
+                args.sizes,
+                args.start,
+                args.out,
+                args.manager_rule,
+                args.manager_share,
             )
     finally:
         await engine.dispose()
@@ -568,6 +640,29 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated days of manager feedback to try. Default: 5,10,20,30",
     )
     tb.add_argument("--start", type=date.fromisoformat, help="Leave out earlier nights")
+    tb.add_argument(
+        "--manager-rule",
+        type=_parse_manager_rule,
+        default=None,
+        metavar="RULE",
+        help=(
+            "A synthetic manager with a habit the base lacks, e.g. weekend+15%%, "
+            "events+20%%, all-10%%. Nights: "
+            f"{', '.join(backtest_service.RULE_NIGHTS)}. "
+            "Their rate is the base's with the rule applied. Default: none, the "
+            "recorded rate is the manager's"
+        ),
+    )
+    tb.add_argument(
+        "--manager-share",
+        type=float,
+        default=1.0,
+        metavar="SHARE",
+        help=(
+            "Share of feedback days the manager prices, e.g. 0.3; the rest are "
+            "learned as 'no change'. Default: 1, every day"
+        ),
+    )
     tb.add_argument(
         "--out",
         type=Path,

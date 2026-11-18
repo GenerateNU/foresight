@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from foresight.services.domain.hotel import get_hotel
@@ -34,7 +35,6 @@ from foresight.services.ml.features import FEATURES, INPUT_GROUPS
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import numpy as np
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.hotel import Hotel
@@ -246,6 +246,46 @@ def _score_baseline(nights: pd.DataFrame, column: str) -> BaselineScore:
 
 # Days of manager feedback the tuning backtest tries, by default.
 TUNING_SIZES = (5, 10, 20, 30)
+# Fixes which days a partial manager prices, so runs are comparable.
+MANAGER_SEED = 0
+# Nights a ManagerRule can pick out: name -> does a feature row match.
+RULE_NIGHTS = {
+    "all": lambda x: np.ones(len(x), dtype=bool),
+    "weekend": lambda x: x["day_of_week"].isin([4, 5]).to_numpy(),  # Fri, Sat
+    "weekday": lambda x: ~x["day_of_week"].isin([4, 5]).to_numpy(),
+    # Big events: nearly every night with event data has some small ones.
+    "events": lambda x: (x["big_event_count"] > 0).to_numpy(),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ManagerRule:
+    """A synthetic manager's habit: `pct` on top of the base on `nights`.
+
+    E.g. ManagerRule("weekend", 0.15): every Friday and Saturday 15% above
+    what the base model says, every other night as the base says. The base
+    can't know this, so the tune-up is the only way to learn it (decision 0062).
+    """
+
+    nights: str  # a key of RULE_NIGHTS
+    pct: float  # 0.15 is +15%
+
+    def __post_init__(self) -> None:
+        if self.nights not in RULE_NIGHTS:
+            raise InvalidRequestError(
+                f"unknown manager-rule nights {self.nights!r}; "
+                f"use one of {', '.join(RULE_NIGHTS)}"
+            )
+
+    def matches(self, x: pd.DataFrame) -> np.ndarray:
+        return RULE_NIGHTS[self.nights](x)
+
+    def apply(self, x: pd.DataFrame, base_pred: np.ndarray) -> np.ndarray:
+        """The rate this manager sets on each row of x."""
+        return np.where(self.matches(x), base_pred * (1 + self.pct), base_pred)
+
+    def __str__(self) -> str:
+        return f"{self.nights}{self.pct:+.0%}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,6 +304,12 @@ class TuningRow:
     skill_with_untouched: float | None
     mean_correction: float | None  # shipped variant, over the eval nights
     skipped: str | None = None  # why the size wasn't tuned
+    # With a ManagerRule only, shipped variant on the eval nights: mean
+    # correction / mean gap the rule adds, on the nights it matches (1 is
+    # all of it learned), and the mean correction on the nights it doesn't
+    # match (0 is right: they should not move).
+    recovery: float | None = None
+    drift: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,6 +324,8 @@ class TuningBacktestResult:
     eval_nights: int
     base: dict[str, float | None]  # the untuned model on the eval nights
     rows: list[TuningRow]
+    rule: ManagerRule | None  # None: the recorded rate is the manager's
+    manager_share: float  # share of feedback days the manager priced
     # Every held-out night: stay_date, room_type, actual, base, day (its
     # priced-day number after the cutoff; the first max(sizes) are feedback),
     # scored, and per tuned size N, mgr_only_N and tuned_N (what ships),
@@ -292,6 +340,8 @@ async def run_tuning_backtest(
     test_days: int = 60,
     sizes: Sequence[int] = TUNING_SIZES,
     start: date | None = None,
+    rule: ManagerRule | None = None,
+    manager_share: float = 1.0,
 ) -> TuningBacktestResult:
     """Does the tune-up beat the base model, and after how many days of feedback?
 
@@ -302,6 +352,15 @@ async def run_tuning_backtest(
     both are scored, with the base, on the nights after the first max(sizes)
     priced days, the same nights for every size.
 
+    The manager reviews `manager_share` of the feedback days, picked at
+    random, and sets a rate on each night of them; the nights they didn't
+    review are past nights left alone, which the tune-up learns as "no
+    change", as `tune` does. With a `rule`, the manager is synthetic: their
+    rate is the base's with the rule applied, on feedback and scored nights
+    alike, and on a reviewed day they set a rate only where the rule changes
+    it, accepting the rest. The score then says how much of a known habit the
+    tune-up learned (decision 0062).
+
     Raises NotFoundError for an unknown hotel, and InvalidRequestError for bad
     sizes or if no nights are left to score.
     """
@@ -309,6 +368,8 @@ async def run_tuning_backtest(
     sizes = sorted(set(sizes))
     if not sizes or sizes[0] < 1:
         raise InvalidRequestError("--sizes must be positive numbers of days")
+    if not 0 < manager_share <= 1:
+        raise InvalidRequestError("--manager-share must be above 0 and at most 1")
     if test_days <= sizes[-1]:
         raise InvalidRequestError(
             f"--test-days {test_days} leaves no days to score after {sizes[-1]} "
@@ -325,6 +386,13 @@ async def run_tuning_backtest(
     x = split.data.x[FEATURES]
     base = await _fit(split, x)
     y = split.data.y.to_numpy(dtype=float)
+    if rule is not None:  # the synthetic manager's rate replaces the recorded one
+        y = np.where(split.seen, y, rule.apply(x, base.predict(x)))
+    # Which feedback days the manager reviewed; the rest they left alone.
+    pick = np.random.default_rng(MANAGER_SEED).random(len(days_after)) < manager_share
+    priced = np.concatenate([[False], pick])[rank]  # rank 0: a training night
+    if rule is not None:  # a synthetic manager accepts nights the rule leaves
+        priced &= rule.matches(x)
     trained_on = set(split.data.nights.loc[split.seen, "room_type"])
     known_room = split.data.nights["room_type"].isin(trained_on).to_numpy()
 
@@ -348,17 +416,20 @@ async def run_tuning_backtest(
 
     rows = []
     for n in sizes:
-        # "Today" is the last feedback day; untouched nights are the ones
-        # shown over the next UNTOUCHED_DAYS (snapshots start at the cutoff).
-        today = days_after[n - 1]
-        manager = (rank >= 1) & (rank <= n)
-        horizon = (stay <= today + timedelta(days=UNTOUCHED_DAYS)).to_numpy()
-        untouched = (rank > n) & horizon & known_room
+        # "Today" is the day after the last feedback day. Untouched nights
+        # are feedback days the manager didn't price, within UNTOUCHED_DAYS
+        # back: past nights left alone (decision 0062). Snapshots start at
+        # the cutoff, so nothing before it counts.
+        today = days_after[n - 1] + timedelta(days=1)
+        window = (rank >= 1) & (rank <= n)
+        manager = window & priced
+        horizon = (stay >= today - timedelta(days=UNTOUCHED_DAYS)).to_numpy()
+        untouched = window & ~priced & horizon & known_room
         used = {
             "feedback_days": n,
             "feedback_nights": int(manager.sum()),
             "untouched_nights": int(untouched.sum()),
-            "feedback_dates": (days_after[0], today),
+            "feedback_dates": (days_after[0], days_after[n - 1]),
             "untouched_dates": (
                 (stay[untouched].min(), stay[untouched].max())
                 if untouched.any()
@@ -389,6 +460,13 @@ async def run_tuning_backtest(
         for column, pred in ((f"mgr_only_{n}", only_pred), (f"tuned_{n}", both_pred)):
             nights[column] = float("nan")
             nights.loc[on_scored, column] = pred
+        correction = both.correction(x_eval)
+        recovery = drift = None
+        if rule is not None:
+            hit = rule.matches(x_eval)
+            gap = (y[scored] - base_pred)[hit].mean() if hit.any() else 0.0
+            recovery = float(correction[hit].mean() / gap) if gap else None
+            drift = float(correction[~hit].mean()) if (~hit).any() else None
         rows.append(
             TuningRow(
                 **used,
@@ -396,7 +474,9 @@ async def run_tuning_backtest(
                 with_untouched=both_metrics,
                 skill_manager_only=_skill(only_metrics["mae"], base_mae),
                 skill_with_untouched=_skill(both_metrics["mae"], base_mae),
-                mean_correction=float(both.correction(x_eval).mean()),
+                mean_correction=float(correction.mean()),
+                recovery=recovery,
+                drift=drift,
             )
         )
 
@@ -411,6 +491,8 @@ async def run_tuning_backtest(
         base=base_metrics,
         rows=rows,
         nights=nights,
+        rule=rule,
+        manager_share=manager_share,
     )
 
 

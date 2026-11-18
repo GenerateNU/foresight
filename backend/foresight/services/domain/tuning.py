@@ -37,7 +37,7 @@ ALGORITHM = "ebm-tuned"
 # Fewer manager rates than this and the tune-up is skipped.
 MIN_TUNE_NIGHTS = 5
 # Nights the manager left alone teach the correction "no change here": every
-# night with a snapshot this many days back and ahead (decision 0060).
+# past night with a snapshot this many days back (decisions 0060, 0062).
 UNTOUCHED_DAYS = 30
 
 
@@ -193,13 +193,14 @@ async def _untouched(
 ) -> pd.DataFrame:
     """The nights the manager left alone: stay_date and room_type, one row each.
 
-    Every room type and night with a snapshot within UNTOUCHED_DAYS of today
-    that has no manager rate, isn't tagged one-off (decision 0058), and whose
-    room type the model was trained on.
+    Every room type and night in the UNTOUCHED_DAYS before today with a
+    snapshot, no manager rate, no one-off tag (decision 0058), and a room type
+    the model was trained on. Only past nights: the manager could still change
+    a future one, so leaving it alone doesn't mean "no change" yet (0062).
     """
     today = local_today(hotel.city)
     start = today - timedelta(days=UNTOUCHED_DAYS)
-    end = today + timedelta(days=UNTOUCHED_DAYS)
+    end = today - timedelta(days=1)
     nights = await snapshot_repo.snapshotted_nights(
         session, hotel.id, start=start, end=end
     )

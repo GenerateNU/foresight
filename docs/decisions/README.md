@@ -82,3 +82,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0059](0059-manager-rate-is-the-target-everywhere.md) | The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation | ML |
 | [0060](0060-tune-up-learns-untouched-nights-as-unchanged.md) | The tune-up also learns the nights the manager left alone, as "no change" | ML |
 | [0061](0061-how-the-backtest-judges-the-tune-up.md) | The tuning backtest replays the tune-up after N days of manager rates | ML |
+| [0062](0062-only-past-nights-are-no-change.md) | Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager | ML |
