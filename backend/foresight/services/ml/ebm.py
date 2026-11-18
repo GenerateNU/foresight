@@ -248,6 +248,11 @@ class TunedEBMModel(EBMModel):
     # rounds: on a handful of rows early stopping has almost nothing to judge
     # by, and the library's 25,000-round limit makes 5 rows take a minute.
     CORRECTION_DEFAULTS = {"interactions": 0, "max_rounds": 300}
+    # Inputs the correction never sees (decision 0063). A feedback window spans
+    # a month or two, so a seasonal input is nearly constant in what it learns
+    # from; it learns a month effect that is wrong for every other month and
+    # shifts nights nobody touched. The base already carries the seasonality.
+    CORRECTION_EXCLUDED_INPUTS = ("month",)
 
     def __init__(self, base: EBMModel, **params):
         """Wraps a trained base model; `fit` then trains the correction.
@@ -284,10 +289,19 @@ class TunedEBMModel(EBMModel):
         Returns:
             TunedEBMModel: The model with its correction trained.
         """
+        inputs = x.drop(columns=list(self.CORRECTION_EXCLUDED_INPUTS), errors="ignore")
         self._model = ExplainableBoostingRegressor(
             random_state=self.seed, **{**self.CORRECTION_DEFAULTS, **self.params}
-        ).fit(x, y, sample_weight=sample_weight, init_score=self.base.predict(x))
+        ).fit(inputs, y, sample_weight=sample_weight, init_score=self.base.predict(x))
         return self
+
+    def _inputs(self, x):
+        """The columns of x the fitted correction was trained on.
+
+        Read from the fitted EBM, not from CORRECTION_EXCLUDED_INPUTS, so a
+        tuned model saved before that setting existed still predicts.
+        """
+        return x[list(self._fitted().feature_names_in_)]
 
     def correction(self, x):
         """How much the correction moves each prediction.
@@ -301,7 +315,7 @@ class TunedEBMModel(EBMModel):
         Raises:
             RuntimeError: If fit has not been called yet.
         """
-        return self._fitted().predict(x)
+        return self._fitted().predict(self._inputs(x))
 
     def predict(self, x):
         """The base's prediction plus the correction, per row.
@@ -325,7 +339,9 @@ class TunedEBMModel(EBMModel):
         correction = self._fitted()
         base = self.base.explain(x)
         extra = pd.DataFrame(
-            correction.eval_terms(x), columns=correction.term_names_, index=x.index
+            correction.eval_terms(self._inputs(x)),
+            columns=correction.term_names_,
+            index=x.index,
         )
         return base.add(extra, fill_value=0.0)[base.columns]
 
