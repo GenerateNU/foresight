@@ -1,4 +1,4 @@
-# 0056. Fonts are served from the app, not Google Fonts
+# 0064. Fonts are served from the app, not Google Fonts
 
 **Status:** Accepted · **Date:** 2026-11-01
 
