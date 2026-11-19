@@ -29,7 +29,7 @@ install:
 
 # Install frontend dependencies
 frontend-install:
-    cd frontend && npm ci
+    cd frontend && npx -y npm@10 ci
 
 # Run the frontend dev server on http://localhost:5173 (`just frontend --mocks` for fake data, no backend)
 frontend *flags:
