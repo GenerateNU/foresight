@@ -16,17 +16,32 @@ export function mockRecommendations(hotelId, { start, end }) {
   return [...eachNight(start, end)].map((date) => night(hotelId, ROOM_TYPE, date))
 }
 
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+/** What each weekday adds, roughly what the model learned for hotel 1. */
+const DAY_AMOUNTS = [-12.4, -18.9, -15.2, -9.7, 4.6, 38.34, 31.8]
+
 function night(hotelId, room, date) {
   const day = new Date(`${date}T00:00:00`)
-  const weekend = day.getDay() === 5 || day.getDay() === 6
   const event = (day.getDate() - 1) % 9 < 3 ? EVENTS[day.getMonth() % EVENTS.length] : null
 
+  // Shaped like backend/foresight/services/domain/recommendation.py: one factor per model
+  // input, named by the night's value, largest first, with the rest summed as "Smaller
+  // effects combined". Events are only a count, and add about €0 for now (issue #128).
   const factors = [
-    weekend && { detail: day.getDay() === 5 ? 'Friday' : 'Saturday', amount: 35 },
-    event && { detail: event.title, amount: Math.round(room.base * 0.25) },
-    { detail: 'Bookings so far', amount: (hash(date) % 41) - 20 },
-  ].filter(Boolean)
+    { detail: DAYS[day.getDay()], amount: DAY_AMOUNTS[day.getDay()] },
+    { detail: MONTHS[day.getMonth()], amount: 6.63 },
+    event && { detail: 'event count 1', amount: 1.12 },
+  ]
+    .filter(Boolean)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+  const other = ((hash(date) % 300) - 150) / 100
+  if (other) factors.push({ detail: 'Smaller effects combined', amount: other })
   const rate = room.base + factors.reduce((sum, f) => sum + f.amount, 0)
+  const top = factors[0]
 
   return {
     hotel_id: hotelId,
@@ -36,7 +51,7 @@ function night(hotelId, room, date) {
     recommended_rate: money(rate),
     currency: 'EUR',
     explanation: {
-      summary: `€${rate}, mostly because of ${factors[0].detail.toLowerCase()}`,
+      summary: `€${rate.toFixed(0)} from a typical €${room.base}; biggest factor: ${top.detail}: ${top.amount >= 0 ? '+' : '-'}€${Math.abs(top.amount).toFixed(2)}.`,
       baseline: money(room.base),
       factors: factors.map((f) => ({ detail: f.detail, amount: money(f.amount) })),
     },
@@ -45,7 +60,7 @@ function night(hotelId, room, date) {
     model_id: 1,
     model_version: 'ebm-v1',
     events: event ? [{ ...event, day_number: ((day.getDate() - 1) % 9) + 1, day_count: 3 }] : [],
-    weather_source: 'forecast',
+    events_source: 'fetched',
     snapshot_id: null,
     priced_at: new Date().toISOString(),
   }
