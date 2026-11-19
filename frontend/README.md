@@ -55,6 +55,8 @@ src/
 - **Components draw, they don't fetch.** Pages fetch (via `api/` + `useAsync`) and pass plain data down.
 - **A feature folder owns its screen.** A piece moves to `components/ui/` once a second screen needs it.
 - **Pure logic goes in plain `.js` files** so it can be tested without React.
+- **Popups are placed by Floating UI** (`@floating-ui/react`), so they flip and shift to stay on screen (docs/decisions/0066).
+- **A breakdown in whole euros must add up** to the total it explains: use `roundForDisplay`, not per-line rounding (docs/decisions/0065).
 - **Comments: one `/** … */` above each export.** Say what it's for and what its props or arguments mean; editors show it on hover. Inside a function, comment only a non-obvious *why*, never what a line does. A comment at the top of a file only when the whole file needs context (e.g. `index.css`, `config.js`).
 - **Mocks follow the API.** When an endpoint's response changes, change its mock in the same PR.
 
