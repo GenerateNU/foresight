@@ -1,3 +1,17 @@
+import {
+  FloatingPortal,
+  autoUpdate,
+  flip,
+  offset,
+  shift,
+  useDismiss,
+  useFloating,
+  useFocus,
+  useHover,
+  useInteractions,
+  useRole,
+} from '@floating-ui/react'
+import { useState } from 'react'
 import ChangeBadge from './ChangeBadge.jsx'
 import { formatEuro } from '../../lib/format.js'
 import DayPopover from './DayPopover.jsx'
@@ -5,9 +19,28 @@ import { nightStyle } from './colorModes.js'
 
 /**
  * One night in the grid. `rec` is undefined for days outside the month or with no price.
- * `row` / `col` only decide which way the hover card opens so it never leaves the screen.
+ * Hovering, or focusing it with the keyboard, opens the night's card wherever it fits
+ * on screen (docs/decisions/0058).
  */
-export default function DayCell({ day, rec, mode, context, row, col }) {
+export default function DayCell({ day, rec, mode, context }) {
+  const [open, setOpen] = useState(false)
+  const { refs, floatingStyles, context: floatingContext } = useFloating({
+    open,
+    onOpenChange: setOpen,
+    placement: 'bottom',
+    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  })
+  const { setReference, setFloating } = refs
+  // useFocus only opens on keyboard focus: a mouse click also focuses the night, and
+  // would otherwise keep its card open while hovering others.
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    useHover(floatingContext),
+    useFocus(floatingContext),
+    useDismiss(floatingContext),
+    useRole(floatingContext, { role: 'tooltip' }),
+  ])
+
   if (!day.inMonth || !rec) {
     return (
       <div className="min-h-28 rounded-card border border-stone-100 bg-stone-25 p-3 text-stone-300">
@@ -17,15 +50,13 @@ export default function DayCell({ day, rec, mode, context, row, col }) {
   }
 
   const { bg, dot } = nightStyle(mode, rec, context)
-  const popoverPosition = [
-    row >= 2 ? 'bottom-full mb-2' : 'top-full mt-2',
-    col <= 1 ? 'left-0' : col >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2',
-  ].join(' ')
 
   return (
     <div
+      ref={setReference}
       tabIndex={0}
-      className={`group relative min-h-28 rounded-card border border-stone-100 p-3 outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${bg}`}
+      className={`min-h-28 rounded-card border border-stone-100 p-3 outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${bg}`}
+      {...getReferenceProps()}
     >
       <div className="flex items-center justify-between text-sm">
         <span className="flex items-center gap-1.5">
@@ -40,7 +71,16 @@ export default function DayCell({ day, rec, mode, context, row, col }) {
           {rec.events[0].title}
         </p>
       )}
-      <DayPopover rec={rec} className={popoverPosition} />
+      {open && (
+        <FloatingPortal>
+          <DayPopover
+            rec={rec}
+            ref={setFloating}
+            style={floatingStyles}
+            {...getFloatingProps()}
+          />
+        </FloatingPortal>
+      )}
     </div>
   )
 }
