@@ -248,11 +248,10 @@ class TunedEBMModel(EBMModel):
     # rounds: on a handful of rows early stopping has almost nothing to judge
     # by, and the library's 25,000-round limit makes 5 rows take a minute.
     CORRECTION_DEFAULTS = {"interactions": 0, "max_rounds": 300}
-    # Inputs the correction never sees (decision 0075). A feedback window spans
-    # a month or two, so a seasonal input is nearly constant in what it learns
-    # from; it learns a month effect that is wrong for every other month and
-    # shifts nights nobody touched. The base already carries the seasonality.
-    CORRECTION_EXCLUDED_INPUTS = ("month",)
+    # Inputs the correction never sees. Empty: it sees every input the base
+    # does (decision 0076). 0075 found that `month` made the correction learn a
+    # wrong seasonal effect; that is open for the team to settle.
+    CORRECTION_EXCLUDED_INPUTS: tuple[str, ...] = ()
 
     def __init__(self, base: EBMModel, **params):
         """Wraps a trained base model; `fit` then trains the correction.

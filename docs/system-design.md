@@ -105,7 +105,7 @@ backend/foresight/
     adapters/              open_meteo, predicthq, normalize
       hotel/               one per CSV report: actual_forecast, reservations,
                            cancellations; common (shared reading)
-    ml/                    base, ebm, features, weighting, baselines
+    ml/                    base, ebm, features, holidays, weighting, baselines
   repository/
     upsert.py pagination.py
     booking.py city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
@@ -489,19 +489,30 @@ Both read only what's already ingested; neither fetches
 ```
 POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   job_service.start_train_job       hotel exists, nights loaded in window → 422
-  → domain/pricing_model.train
+  → domain/pricing_model.prepare_training
       training_data                             shared with the backtest (6.7)
         hotel_repo.list_nights                  every night, oldest first
         ml/weighting.training_mask              drop unpriced nights (0004)
-        feedback_repo.one_off_nights            drop nights the manager tagged one-off (0070)
+        one room type and bookings in the window?   (0056)
+          yes → domain/booking.booking_rows     one row per booked room per night,
+                                                rate = adr_nett, weight 1, all FEATURES
+          no  → the nights, rate = ARR, occupancy weight (0003), no lead_days
+        feedback_repo.one_off_nights            drop the rows of nights tagged one-off (0070)
         domain/model_inputs.events_for          counted events, backfilled nights, first seen
-        ml/features.build_features              calendar + events (0055)
-        ml/weighting.sample_weights             occupancy of sellable rooms (0003)
+        ml/features.build_features              calendar + holidays + events + lead_days from booked_on
+                                                (0055, 0056, 0067)
       feedback_repo.tuning_feedback             current version per night with a rate, before or after
-      ml/feedback.apply_feedback                manager's rate replaces the rate, flat weight (0071)
+      booked rooms: each manager rate is a row of its own, booked the day they saw the
+                    recommendation; weight a share of the night's rooms (0076)
+      nights:       ml/feedback.apply_feedback, manager's rate replaces the rate (0071)
+  progress = {stage: fitting}; commit           frees the connection during the fit (0056)
+  → domain/pricing_model.fit                    no database
+      ml/weighting.combine_identical_rows       same night, same inputs → one weighted row
       EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0045)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
-      model_repo.create_pricing_model           new version, inactive (0008, 0009)
+  → domain/pricing_model.save_version
+      model_repo.create_pricing_model           new version, inactive, with its own `features`
+                                                and `target` (adr_nett|arr) (0008, 0009, 0056)
       model_repo.link_feedback                  records which feedback this version used
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}
@@ -509,15 +520,22 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
 GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
   → domain/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
-      per night: build_features row, the night's events, events_source
+      per night: build_features row (booked_on = today), keep the version's
+                 `features`; the night's events, events_source
       fingerprint = sha256(model id + those inputs)
       snapshot_repo.latest_snapshots            one query for the range
       fingerprint matches → reuse the snapshot; the model doesn't run
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
       feedback_repo.manager_rates               the manager's rate per night, read live (0071)
-  ← one per night: rate, manager_rate, 80% interval, factors in €
+      domain/prices                             prices out with VAT added on booked-room versions (0076)
+  ← one per night: rate, manager_rate, rate_basis, lead_days, 80% interval, factors in €
 ```
+
+A version trained on booked rooms also reads days booked ahead
+([0056](decisions/0056-lead-days-input.md)): the rate is the price if booked
+today, so each night re-prices daily and the response carries `lead_days`.
+Serving keeps each version's own `features`, so older versions are unchanged.
 
 A recommendation is stored when it's made and reused while its inputs hold
 ([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)). Asking
@@ -527,14 +545,24 @@ changed, so there's no separate route for a night's factors.
 Training learns from the manager's rates
 ([0071](decisions/0071-manager-rate-is-the-target-everywhere.md)): for each
 night, the current version of its feedback, if it has a rate, before or after
-the night. That rate replaces the night's training rate, at a flat weight;
-nights without one train as recorded. The daily tune-up follows the same rule.
+the night. On night rows it replaces the night's training rate, at a flat
+weight. On booked rooms it's a row of its own, booked the day the manager saw
+the recommendation, weighing 25% of the night's booked rooms and at least 1
+([0076](decisions/0076-feedback-on-booked-rooms-and-vat.md)); the night's
+sales stay as they are. The daily tune-up follows the same rule.
 Each model version records the rates it used in `pricing_model_feedback`, and
 its `metrics` count them.
 
 Each recommendation also carries `manager_rate`, the rate the manager set for
 the night (null if none). It's read live, not stored in the snapshot, so a new
 rate never starts a new snapshot.
+
+Prices go out and come in with VAT
+([0076](decisions/0076-feedback-on-booked-rooms-and-vat.md)). A version trained
+on booked rooms is nett inside; `domain/prices` adds the country's VAT to every
+price a recommendation returns (rate, interval, uncertainty, baseline, factors,
+`manager_rate`) and takes it off a rate the manager sends, before it's
+compared, stored or trained on. A version trained on nights is shown as it is.
 
 `GET /hotels/{id}/feedback/alignment` and `just alignment` show whether the
 model is getting closer to the manager: by week, how far the manager's rates
@@ -544,7 +572,9 @@ A daily tune-up (`POST /hotels/{id}/tune`, a `tune` job;
 [0069](decisions/0069-daily-tune-up.md)) corrects the active model without
 retraining it. `domain/tuning.tune` keeps the active model's base as it is and
 fits a small EBM on the gap between its predictions and the manager's current
-rates, before or after the night. Past nights with a snapshot in the 30 days
+rates, before or after the night. Each row is built as serving built it: booked
+the day its price was shown, with the base version's stored inputs
+([0076](decisions/0076-feedback-on-booked-rooms-and-vat.md)). Past nights with a snapshot in the 30 days
 before today that the manager left alone join with a gap of 0
 ([0072](decisions/0072-tune-up-learns-untouched-nights-as-unchanged.md),
 [0074](decisions/0074-only-past-nights-are-no-change.md)), so the correction
@@ -552,14 +582,16 @@ doesn't shift every night; future nights don't count, as the manager may still
 change them. `ml/ebm.TunedEBMModel` adds the two, and is
 saved as a new `ebm-tuned` version that serves by default. Each tune-up starts
 again from the base, so corrections never stack; with fewer than 5 rates it
-saves nothing. The correction never sees `month`: a feedback window is a month
-or two, so it would learn a month effect that shifts every later night
-([0075](decisions/0075-correction-ignores-month.md)).
+saves nothing. The correction sees every input the base does
+([0076](decisions/0076-feedback-on-booked-rooms-and-vat.md)); whether to keep
+`month` out, as [0075](decisions/0075-correction-ignores-month.md) found
+safer, is open. The tune job goes through the hotel's queue like every other
+job.
 
 A night whose current feedback is tagged `ONE_OFF` (a buyout, a private event)
 teaches the model nothing ([0070](decisions/0070-one-off-nights-teach-the-model-nothing.md)):
-`training_data` drops it, so neither a retrain nor the backtest sees it, and
-the tune-up leaves out its rate.
+`training_data` drops it and its booked rooms, so neither a retrain nor the
+backtest sees it, and the tune-up leaves out its rate.
 
 Every training run is a new version
 ([0029](decisions/0029-every-training-run-is-a-new-version.md)):
@@ -637,12 +669,15 @@ models are trained in memory and thrown away.
 
 ```
 cli.backtest
-  → domain/backtest.run_backtest
+  → domain/backtest.load_backtest               then the session closes
       pricing_model.training_data               the same inputs training sees
       cutoff = newest night − test_days (default 90)
-      one EBM on --inputs (default: all FEATURES)
-      ml/base.score                             every test night
-      only with --baselines:
+  → domain/backtest.run_backtest                no database
+      one EBM on --inputs (default: every input the training data has),
+        identical rows merged as in training
+      ml/base.score                             every test row: night or booked room
+      on booked rooms: MAE by days booked ahead
+      only with --baselines (refused on booked rooms):
         ml/baselines on nights ≤ cutoff         same weekday last year,
                                                 last 4 weeks' weekday mean
         ml/base.score                           each baseline vs the model
@@ -650,9 +685,12 @@ cli.backtest
   ← scores (+ baseline table), and a PNG in backend/backtest-out/
 ```
 
-`ml/features.INPUT_GROUPS` sorts every input into groups (calendar and
-events); `--inputs` takes group names or single features. Compare input sets by
-running it once per set. `--start` leaves out earlier nights, and
+`ml/features.INPUT_GROUPS` sorts every input into groups (calendar, holidays,
+events and lead_days); `--inputs` takes group names or single features. Compare
+input sets by running it once per set: `--inputs calendar,events` leaves out days
+booked ahead. For a hotel that trains on bookings the test rows are booked rooms,
+and its scores aren't comparable with one trained on nights. `--start` leaves out
+earlier nights, and
 `--event-days` limits how much event history the model trains on.
 
 `just tuning-backtest 7 [--test-days 60] [--sizes 5,10,20,30]
@@ -665,9 +703,12 @@ much of it the tune-up learned
 
 ```
 cli.tuning_backtest
-  → domain/backtest.run_tuning_backtest
-      _split(priced_days)  cutoff = test_days priced days before the newest
-      base EBM on nights ≤ cutoff (all FEATURES)
+  → domain/backtest.load_tuning_backtest        then the session closes
+      cutoff = test_days priced days before the newest
+  → domain/backtest.run_tuning_backtest         no database
+      base EBM on the training rows ≤ cutoff, as training fits them
+      held-out nights: one row each; on booked rooms the night's average
+        booked rate, booked the day before (0076)
       scored = nights after the first max(sizes) priced days after the cutoff
       for each size N:
         manager   = reviewed days of the first N priced days after the cutoff

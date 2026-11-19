@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Date, func, select
+from sqlalchemy import Date, case, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from foresight.database.enums import FeedbackReasonTag
@@ -116,8 +116,10 @@ async def tuning_feedback(
     version, given before or after the night, and keeps it if it has a rate
     (decisions 0069 and 0071) and isn't
     tagged ONE_OFF (decision 0070). Rows carry id, stay_date, room_type_id,
-    room_type (its name) and rate, oldest night first. `start` and `end` limit
-    the nights.
+    room_type (its name), rate (nett where the version was, decision 0076) and
+    shown_at: when the manager saw the recommendation they changed, or when they
+    gave the feedback if its snapshot is gone. Oldest night first. `start` and
+    `end` limit the nights.
     """
     current = select(Feedback).where(Feedback.hotel_id == hotel_id)
     if start is not None:
@@ -136,8 +138,15 @@ async def tuning_feedback(
             current.c.room_type_id,
             RoomType.name.label("room_type"),
             current.c.rate,
+            func.coalesce(
+                RecommendationSnapshot.created_at, current.c.created_at
+            ).label("shown_at"),
         )
         .join(RoomType, current.c.room_type_id == RoomType.id)
+        .outerjoin(
+            RecommendationSnapshot,
+            current.c.snapshot_id == RecommendationSnapshot.id,
+        )
         .where(
             current.c.rate.is_not(None),
             ~current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]),
@@ -201,16 +210,21 @@ async def manager_rates(
 
 
 async def alignment_by_week(
-    session: AsyncSession, hotel_id: int
+    session: AsyncSession, hotel_id: int, *, nett_factor: Decimal
 ) -> Sequence[Mapping[str, Any]]:
     """How far the manager's rates were from the rates they were shown, by week.
 
     Every version of feedback that has a rate and still has its snapshot counts
     once, in the week (Monday, UTC) it was given. Rows carry week, nights,
     mean_gap (manager minus model, so positive means the model priced low) and
-    mean_abs_gap, oldest week first (decision 0071).
+    mean_abs_gap, oldest week first (decision 0071). A gap on a snapshot from a
+    version trained on booked rooms (it read `lead_days`) is stored nett, so
+    it's multiplied by `nett_factor` to show it as listed (decision 0076).
     """
-    gap = Feedback.rate - RecommendationSnapshot.rate
+    nett = RecommendationSnapshot.inputs["features"]["lead_days"].astext.is_not(None)
+    gap = (Feedback.rate - RecommendationSnapshot.rate) * case(
+        (nett, nett_factor), else_=1
+    )
     week = func.date_trunc("week", Feedback.created_at)
     stmt = (
         select(

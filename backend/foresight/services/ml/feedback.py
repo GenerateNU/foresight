@@ -8,10 +8,14 @@ import pandas as pd
 class FeedbackSettings:
     """How the manager's rates enter training (decision 0071)."""
 
-    # Weight of a night the manager priced. Flat, like the tune-up (0069): the
-    # rate is the manager's judgement, so the vacancy-based weight no longer
-    # applies.
+    # Weight of a night the manager priced, on night rows. Flat, like the
+    # tune-up (0069): the rate is the manager's judgement, so the vacancy-based
+    # weight no longer applies.
     manager_weight: float = 1.0
+    # On booked rooms, a manager rate is a row of its own weighing this share
+    # of the night's booked rooms, and at least 1 (decision 0076), so one
+    # rate isn't drowned out by the night's sales.
+    manager_share: float = 0.25
 
 
 DEFAULT = FeedbackSettings()
@@ -83,3 +87,23 @@ def apply_feedback(
     return FeedbackEffect(
         pd.Series(training_rate, index=rate.index, name=rate.name), new_weights, used
     )
+
+
+def manager_row_weights(
+    stay_date: pd.Series, rooms: pd.Series, settings: FeedbackSettings = DEFAULT
+) -> np.ndarray:
+    """The weight of each manager row on booked rooms (decision 0076).
+
+    `manager_share` of the night's booked rooms, and at least 1, so a future
+    night with no bookings yet still counts.
+
+    Args:
+        stay_date (pd.Series): The night of each manager row.
+        rooms (pd.Series): Booked rooms per night, indexed by stay_date.
+        settings (FeedbackSettings): How the manager's rates are weighted.
+
+    Returns:
+        np.ndarray: One weight per manager row.
+    """
+    booked = stay_date.map(rooms).fillna(0).to_numpy(float)
+    return np.maximum(settings.manager_share * booked, 1.0)

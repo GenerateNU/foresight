@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from foresight.database.enums import EventCategory
+from foresight.services.ml.holidays import night_before_holiday
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -16,11 +17,17 @@ if TYPE_CHECKING:
 BIG_EVENT_SPEND = 100_000
 _EARTH_RADIUS_KM = 6371.0
 
-# Model input columns, in order. Training and serving both use this list.
+# Days from booking to the night (decision 0056). Only rows that are booked
+# rooms have it; a model trained on nights leaves it out of its inputs.
+LEAD = "lead_days"
+
+# Every model input, in order. Training and serving both build all of them;
+# each version stores the ones it trained on, and serving selects those.
 FEATURES = [
     "room_type",
     "day_of_week",
     "month",
+    "night_before_holiday",
     "is_public_holiday",
     "is_school_holiday",
     "event_count",
@@ -29,14 +36,18 @@ FEATURES = [
     "event_accommodation_impact",
     "big_event_count",
     "nearest_big_event_km",
+    LEAD,
 ]
 
 # FEATURES by kind, for choosing which inputs a backtest trains on. Every
 # input is in exactly one group. The holiday flags sit with events: they come
 # from the same PredictHQ data, and are unknown on the same nights. Weather
-# stays out of the model (decision 0055).
+# stays out of the model (decision 0055). `holidays` are worked out from the
+# date alone (decision 0067), so unlike events they are never unknown, and they
+# stay out of `calendar` so that group, the baseline's inputs, doesn't change.
 INPUT_GROUPS = {
     "calendar": ["room_type", "day_of_week", "month"],
+    "holidays": ["night_before_holiday"],
     "events": [
         "is_public_holiday",
         "is_school_holiday",
@@ -47,6 +58,7 @@ INPUT_GROUPS = {
         "big_event_count",
         "nearest_big_event_km",
     ],
+    LEAD: [LEAD],
 }
 
 # Events that bring people to the city. Holidays become their own flags, and
@@ -70,13 +82,15 @@ def build_features(
     events_fetched: Collection[date] | None = None,
     events_impacts: pd.DataFrame | None = None,
     hotel_location: tuple[float, float] | None = None,
+    booked_on: pd.Series | date | None = None,
 ) -> pd.DataFrame:
-    """Builds the model's input columns, one row per room type per night.
+    """Builds the model's input columns, one row per night or booked room.
 
     Used for training (past nights) and serving (the night being priced), so
     both see identical features. The event columns stay empty on nights no
     events backfill covered; the model learns a separate effect for unknown
-    values.
+    values. `night_before_holiday` is never empty: it comes from the date
+    alone, not from events (decision 0067).
 
     An event counts on a night only if PredictHQ first saw it before that
     night (decision 0055), so training never learns from an event the market
@@ -98,6 +112,11 @@ def build_features(
         hotel_location (tuple[float, float] | None): The hotel's latitude and
             longitude, for the distance to the nearest big event. None leaves
             that distance empty.
+        booked_on (pd.Series | date | None): When each row was booked: a
+            Series aligned with nights for booked rooms, or one date (today,
+            when serving). lead_days is the night minus this, never below 0,
+            so a booking dated after its night counts as booked that day.
+            None leaves lead_days empty.
 
     Returns:
         pd.DataFrame: The FEATURES columns, in order, indexed like nights.
@@ -116,7 +135,21 @@ def build_features(
     features["room_type"] = nights["room_type"].astype("category")
     features["day_of_week"] = stay_date.dt.dayofweek.to_numpy()
     features["month"] = stay_date.dt.month.to_numpy()
+    features["night_before_holiday"] = night_before_holiday(stay_date)
+    features[LEAD] = _lead_days(stay_date, booked_on)
     return features.reindex(columns=FEATURES)
+
+
+def _lead_days(stay_date: pd.Series, booked_on: pd.Series | date | None) -> np.ndarray:
+    """Days from booking to each night, clipped at 0; NaN without `booked_on`."""
+    if booked_on is None:
+        return np.full(len(stay_date), np.nan)
+    if isinstance(booked_on, pd.Series):
+        booked = pd.to_datetime(booked_on).to_numpy()
+    else:
+        booked = pd.Timestamp(booked_on).to_datetime64()
+    days = (stay_date.to_numpy() - booked) / np.timedelta64(1, "D")
+    return np.clip(days, 0, None)
 
 
 def _event_features(

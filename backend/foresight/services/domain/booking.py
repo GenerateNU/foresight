@@ -1,4 +1,5 @@
-"""Bookings: how many rooms were booked for a night on any earlier date."""
+"""Bookings: how many rooms were booked for a night on any earlier date, and
+what each booked room paid."""
 
 from __future__ import annotations
 
@@ -8,9 +9,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import pandas as pd
+
 from foresight.repository import booking as booking_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.ml.weighting import training_mask
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -19,6 +23,9 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.booking import Booking, BookingCancellation
+
+
+BOOKING_ROW_COLUMNS = ["stay_date", "booked_on", "room_type_code", "rate"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +72,51 @@ async def booking_curves(
             changes[night][cancellation.cancelled_at.date()] -= 1
 
     return {night: _running_total(days) for night, days in changes.items()}
+
+
+async def booking_rows(
+    session: AsyncSession, hotel_id: int, *, start: date, end: date
+) -> pd.DataFrame:
+    """What each booked room paid for each night it stayed, for training.
+
+    A booking covers one room for a whole stay. This splits it into one row per
+    night, so the model sees each night a room was sold, when it was booked,
+    and at what price (decision 0056).
+
+    `start` and `end` are stay dates, inclusive: usually the training window.
+    A stay crossing either edge contributes only its nights inside the window;
+    when it was booked doesn't matter.
+
+    Columns:
+        stay_date: the night.
+        booked_on: the day the booking was made. One dated after its night
+            (late entries, no-shows) is kept; build_features gives it 0 days
+            ahead.
+        room_type_code: Guestline's code, e.g. DOUBLE. Not mapped to a room
+            type; the caller decides what to do with it.
+        rate: the booking's nett rate per night, before VAT. Every night of a
+            stay gets the stay's average, so a weekend night in a longer stay
+            is blurred with its weekdays.
+
+    Cancelled bookings are left out, and so are free or unpriced rooms. Sorted
+    by stay_date. Empty if the hotel has no bookings in the window.
+    """
+    bookings = await booking_repo.list_live_bookings(
+        session, hotel_id, start=start, end=end
+    )
+    rows = pd.DataFrame(
+        [
+            (night, b.booked_at.date(), b.room_type_code, float(b.adr_nett))
+            for b in bookings
+            for night in _nights(b, start, end)
+        ],
+        columns=pd.Index(BOOKING_ROW_COLUMNS),
+    )
+    return (
+        rows.loc[training_mask(rows["rate"])]
+        .sort_values("stay_date", kind="stable")
+        .reset_index(drop=True)
+    )
 
 
 async def check_final_counts(

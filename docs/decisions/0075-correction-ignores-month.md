@@ -1,6 +1,6 @@
 # 0075. The tune-up's correction never sees `month`
 
-**Status:** Accepted · **Date:** 2026-11-18 · Amends [0069](0069-daily-tune-up.md)
+**Status:** Reversed for now by [0076](0076-feedback-on-booked-rooms-and-vat.md), open for team discussion · **Date:** 2026-11-18 · Amends [0069](0069-daily-tune-up.md)
 
 ## Context
 The tuning backtest ([0073](0073-how-the-backtest-judges-the-tune-up.md),

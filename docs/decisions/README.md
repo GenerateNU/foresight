@@ -76,6 +76,11 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0053](0053-drop-base-rate.md) | Room types have no base rate | data model |
 | [0055](0055-events-back-in-the-model.md) | Events are back in the model, counted from when PredictHQ first saw them | ML |
 | [0054](0054-hosted-on-render.md) | The backend is hosted on Render's free plan | operations |
+| [0064](0064-fonts-served-from-the-app.md) | Fonts are served from the app, not Google Fonts | frontend |
+| [0065](0065-breakdowns-rounded-to-add-up.md) | The calendar card rounds its breakdown so it adds up | frontend |
+| [0066](0066-popups-placed-by-floating-ui.md) | Popups are placed by Floating UI | frontend |
+| [0056](0056-lead-days-input.md) | Days booked ahead is a model input, trained on booked rooms | ML |
+| [0067](0067-night-before-holiday-input.md) | The night before a public holiday is a model input, worked out from the date | ML |
 | [0068](0068-manager-sends-the-rate-they-chose.md) | The manager sends the rate they chose; the verdict is worked out from it | API |
 | [0069](0069-daily-tune-up.md) | A daily tune-up corrects the active model with the manager's rates | ML |
 | [0070](0070-one-off-nights-teach-the-model-nothing.md) | A night tagged one-off teaches the model nothing | ML |
@@ -83,4 +88,5 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md) | The tune-up also learns the nights the manager left alone, as "no change" | ML |
 | [0073](0073-how-the-backtest-judges-the-tune-up.md) | The tuning backtest replays the tune-up after N days of manager rates | ML |
 | [0074](0074-only-past-nights-are-no-change.md) | Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager | ML |
-| [0075](0075-correction-ignores-month.md) | The tune-up's correction never sees `month` | ML |
+| [0075](0075-correction-ignores-month.md) | The tune-up's correction never sees `month` (reversed for now by 0076; open) | ML |
+| [0076](0076-feedback-on-booked-rooms-and-vat.md) | Manager feedback on booked rooms, shown and taken with VAT | ML / API |

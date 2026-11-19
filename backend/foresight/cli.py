@@ -23,7 +23,7 @@ from foresight.services.domain import alignment as alignment_service
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
 from foresight.services.errors import DomainError, InvalidRequestError
-from foresight.services.ml.features import FEATURES, INPUT_GROUPS
+from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -58,37 +58,48 @@ async def backtest(
     test_days: int,
     out: Path,
     baselines: bool,
-    inputs: list[str],
+    inputs: list[str] | None,
     event_days: int | None,
     start: date | None,
 ) -> None:
+    # Load, then let the connection go: a long fit would outlast it.
     async with async_session_factory() as session:
-        result = await backtest_service.run_backtest(
-            session,
-            hotel_id,
-            test_days=test_days,
-            baselines=baselines,
-            inputs=inputs,
-            event_days=event_days,
-            start=start,
+        split = await backtest_service.load_backtest(
+            session, hotel_id, test_days=test_days, start=start
         )
-    nights = result.nights
-    first, last = nights["stay_date"].min(), nights["stay_date"].max()
+    result = await backtest_service.run_backtest(
+        split, baselines=baselines, inputs=inputs, event_days=event_days
+    )
+    rows = result.rows
+    first, last = rows["stay_date"].min(), rows["stay_date"].max()
+    n_nights = rows["stay_date"].nunique()
     described = _describe_inputs(result.inputs)
     if result.event_days is not None:
         described += f"; {result.event_days} days of event history"
-    print(f"{len(nights)} test nights, {first} to {last}; inputs: {described}")
+    booked = LEAD in rows
+    tested = (
+        f"{len(rows)} booked rooms over {n_nights} nights"
+        if booked
+        else f"{n_nights} test nights"
+    )
+    print(f"{tested} ({result.target}), {first} to {last}; inputs: {described}")
     scores = _format_metrics(result.metrics)
     for name, value in scores:
         print(f"{name:<13} {value}")
+    if booked:
+        print()
+        print(_lead_table(rows))
     if result.baselines:
         print()
-        print(_baseline_table(result.baselines, len(nights)))
+        print(_baseline_table(result.baselines, len(rows)))
 
     path = out / f"hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
+    # One point per night: booked rooms are averaged, so a night's line is its
+    # average rate per booked room; coverage in the subtitle is still per room.
     _save_plot(
-        nights,
+        rows.groupby("stay_date", as_index=False).mean(numeric_only=True),
         path,
+        ylabel="Average rate per booked room (€)" if booked else "Rate (€)",
         title=(
             f"Backtest: {result.hotel_name}, actual vs predicted rate, "
             f"{first:%-d %b} – {last:%-d %b %Y} ({described})"
@@ -107,16 +118,14 @@ async def tuning_backtest(
     rule: backtest_service.ManagerRule | None = None,
     manager_share: float = 1.0,
 ) -> None:
+    # Load, then let the connection go: the fits would outlast it.
     async with async_session_factory() as session:
-        result = await backtest_service.run_tuning_backtest(
-            session,
-            hotel_id,
-            test_days=test_days,
-            sizes=sizes,
-            start=start,
-            rule=rule,
-            manager_share=manager_share,
+        split = await backtest_service.load_tuning_backtest(
+            session, hotel_id, test_days=test_days, start=start
         )
+    result = await backtest_service.run_tuning_backtest(
+        split, sizes=sizes, rule=rule, manager_share=manager_share
+    )
     base_mae = result.base["mae"]
     assert base_mae is not None
     manager = (
@@ -370,10 +379,26 @@ def _parse_sizes(text: str) -> list[int]:
     return sorted(set(sizes))
 
 
+# Days-ahead buckets for the backtest's error breakdown: (label, low, high).
+_LEAD_BUCKETS = [("0-7", 0, 7), ("8-30", 8, 30), ("31-90", 31, 90), ("91+", 91, None)]
+
+
+def _lead_table(rows: pd.DataFrame) -> str:
+    """The model's MAE on booked rooms, by how far ahead they were booked."""
+    lines = [f"{'Days ahead':<11} {'Rooms':>6} {'MAE':>9}"]
+    error = (rows["actual"] - rows["predicted"]).abs()
+    for label, low, high in _LEAD_BUCKETS:
+        inside = rows[LEAD] >= low
+        if high is not None:
+            inside &= rows[LEAD] <= high
+        if inside.any():
+            mae = error[inside].mean()
+            lines.append(f"{label:<11} {int(inside.sum()):>6} €{mae:>7.2f}")
+    return "\n".join(lines)
+
+
 def _describe_inputs(inputs: list[str]) -> str:
     """Inputs named by group where a whole group is in, e.g. "calendar, event_count"."""
-    if inputs == FEATURES:
-        return "all inputs"
     chosen, parts = set(inputs), []
     for group, columns in INPUT_GROUPS.items():
         if set(columns) <= chosen:
@@ -443,7 +468,9 @@ def _baseline_table(
     return "\n".join(lines)
 
 
-def _save_plot(nights: pd.DataFrame, path: Path, *, title: str, subtitle: str) -> None:
+def _save_plot(
+    nights: pd.DataFrame, path: Path, *, ylabel: str, title: str, subtitle: str
+) -> None:
     """Actual vs predicted rate per night, as a PNG, with the scores under the title."""
     # Imported here so only this command needs matplotlib, not the API.
     import matplotlib
@@ -522,7 +549,7 @@ def _save_plot(nights: pd.DataFrame, path: Path, *, title: str, subtitle: str) -
         color="#555555",
         va="bottom",
     )
-    ax.set_ylabel("Rate (€)")
+    ax.set_ylabel(ylabel)
     ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
     ax.spines[["top", "right"]].set_visible(False)
     bottom, top = ax.get_ylim()
@@ -606,12 +633,12 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument(
         "--inputs",
         type=_parse_inputs,
-        default=list(FEATURES),
         metavar="NAMES",
         help=(
             "Comma-separated inputs to train on: groups "
             f"({', '.join(INPUT_GROUPS)}) and/or single features, e.g. "
-            "calendar,event_count. Default: all, like the served model"
+            "calendar,event_count. Default: every input the hotel's training "
+            "data has, like the served model"
         ),
     )
     bt.add_argument(

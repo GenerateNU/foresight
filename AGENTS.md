@@ -46,7 +46,9 @@ just migrate-create "msg"   # new Alembic migration after model changes
 just migrate-down     # roll back last migration
 just backtest <hotel_id> [--baselines] [--inputs …] [--test-days N]   # score the model on recent nights
 just alignment <hotel_id>   # weekly gap between the model and the manager's rates
-just lint             # ruff checks
+just frontend         # frontend dev server on :5173 (`--mocks` for fake data, no backend)
+just frontend-install # install frontend dependencies (npm ci)
+just lint             # ruff checks + frontend ESLint
 just format           # ruff format
 ```
 

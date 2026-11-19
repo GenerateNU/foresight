@@ -83,20 +83,26 @@ async def snapshotted_nights(
     """Each room type and night in [start, end] the hotel has a snapshot for.
 
     One row per room type and night, however many snapshots it has. Rows carry
-    stay_date, room_type_id and room_type (its name), oldest night first.
+    stay_date, room_type_id, room_type (its name) and shown_at, when its latest
+    snapshot was made, oldest night first.
     """
     stmt = (
         select(
             RecommendationSnapshot.stay_date,
             RecommendationSnapshot.room_type_id,
             RoomType.name.label("room_type"),
+            func.max(RecommendationSnapshot.created_at).label("shown_at"),
         )
         .join(RoomType, RecommendationSnapshot.room_type_id == RoomType.id)
         .where(
             RecommendationSnapshot.hotel_id == hotel_id,
             RecommendationSnapshot.stay_date.between(start, end),
         )
-        .distinct()
+        .group_by(
+            RecommendationSnapshot.stay_date,
+            RecommendationSnapshot.room_type_id,
+            RoomType.name,
+        )
         .order_by(RecommendationSnapshot.stay_date, RoomType.name)
     )
     return (await session.execute(stmt)).mappings().all()

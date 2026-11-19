@@ -403,14 +403,31 @@ async def _file(
 async def _train(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
-    result = await pricing_model_service.train(
+    prepared = await pricing_model_service.prepare_training(
         session,
         hotel,
-        description=params["description"],
         start=_date_or_none(params["start"]),
         end=_date_or_none(params["end"]),
+    )
+    # The worker commits at each step, which hands the database connection
+    # back while the model fits: a long fit would otherwise outlast it.
+    yield Step(
+        {
+            "stage": "fitting",
+            "training_rows": len(prepared.data.nights),
+            "target": prepared.data.target,
+        },
+        None,
+    )
+    metrics, artifact = await pricing_model_service.fit(prepared, params["ebm_params"])
+    result = await pricing_model_service.save_version(
+        session,
+        hotel,
+        prepared,
+        metrics,
+        artifact,
+        description=params["description"],
         activate=params["activate"],
-        params=params["ebm_params"],
     )
     model = result.model
     yield Step(
@@ -419,7 +436,9 @@ async def _train(
             "version": model.version,
             "activated": result.activated,
             "seconds": result.seconds,
-            "nights_used": result.nights_used,
+            "training_rows": result.training_rows,
+            "training_nights": result.training_nights,
+            "target": model.metrics.get("target"),
             "feedback_used": result.feedback_used,
             "metrics": {
                 k: model.metrics[k]

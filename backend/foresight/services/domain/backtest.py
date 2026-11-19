@@ -2,8 +2,10 @@
 
 Read-only; models are trained in memory and thrown away. Trains on every
 night except the last `test_days`, as if it were trained that day, then
-predicts those nights. The inputs come from `pricing_model.training_data`, the
-same loader training uses, so the backtest scores the model that would ship.
+predicts those nights. For a hotel that trains on bookings the rows are booked
+rooms, one per room per night (decision 0056), so scores are per room. The
+inputs come from `pricing_model.training_data`, the same loader training uses,
+so the backtest scores the model that would ship.
 
 `run_backtest` scores one set of inputs; compare sets by running it once per set.
 `run_tuning_backtest` scores the daily tune-up against the base (decision 0073).
@@ -30,14 +32,14 @@ from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.base import score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import FEATURES, INPUT_GROUPS
+from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
+from foresight.services.ml.weighting import combine_identical_rows
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.models.hotel import Hotel
     from foresight.services.domain.pricing_model import TrainingData
 
 # The model's prediction interval is (1 - ALPHA); `coverage` is scored against it.
@@ -68,123 +70,133 @@ class BaselineScore:
 
 @dataclass(frozen=True, slots=True)
 class BacktestResult:
-    """Each test night's actual and predicted rate, and how far off they were."""
+    """Each test row's actual and predicted rate, and how far off they were."""
 
     hotel_name: str
+    target: str  # what was predicted: "adr_nett" (booked rooms) or "arr" (nights)
     inputs: list[str]  # the features the model was trained on
     event_days: int | None  # event history the model saw; None means all of it
-    # stay_date, room_type, actual, predicted, low, high (the (1 - ALPHA)
-    # interval); with baselines, also one column per BASELINES key (NaN where
-    # it had no history)
-    nights: pd.DataFrame
+    # One row per test night, or per booked room per night: stay_date,
+    # room_type, actual, predicted, low, high (the (1 - ALPHA) interval);
+    # lead_days on booked rooms; with baselines, also one column per BASELINES
+    # key (NaN where it had no history)
+    rows: pd.DataFrame
     metrics: dict[str, float | None]  # mae, rmse, mape, r2, bias, coverage
     baselines: dict[str, BaselineScore]  # keyed like BASELINES; empty if not asked
 
 
 @dataclass(frozen=True, slots=True)
-class _Split:
+class BacktestSplit:
+    """A hotel's training rows, split at the cutoff. Holds no session."""
+
+    hotel_name: str
     data: TrainingData
     cutoff: date
-    seen: np.ndarray  # True for training nights, False for test nights
+    seen: np.ndarray  # True for training rows, False for test rows
 
 
-async def run_backtest(
+async def load_backtest(
     session: AsyncSession,
     hotel_id: int,
     *,
     test_days: int = 90,
-    baselines: bool = False,
-    inputs: Sequence[str] = FEATURES,
-    event_days: int | None = None,
     start: date | None = None,
-) -> BacktestResult:
-    """Predicts the last `test_days` nights with a model trained on the rest.
+) -> BacktestSplit:
+    """Past training rows from `start`, split `test_days` before the newest.
 
-    `inputs` picks the features the model trains on; the default is every
-    feature, like the model that's served. With `baselines`, also scores the
-    BASELINES on the same nights. `start` leaves out earlier nights.
+    The database part of a backtest; `run_backtest` then needs none, so the
+    caller can release its connection before the fit.
 
     Raises NotFoundError for an unknown hotel, and InvalidRequestError if
     there are no nights on one side of the cutoff.
     """
     hotel = await get_hotel(session, hotel_id)
-    if event_days is not None and event_days < 1:
-        raise InvalidRequestError("--event-days must be at least 1")
-    split = await _split(session, hotel, test_days, start)
-    columns = in_feature_order(inputs)
-    predicted, low, high = await _fit_predict(split, columns, event_days)
-    nights = _test_nights(split, predicted, low, high, baselines=baselines)
-    return BacktestResult(
-        hotel_name=hotel.name,
-        inputs=columns,
-        event_days=event_days,
-        nights=nights,
-        metrics=score(nights["actual"], nights["predicted"], low, high),
-        baselines={
-            name: _score_baseline(nights, name) for name in BASELINES if baselines
-        },
-    )
-
-
-async def _split(
-    session: AsyncSession,
-    hotel: Hotel,
-    test_days: int,
-    start: date | None,
-    *,
-    priced_days: bool = False,
-) -> _Split:
-    """Past priced nights from `start`, split at `test_days` before the newest.
-
-    `test_days` counts calendar days, or with `priced_days` only days that
-    have a priced night, so the test nights are always `test_days` days of
-    data however gappy it is.
-    """
     yesterday = date.today() - timedelta(days=1)
     data = await training_data(session, hotel, start=start, end=yesterday)
     if data.nights.empty:
         raise InvalidRequestError("no priced nights to backtest")
-    if priced_days:
-        days = sorted(set(data.nights["stay_date"]))
-        if len(days) <= test_days:
-            raise InvalidRequestError(
-                f"only {len(days)} priced days; use a smaller --test-days"
-            )
-        cutoff = days[-test_days - 1]  # the last training day
-    else:
-        cutoff = data.nights["stay_date"].max() - timedelta(days=test_days)
+    cutoff = data.nights["stay_date"].max() - timedelta(days=test_days)
     seen = (data.nights["stay_date"] <= cutoff).to_numpy()
     if not seen.any():
         raise InvalidRequestError(
             f"no nights before the cutoff {cutoff}; use a smaller --test-days"
         )
-    return _Split(data, cutoff, seen)
+    return BacktestSplit(hotel.name, data, cutoff, seen)
+
+
+async def run_backtest(
+    split: BacktestSplit,
+    *,
+    baselines: bool = False,
+    inputs: Sequence[str] | None = None,
+    event_days: int | None = None,
+) -> BacktestResult:
+    """Predicts the test rows with a model trained on the rest.
+
+    `inputs` picks the features the model trains on; the default is every
+    input the training data has, like the model that's served. With
+    `baselines`, also scores the BASELINES on the same nights.
+
+    Raises InvalidRequestError if an input the training data doesn't have is
+    asked for, or baselines are asked for on booked rooms.
+    """
+    if event_days is not None and event_days < 1:
+        raise InvalidRequestError("--event-days must be at least 1")
+    data = split.data
+    have = list(data.x.columns)
+    columns = in_feature_order(have if inputs is None else inputs)
+    if missing := [c for c in columns if c not in have]:
+        raise InvalidRequestError(
+            f"no {', '.join(missing)} in this hotel's training data: "
+            f"it trains on nights because {data.reason}"
+        )
+    if baselines and data.from_bookings:
+        raise InvalidRequestError(
+            "baselines compare nights, but this hotel trains on booked rooms"
+        )
+    predicted, low, high = await _fit_predict(split, columns, event_days)
+    rows = _test_rows(split, predicted, low, high, baselines=baselines)
+    return BacktestResult(
+        hotel_name=split.hotel_name,
+        target=data.target,
+        inputs=columns,
+        event_days=event_days,
+        rows=rows,
+        metrics=score(rows["actual"], rows["predicted"], low, high),
+        baselines={
+            name: _score_baseline(rows, name) for name in BASELINES if baselines
+        },
+    )
 
 
 async def _fit_predict(
-    split: _Split, columns: list[str], event_days: int | None = None
+    split: BacktestSplit, columns: list[str], event_days: int | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Fits on the training nights' `columns`; predicts the test nights."""
+    """Fits on the training rows' `columns`; predicts the test rows.
+
+    Rows the model can't tell apart are merged before the fit, as training
+    does (decision 0056).
+    """
     x = split.data.x[columns]
     if event_days is not None:
         x = _limit_event_history(x, split, event_days)
-    model = await _fit(split, x)
+    model = await _fit_seen(split.data, split.seen, x)
     return model.predict_interval(x[~split.seen])
 
 
-async def _fit(split: _Split, x: pd.DataFrame) -> EBMModel:
-    """An EBM fit on the training nights' rows of `x`, weighted as training is."""
-    seen = split.seen
+async def _fit_seen(data: TrainingData, seen: np.ndarray, x: pd.DataFrame) -> EBMModel:
+    """An EBM fit on the `seen` rows of `x`, weighted and merged as training is."""
+    xc, yc, wc, _ = combine_identical_rows(
+        x[seen], data.y[seen], data.weights[seen], data.nights.loc[seen, "stay_date"]
+    )
     model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
     # CPU-bound for seconds; a thread keeps the event loop free.
-    await asyncio.to_thread(
-        model.fit, x[seen], split.data.y[seen], sample_weight=split.data.weights[seen]
-    )
+    await asyncio.to_thread(model.fit, xc, yc, sample_weight=wc)
     return model
 
 
 def _limit_event_history(
-    x: pd.DataFrame, split: _Split, event_days: int
+    x: pd.DataFrame, split: BacktestSplit, event_days: int
 ) -> pd.DataFrame:
     """Blanks the event inputs on nights more than `event_days` before the cutoff.
 
@@ -200,15 +212,15 @@ def _limit_event_history(
     return x
 
 
-def _test_nights(
-    split: _Split,
+def _test_rows(
+    split: BacktestSplit,
     predicted: np.ndarray,
     low: np.ndarray,
     high: np.ndarray,
     *,
     baselines: bool,
 ) -> pd.DataFrame:
-    """The test nights' actual and predicted rates, and the baselines' if asked."""
+    """The test rows' actual and predicted rates, and the baselines' if asked."""
     nights, seen = split.data.nights, split.seen
     history, targets = nights.loc[seen], nights.loc[~seen]
     result = pd.DataFrame(
@@ -221,6 +233,8 @@ def _test_nights(
             "high": high,
         }
     )
+    if split.data.from_bookings:
+        result[LEAD] = split.data.x.loc[~seen, LEAD].to_numpy()
     if baselines:
         # Baselines see only nights up to the cutoff, as the model did.
         result["last_year"] = same_weekday_last_year(history, targets)
@@ -321,7 +335,7 @@ class TuningBacktestResult:
     cutoff: date  # to here
     eval_start: date  # first scored night: after max(sizes) priced days
     eval_end: date
-    eval_nights: int
+    eval_nights: int  # one row per night, booked rooms averaged (0076)
     base: dict[str, float | None]  # the untuned model on the eval nights
     rows: list[TuningRow]
     rule: ManagerRule | None  # None: the recorded rate is the manager's
@@ -333,24 +347,63 @@ class TuningBacktestResult:
     nights: pd.DataFrame
 
 
-async def run_tuning_backtest(
+@dataclass(frozen=True, slots=True)
+class TuningSplit:
+    """A hotel's training rows split for the tuning backtest. Holds no session."""
+
+    hotel_name: str
+    data: TrainingData
+    cutoff: date  # the last training day
+    seen: np.ndarray  # True for rows the base trains on
+    days_after: list[date]  # the held-out priced days, oldest first
+
+
+async def load_tuning_backtest(
     session: AsyncSession,
     hotel_id: int,
     *,
     test_days: int = 60,
-    sizes: Sequence[int] = TUNING_SIZES,
     start: date | None = None,
+) -> TuningSplit:
+    """Past training rows from `start`, split `test_days` priced days before the
+    newest. Counts priced days, not calendar days, so gaps in the data don't
+    leave the feedback or scored nights empty.
+
+    The database part; `run_tuning_backtest` needs none, so the caller can
+    release its connection before the fits.
+
+    Raises NotFoundError for an unknown hotel, and InvalidRequestError if
+    there are too few priced days.
+    """
+    hotel = await get_hotel(session, hotel_id)
+    yesterday = date.today() - timedelta(days=1)
+    data = await training_data(session, hotel, start=start, end=yesterday)
+    days = sorted(set(data.nights["stay_date"]))
+    if len(days) <= test_days:
+        raise InvalidRequestError(
+            f"only {len(days)} priced days; use a smaller --test-days"
+        )
+    cutoff = days[-test_days - 1]
+    seen = (data.nights["stay_date"] <= cutoff).to_numpy()
+    return TuningSplit(hotel.name, data, cutoff, seen, days[-test_days:])
+
+
+async def run_tuning_backtest(
+    split: TuningSplit,
+    *,
+    sizes: Sequence[int] = TUNING_SIZES,
     rule: ManagerRule | None = None,
     manager_share: float = 1.0,
 ) -> TuningBacktestResult:
     """Does the tune-up beat the base model, and after how many days of feedback?
 
-    Trains the base on every night before the newest `test_days` priced
-    days, as if it went live then. For each size N, the recorded rates of the first N
-    priced days after the cutoff stand in for the manager's, the correction is
-    fit on them (with and without the untouched nights of decision 0072), and
-    both are scored, with the base, on the nights after the first max(sizes)
-    priced days, the same nights for every size.
+    The base trains on every row before the held-out days, as if it went live
+    then. The held-out nights are one row each: on booked rooms, the night's
+    average booked rate, booked the day before (decision 0076). For each size
+    N, the rates of the first N held-out days stand in for the manager's, the
+    correction is fit on them (with and without the untouched nights of
+    decision 0072), and both are scored, with the base, on the nights after
+    the first max(sizes) days, the same nights for every size.
 
     The manager reviews `manager_share` of the feedback days, picked at
     random, and sets a rate on each night of them; the nights they didn't
@@ -358,70 +411,60 @@ async def run_tuning_backtest(
     change", as `tune` does. With a `rule`, the manager is synthetic: their
     rate is the base's with the rule applied, on feedback and scored nights
     alike, and on a reviewed day they set a rate only where the rule changes
-    it, accepting the rest. The score then says how much of a known habit the
-    tune-up learned (decision 0074).
+    it, accepting the rest (decision 0074).
 
-    Raises NotFoundError for an unknown hotel, and InvalidRequestError for bad
-    sizes or if no nights are left to score.
+    Raises InvalidRequestError for bad sizes or if no nights are left to score.
     """
-    hotel = await get_hotel(session, hotel_id)
     sizes = sorted(set(sizes))
     if not sizes or sizes[0] < 1:
         raise InvalidRequestError("--sizes must be positive numbers of days")
     if not 0 < manager_share <= 1:
         raise InvalidRequestError("--manager-share must be above 0 and at most 1")
-    if test_days <= sizes[-1]:
+    days_after = split.days_after
+    if len(days_after) <= sizes[-1]:
         raise InvalidRequestError(
-            f"--test-days {test_days} leaves no days to score after {sizes[-1]} "
-            "days of feedback; use more --test-days or smaller --sizes"
+            f"--test-days {len(days_after)} leaves no days to score after "
+            f"{sizes[-1]} days of feedback; use more --test-days or smaller --sizes"
         )
-    # Every count here is in priced days, not calendar days, so gaps in the
-    # data don't leave a size, or the scored nights, with nothing in them.
-    split = await _split(session, hotel, test_days, start, priced_days=True)
-    stay = split.data.nights["stay_date"]
-    days_after = sorted(set(stay[~split.seen]))  # exactly test_days of them
-    rank = stay.map({d: i for i, d in enumerate(days_after, start=1)})
-    rank = rank.fillna(0).astype(int).to_numpy()  # 0: a training night
 
-    x = split.data.x[FEATURES]
-    base = await _fit(split, x)
-    y = split.data.y.to_numpy(dtype=float)
+    base = await _fit_seen(split.data, split.seen, split.data.x)
+    held, x, y = _held_out_nights(split.data, split.seen)
+    stay = held["stay_date"]
+    rank = stay.map({d: i for i, d in enumerate(days_after, start=1)}).to_numpy()
+    base_all = base.predict(x)
     if rule is not None:  # the synthetic manager's rate replaces the recorded one
-        y = np.where(split.seen, y, rule.apply(x, base.predict(x)))
+        y = rule.apply(x, base_all)
     # Which feedback days the manager reviewed; the rest they left alone.
     pick = np.random.default_rng(MANAGER_SEED).random(len(days_after)) < manager_share
-    priced = np.concatenate([[False], pick])[rank]  # rank 0: a training night
+    priced = pick[rank - 1]
     if rule is not None:  # a synthetic manager accepts nights the rule leaves
         priced &= rule.matches(x)
     trained_on = set(split.data.nights.loc[split.seen, "room_type"])
-    known_room = split.data.nights["room_type"].isin(trained_on).to_numpy()
+    known_room = held["room_type"].isin(trained_on).to_numpy()
 
     scored = rank > sizes[-1]
     x_eval = x[scored]
-    base_pred = base.predict(x_eval)
+    base_pred = base_all[scored]
     base_metrics = score(y[scored], base_pred)
     base_mae = base_metrics["mae"]
-    held_out = ~split.seen
     nights = pd.DataFrame(
         {
-            "stay_date": stay[held_out].to_numpy(),
-            "room_type": split.data.nights.loc[held_out, "room_type"].to_numpy(),
-            "actual": y[held_out],
-            "base": base.predict(x[held_out]),
-            "day": rank[held_out],
-            "scored": scored[held_out],
+            "stay_date": stay.to_numpy(),
+            "room_type": held["room_type"].to_numpy(),
+            "actual": y,
+            "base": base_all,
+            "day": rank,
+            "scored": scored,
         }
     )
-    on_scored = nights["scored"].to_numpy()
 
     rows = []
     for n in sizes:
         # "Today" is the day after the last feedback day. Untouched nights
         # are feedback days the manager didn't price, within UNTOUCHED_DAYS
-        # back: past nights left alone (decision 0074). Snapshots start at
-        # the cutoff, so nothing before it counts.
+        # back: past nights left alone (decision 0074).
         today = days_after[n - 1] + timedelta(days=1)
-        window = (rank >= 1) & (rank <= n)
+        window = rank <= n
         manager = window & priced
         horizon = (stay >= today - timedelta(days=UNTOUCHED_DAYS)).to_numpy()
         untouched = window & ~priced & horizon & known_room
@@ -459,7 +502,7 @@ async def run_tuning_backtest(
         both_metrics = score(y[scored], both_pred)
         for column, pred in ((f"mgr_only_{n}", only_pred), (f"tuned_{n}", both_pred)):
             nights[column] = float("nan")
-            nights.loc[on_scored, column] = pred
+            nights.loc[scored, column] = pred
         correction = both.correction(x_eval)
         recovery = drift = None
         if rule is not None:
@@ -482,8 +525,8 @@ async def run_tuning_backtest(
 
     eval_days = stay[scored]
     return TuningBacktestResult(
-        hotel_name=hotel.name,
-        train_start=stay[split.seen].min(),
+        hotel_name=split.hotel_name,
+        train_start=split.data.nights.loc[split.seen, "stay_date"].min(),
         cutoff=split.cutoff,
         eval_start=eval_days.min(),
         eval_end=eval_days.max(),
@@ -494,6 +537,29 @@ async def run_tuning_backtest(
         rule=rule,
         manager_share=manager_share,
     )
+
+
+def _held_out_nights(
+    data: TrainingData, seen: np.ndarray
+) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
+    """One row per held-out room type and night: its key, inputs and rate.
+
+    On booked rooms a night has many rows; the manager prices the night, not
+    a booking, so the night's rate is its average booked rate and its inputs
+    are its first room's with days ahead set to 1, booked the day before
+    (decision 0076). Night rows come back as they are. Oldest night first.
+    """
+    held = ~seen
+    rows = data.nights.loc[held, ["stay_date", "room_type"]].reset_index(drop=True)
+    x = data.x.loc[held].reset_index(drop=True)
+    y = data.y.loc[held].reset_index(drop=True).astype(float)
+    group = rows.groupby(["stay_date", "room_type"], sort=False).ngroup().to_numpy()
+    first = pd.Series(np.arange(len(rows))).groupby(group).first().to_numpy()
+    x_nights = x.iloc[first].reset_index(drop=True)
+    if LEAD in x_nights:
+        x_nights[LEAD] = 1
+    rate = y.groupby(group).mean().to_numpy()
+    return rows.iloc[first].reset_index(drop=True), x_nights, rate
 
 
 def _skill(mae: float | None, base_mae: float | None) -> float | None:

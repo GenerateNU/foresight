@@ -8,7 +8,10 @@ Every night priced from today on is saved as a snapshot, and reused while its
 inputs don't change (decision 0038):
 
 1. Load each night's inputs: the model's input row, the events on the night
-   and whether an events backfill covered it. Database reads only.
+   and whether an events backfill covered it. Database reads only. A version
+   trained on booked rooms also reads days booked ahead: the rate is what the
+   night would sell for if booked today, so its nights re-price daily
+   (decision 0056).
 2. Fingerprint them with the active model's id.
 3. A night whose fingerprint matches its latest snapshot returns that snapshot;
    the model doesn't run. The rest are scored together, in one batch, and each
@@ -28,6 +31,7 @@ import math
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
@@ -38,13 +42,14 @@ from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
 from foresight.services.domain import event as event_service
+from foresight.services.domain import prices
 from foresight.services.domain.city import local_today
 from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import build_features
+from foresight.services.ml.features import LEAD, build_features
 
 if TYPE_CHECKING:
     from datetime import date
@@ -98,6 +103,8 @@ class Recommendation:
     stay_date: date
     room_type: str
     room_type_id: int
+    lead_days: int | None  # days from today it was priced at; None if not read
+    rate_basis: str  # "nett" (booked rooms, before VAT) or "arr" (nightly rate)
     recommended_rate: Decimal
     currency: str
     explanation: Explanation
@@ -171,11 +178,11 @@ async def get_recommendations(
             f"{room_type.name!r}; train a new version"
         )
 
-    nights = await _load_nights(session, hotel, room_type, stored, start, end)
+    today = local_today(hotel.city)
+    nights = await _load_nights(session, hotel, room_type, stored, today, start, end)
     latest = await snapshot_repo.latest_snapshots(
         session, room_type.id, start=start, end=end
     )
-    today = local_today(hotel.city)
 
     # A past night keeps the snapshot it has, whatever changed since.
     to_score = [
@@ -199,7 +206,63 @@ async def get_recommendations(
     rates = await feedback_repo.manager_rates(
         session, room_type.id, start=start, end=end
     )
-    return [replace(r, manager_rate=rates.get(r.stay_date)) for r in out]
+    # Stored nett; shown as listed prices, VAT added (decision 0076).
+    return [
+        _listed(replace(r, manager_rate=rates.get(r.stay_date)), hotel) for r in out
+    ]
+
+
+def _listed(rec: Recommendation, hotel: Hotel) -> Recommendation:
+    """Every price in a recommendation as the manager lists it.
+
+    Nett versions get VAT added to the rate, interval, uncertainty, baseline and
+    each factor alike, so the factors still add up to the rate (to the cent:
+    "Smaller effects combined" absorbs rounding). ARR versions are unchanged.
+    """
+    factor = prices.vat_factor(hotel.city, rec.rate_basis)
+    if factor == 1:
+        return rec
+    listed = partial(prices.to_listed, factor=factor)
+    rate = listed(rec.recommended_rate)
+    baseline = listed(rec.explanation.baseline)
+    factors = [Factor(f.detail, listed(f.amount)) for f in rec.explanation.factors]
+    gap = rate - baseline - sum((f.amount for f in factors), Decimal(0))
+    if gap:
+        factors = _absorb(factors, gap)
+    return replace(
+        rec,
+        recommended_rate=rate,
+        explanation=Explanation(
+            _relisted(rec.explanation, rate, baseline, factors), baseline, factors
+        ),  # fmt: skip
+        confidence_interval=ConfidenceInterval(
+            listed(rec.confidence_interval.lower),
+            listed(rec.confidence_interval.upper),
+            rec.confidence_interval.level,
+        ),
+        uncertainty=listed(rec.uncertainty),
+        manager_rate=None if rec.manager_rate is None else listed(rec.manager_rate),
+    )
+
+
+def _absorb(factors: list[Factor], gap: Decimal) -> list[Factor]:
+    """Put a rounding gap into "Smaller effects combined", adding it if needed."""
+    other = "Smaller effects combined"
+    if factors and factors[-1].detail == other:
+        return [*factors[:-1], Factor(other, factors[-1].amount + gap)]
+    return [*factors, Factor(other, gap)]
+
+
+def _relisted(
+    old: Explanation, rate: Decimal, baseline: Decimal, factors: list[Factor]
+) -> str:
+    """The summary sentence, with the listed prices."""
+    top = (
+        f"{factors[0].detail}: {_signed(float(factors[0].amount))}"
+        if factors
+        else "no strong factors"
+    )
+    return f"€{rate:.0f} from a typical €{baseline:.0f}; biggest factor: {top}."
 
 
 # --- inputs -----------------------------------------------------------------
@@ -224,10 +287,16 @@ async def _load_nights(
     hotel: Hotel,
     room_type: RoomType,
     stored: PricingModel,
+    today: date,
     start: date,
     end: date,
 ) -> list[_Night]:
-    """Every night's inputs and their fingerprint, from the database only."""
+    """Every night's inputs and their fingerprint, from the database only.
+
+    Builds every input, then keeps the ones this version trained on, so an
+    older version gets exactly its own columns and keeps its fingerprints.
+    Days booked ahead are counted from today; a past night gets 0.
+    """
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     events = await event_service.events_by_night(
         session, hotel.city_id, start=start, end=end
@@ -240,7 +309,8 @@ async def _load_nights(
         events_fetched=city_events.fetched,
         events_impacts=city_events.impacts,
         hotel_location=hotel_location(hotel),
-    )
+        booked_on=today,
+    )[stored.features]
 
     nights = []
     for i, day in enumerate(days):
@@ -372,9 +442,19 @@ def _describe(term: str, row: pd.Series) -> str:
 
 def _value(feature: str, value: float | int | str | None) -> str:
     """One feature's value for this night, in words. Values are scalars:
-    numbers for the calendar and events, a name for the room type."""
+    numbers for the calendar, events and days ahead, a name for the room
+    type."""
     if value is None or pd.isna(value):
         return f"{feature.replace('_', ' ')} unknown"
+    if feature == LEAD:
+        days = int(value)
+        if days == 0:
+            return "booking today"
+        return f"booking {days} day{'' if days == 1 else 's'} ahead"
+    if feature == "night_before_holiday":
+        if int(value):
+            return "the night before a public holiday"
+        return "not the night before a public holiday"
     if feature == "day_of_week":
         return _DAYS[int(value)]
     if feature == "month":
@@ -432,6 +512,8 @@ def _from_snapshot(
         stay_date=snap.stay_date,
         room_type=room_type.name,
         room_type_id=room_type.id,
+        lead_days=_lead_days(inputs),
+        rate_basis=_rate_basis(inputs),
         recommended_rate=snap.rate,
         currency=CURRENCY,
         explanation=_explanation_from_json(snap.factors),
@@ -461,6 +543,8 @@ def _unsaved(
         stay_date=night.stay_date,
         room_type=room_type.name,
         room_type_id=room_type.id,
+        lead_days=_lead_days(night.inputs),
+        rate_basis=_rate_basis(night.inputs),
         recommended_rate=scored.rate,
         currency=CURRENCY,
         explanation=scored.explanation,
@@ -473,6 +557,19 @@ def _unsaved(
         snapshot_id=None,
         priced_at=datetime.now(UTC),
     )
+
+
+def _lead_days(inputs: dict[str, Any]) -> int | None:
+    """The days ahead a night was priced at, from its stored inputs; None if
+    the version doesn't read them."""
+    value = inputs.get("features", {}).get(LEAD)
+    return None if value is None else int(value)
+
+
+def _rate_basis(inputs: dict[str, Any]) -> str:
+    """ "nett" for a version trained on booked rooms, which always reads days
+    ahead; "arr" for one trained on nights (decision 0056)."""
+    return prices.basis_of(inputs)
 
 
 def _version(stored: PricingModel) -> str:

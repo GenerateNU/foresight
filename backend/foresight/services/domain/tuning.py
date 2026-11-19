@@ -19,13 +19,13 @@ import pandas as pd
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
-from foresight.services.domain.city import local_today
+from foresight.services.domain.city import local_date, local_today
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.domain.pricing_model import LIBS
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel, TunedEBMModel
-from foresight.services.ml.features import FEATURES, build_features
+from foresight.services.ml.features import build_features
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,11 +99,13 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     base = loaded.base if isinstance(loaded, TunedEBMModel) else loaded
 
     # The manager's nights first, then the nights they left alone, whose
-    # target is the base's own prediction (a gap of 0).
+    # target is the base's own prediction (a gap of 0). Each is booked the day
+    # its price was shown, as serving priced it (decision 0076).
     both = pd.concat(
-        [feedback[["stay_date", "room_type"]], untouched], ignore_index=True
+        [feedback[["stay_date", "room_type", "shown_at"]], untouched],
+        ignore_index=True,
     )
-    x = await _features(session, hotel, both)
+    x = await _features(session, hotel, both, base_row.features)
     x_manager = x.iloc[: len(feedback)]
 
     # CPU-bound; a thread keeps the API answering meanwhile.
@@ -122,7 +124,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         algorithm=ALGORITHM,
         description=f"Tune-up of v{base_row.version} on {len(feedback)} manager rates",
         artifact=model.to_bytes(),
-        features=FEATURES,
+        features=list(base_row.features),
         metrics={
             "base_model_id": base_row.id,
             "base_version": base_row.version,
@@ -214,12 +216,16 @@ async def _untouched(
     touched |= {(row["stay_date"], row["room_type"]) for row in one_off}
     return pd.DataFrame(
         [
-            {"stay_date": n["stay_date"], "room_type": n["room_type"]}
+            {
+                "stay_date": n["stay_date"],
+                "room_type": n["room_type"],
+                "shown_at": n["shown_at"],
+            }
             for n in nights
             if (n["stay_date"], n["room_type"]) not in touched
             and (not trained_on or n["room_type"] in trained_on)
         ],
-        columns=pd.Index(["stay_date", "room_type"]),
+        columns=pd.Index(["stay_date", "room_type", "shown_at"]),
     )
 
 
@@ -231,19 +237,25 @@ async def _model(session: AsyncSession, model_id: int) -> PricingModel:
 
 
 async def _features(
-    session: AsyncSession, hotel: Hotel, feedback: pd.DataFrame
+    session: AsyncSession, hotel: Hotel, rows: pd.DataFrame, features: list[str]
 ) -> pd.DataFrame:
-    """The model's inputs for each night the manager priced, row for row.
+    """The base version's inputs for each row, built as serving builds them.
 
-    Built as recommendations build them, so past and future nights both work.
+    Each row is booked on the day its price was shown (`shown_at`, in the
+    hotel's timezone), so days ahead is what the manager saw; a version that
+    doesn't read it simply doesn't select it (decision 0076).
     """
-    days = sorted(set(feedback["stay_date"]))
+    days = sorted(set(rows["stay_date"]))
     events = await events_for(session, hotel.city, days)
+    booked_on = pd.Series(
+        [local_date(hotel.city, t) for t in rows["shown_at"]], index=rows.index
+    )
     x = build_features(
-        feedback[["stay_date", "room_type"]],
+        rows[["stay_date", "room_type"]],
         events.frame,
         events_fetched=events.fetched,
         events_impacts=events.impacts,
         hotel_location=hotel_location(hotel),
+        booked_on=booked_on,
     )
-    return x[FEATURES]
+    return x[list(features)]
