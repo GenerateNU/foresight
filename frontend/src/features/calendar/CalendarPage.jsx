@@ -18,7 +18,7 @@ import { buildMonthGrid, monthLabel, ratesByNight } from './calendarUtils.js'
 export default function CalendarPage() {
   const today = new Date()
   const [{ year, month }, setMonth] = useState({ year: today.getFullYear(), month: today.getMonth() })
-  const [mode, setMode] = useState('demand')
+  const [mode, setMode] = useState('price-level')
 
   const weeks = useMemo(() => buildMonthGrid(year, month), [year, month])
   const start = weeks[0][0].date
