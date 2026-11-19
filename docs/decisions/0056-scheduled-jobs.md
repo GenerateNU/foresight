@@ -31,9 +31,7 @@ process.
   ([0044](0044-train-on-feedback-given-after-the-night.md)).
 - **A job that can't start is skipped until the next check:** one already
   queued or running, no PredictHQ token, nothing to train on, no active model.
-- **A scheduled model goes live only if it's no worse:** the hotel has no
-  active model, the active one has no MAE, or the new MAE is at most the active
-  one's. Otherwise it's saved but not activated. Manual training is unchanged.
+- **A scheduled model goes live**, as a manual one does by default.
 - **Off by default.** A local server doesn't call paid APIs by itself.
   `render.yaml` turns the scheduler on and keeps training off.
 
@@ -52,8 +50,6 @@ process.
   fetch the same events twice.
 - On a hotel's first day, price waits one check (15 minutes) for the first
   model.
-- MAEs of models trained a day apart are scored on almost, not exactly, the
-  same recent nights.
 - On a paid plan, a deploy starts the new instance before stopping the old. So
   the new one waits 6 minutes, longer than Render's longest shutdown delay,
   then fails only the unfinished jobs it doesn't hold. Until then a job the old

@@ -437,9 +437,6 @@ every 15 minutes
   commit; worker.enqueue each job      same per-hotel queue as uploads
 ```
 
-A scheduled training run goes live only if its MAE is no worse than the
-active model's.
-
 ---
 
 ## 6. End-to-end flows
