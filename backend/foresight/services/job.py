@@ -69,12 +69,12 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# A routine job runs again this long after it ran, or after it failed.
-# Training is the exception: it runs at a fixed hour (_train_due).
-ROUTINE_EVERY = timedelta(hours=24)
+# The routine runs once a day at SCHEDULE_HOUR (_due); a scheduled run that
+# failed is retried this long after.
 RETRY_AFTER = timedelta(hours=1)
-# Marks a training job the scheduler started, so manual ones don't count.
-SCHEDULED_TRAIN = {"scheduled": True}
+# Marks a job the scheduler started. Only these set the next scheduled run, so
+# a manual run doesn't move it.
+SCHEDULED = {"scheduled": True}
 # Nights a price job saves recommendations for, from today.
 PRICE_NIGHTS = 90
 # How far back the first routine events refresh looks for revisions.
@@ -122,10 +122,16 @@ async def start_weather_job(
 
 
 async def start_events_job(
-    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    start: date | None,
+    end: date | None,
+    scheduled: bool = False,
 ) -> Job:
     """No dates: upcoming events PredictHQ revised since the last such run
     (or the last week, the first time). Dates: every event in the window.
+    `scheduled` is for the scheduler's own runs.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -146,6 +152,7 @@ async def start_events_job(
             session, hotel.id, start, end, today=local_today(hotel.city)
         )
         params = {"mode": "window", **window.as_params()}
+    params["scheduled"] = scheduled
     return await _queue(session, hotel, JobKind.EVENTS, params)
 
 
@@ -178,7 +185,7 @@ async def start_train_job(
     scheduled: bool = False,
 ) -> Job:
     """Train a new model version on what's already ingested. `scheduled` is
-    for the scheduler's own runs, the only ones that set its next run.
+    for the scheduler's own runs.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -199,9 +206,12 @@ async def start_train_job(
     return await _queue(session, hotel, JobKind.TRAIN, params)
 
 
-async def start_price_job(session: AsyncSession, hotel_id: int) -> Job:
+async def start_price_job(
+    session: AsyncSession, hotel_id: int, *, scheduled: bool = False
+) -> Job:
     """Save recommendations for the next PRICE_NIGHTS nights, so the calendar
-    opens without pricing them first.
+    opens without pricing them first. `scheduled` is for the scheduler's own
+    runs.
 
     Raises:
         NotFoundError: Unknown hotel, or no active model.
@@ -210,31 +220,32 @@ async def start_price_job(session: AsyncSession, hotel_id: int) -> Job:
     hotel = await get_hotel(session, hotel_id)
     if await model_repo.get_active_pricing_model(session, hotel.id) is None:
         raise NotFoundError("Active pricing model for hotel", hotel.id)
-    return await _queue(session, hotel, JobKind.PRICE, {})
+    return await _queue(session, hotel, JobKind.PRICE, {"scheduled": scheduled})
 
 
 async def start_due_jobs(session: AsyncSession) -> list[Job]:
     """Queue every hotel's routine jobs that are due, in the order they run.
 
-    A job is due ROUTINE_EVERY after its last run succeeded or stopped on a
-    quota, or RETRY_AFTER a run that failed; training instead at a fixed hour
-    (`_train_due`). One that can't start (already queued, not configured) is
-    skipped until the next check.
+    Each is due once a day at SCHEDULE_HOUR, hotel time (`_due`). One that
+    can't start (already queued, not configured) is skipped until the next
+    check.
     """
-    # (kind, params that mark its routine run, how to start it)
-    routine: list[tuple[JobKind, dict[str, Any], Callable[[int], Awaitable[Job]]]]
-    # No weather: it's out of the model (0055).
+    # (kind, how to start its scheduled run)
+    routine: list[tuple[JobKind, Callable[[int], Awaitable[Job]]]]
+    # Events first, so training learns from them and pricing reads them; then
+    # training, so pricing uses the new model. No weather: it's out of the
+    # model (0055).
     routine = [
         (
             JobKind.EVENTS,
-            {"mode": "recent"},
-            lambda h: start_events_job(session, h, start=None, end=None),
+            lambda h: start_events_job(
+                session, h, start=None, end=None, scheduled=True
+            ),
         ),
         *(
             [
                 (
                     JobKind.TRAIN,
-                    SCHEDULED_TRAIN,
                     lambda h: start_train_job(
                         session,
                         h,
@@ -250,19 +261,14 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             if settings.scheduled_training
             else []
         ),
-        (JobKind.PRICE, {}, lambda h: start_price_job(session, h)),
+        (JobKind.PRICE, lambda h: start_price_job(session, h, scheduled=True)),
     ]
 
     queued: list[Job] = []
     now = _now()
     for hotel in await list_hotels(session):
-        for kind, params, start in routine:
-            due = (
-                _train_due(session, hotel, now)
-                if kind == JobKind.TRAIN
-                else _due(session, hotel.id, kind, params, now)
-            )
-            if not await due:
+        for kind, start in routine:
+            if not await _due(session, hotel, kind, now):
                 continue
             try:
                 queued.append(await start(hotel.id))
@@ -302,39 +308,21 @@ async def cancel_job(session: AsyncSession, job_id: int) -> Job:
 
 
 async def _due(
-    session: AsyncSession,
-    hotel_id: int,
-    kind: JobKind,
-    params: dict[str, Any],
-    now: datetime,
+    session: AsyncSession, hotel: Hotel, kind: JobKind, now: datetime
 ) -> bool:
-    last = await job_repo.latest_finished_job(
-        session, hotel_id=hotel_id, kind=kind, params=params
-    )
-    if last is None:
-        return True
-    assert last.finished_at is not None  # the query only returns finished jobs
-    # A stopped run hit a quota; retrying within the hour would hit it again.
-    wait = RETRY_AFTER if last.status == JobStatus.FAILED else ROUTINE_EVERY
-    return last.finished_at + wait <= now
-
-
-async def _train_due(session: AsyncSession, hotel: Hotel, now: datetime) -> bool:
-    """Due once a day at SCHEDULED_TRAINING_HOUR, hotel time, or RETRY_AFTER a
-    scheduled run that failed. Only scheduled runs count, so a manual one
-    doesn't move it. A missed hour (server down or asleep) is caught up at the
-    next check."""
+    """Due once a day at SCHEDULE_HOUR, hotel time, or RETRY_AFTER a scheduled
+    run that failed. Only scheduled runs count, so a manual one doesn't move
+    it. A missed hour (server down or asleep) is caught up at the next check.
+    A run that stopped on a quota waits for the next day, like a success."""
     tz = ZoneInfo(hotel.city.timezone)
     local_now = now.astimezone(tz)
     # The latest scheduled time that has passed: today's, or yesterday's if
     # today's hasn't come yet.
-    slot = datetime.combine(
-        local_now.date(), time(settings.scheduled_training_hour), tzinfo=tz
-    )
+    slot = datetime.combine(local_now.date(), time(settings.schedule_hour), tzinfo=tz)
     if slot > local_now:
         slot -= timedelta(days=1)
     last = await job_repo.latest_finished_job(
-        session, hotel_id=hotel.id, kind=JobKind.TRAIN, params=SCHEDULED_TRAIN
+        session, hotel_id=hotel.id, kind=kind, params=SCHEDULED
     )
     if last is None or last.created_at < slot:
         return True
@@ -402,6 +390,21 @@ async def mark_succeeded(session: AsyncSession, job_id: int) -> None:
         resume_from=None,
         finished_at=_now(),
     )
+
+
+async def start_follow_up_jobs(session: AsyncSession, job_id: int) -> list[Job]:
+    """Jobs a succeeded job starts. A manual events run re-saves prices with
+    its new events, so the calendar opens without pricing them first; a
+    scheduled one doesn't, since the routine prices after it. One that can't
+    start (no model, a price job already queued) is skipped."""
+    job = await get_job(session, job_id)
+    if job.kind != JobKind.EVENTS or job.params.get("scheduled"):
+        return []
+    try:
+        return [await start_price_job(session, job.hotel_id)]
+    except DomainError as exc:
+        log.info("hotel %s: price after events not started: %s", job.hotel_id, exc)
+        return []
 
 
 async def mark_ended_early(

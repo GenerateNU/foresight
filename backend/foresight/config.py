@@ -69,9 +69,10 @@ class Settings(BaseSettings):
     # Also retrain daily. Training runs in the web process, so turn this on
     # only on a plan with the memory for it.
     scheduled_training: bool = False
-    # Hour of the day (0-23, each hotel's local time) scheduled training runs.
-    # A missed hour is caught up at the next check.
-    scheduled_training_hour: int = Field(default=3, ge=0, le=23)
+    # Hour of the day (0-23, each hotel's local time) the scheduler runs each
+    # hotel's events refresh, training and pricing. A missed hour is caught up
+    # at the next check.
+    schedule_hour: int = Field(default=3, ge=0, le=23)
 
     # Sign-in
     google_client_id: str = ""
