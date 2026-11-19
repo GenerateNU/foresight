@@ -72,7 +72,7 @@ export function priceLevel(rate, min, max) {
 const LEFTOVER_LINE = 'Smaller effects combined'
 
 /**
- * The factors in whole euros that add up to the rate the card shows (docs/decisions/0057).
+ * The factors in whole euros that add up to the rate the card shows (docs/decisions/0065).
  * Each amount is rounded; one under €1 counts as 0 and shows as "<€1". What rounding
  * leaves over goes to "Smaller effects combined", or the biggest factor if the API sent
  * none. Returns `{ detail, shown, sign }`: `shown` is whole euros, 0 meaning "<€1",

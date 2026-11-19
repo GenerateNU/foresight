@@ -20,7 +20,7 @@ import { nightStyle } from './colorModes.js'
 /**
  * One night in the grid. `rec` is undefined for days outside the month or with no price.
  * Hovering, or focusing it with the keyboard, opens the night's card wherever it fits
- * on screen (docs/decisions/0058).
+ * on screen (docs/decisions/0066).
  */
 export default function DayCell({ day, rec, mode, context }) {
   const [open, setOpen] = useState(false)
