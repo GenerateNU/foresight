@@ -411,8 +411,8 @@ safe.
 - A hotel's jobs run one at a time, first in, first out; different hotels
   run side by side. A long backfill holds up the hotel's queue behind it.
 - A failed job doesn't stop the jobs queued after it.
-- One unfinished weather, events or training job per hotel; a second gets a
-  409. File jobs stack up in the queue instead.
+- One unfinished weather, events, training or price job per hotel; a second
+  gets a 409. File jobs stack up in the queue instead.
 - A restart or deploy loses the queues and the parsed files waiting in them.
   6 minutes after startup, every queued or running job the new process doesn't
   hold is marked failed (0056).

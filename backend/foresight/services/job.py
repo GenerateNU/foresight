@@ -308,8 +308,8 @@ async def _due(
 async def _queue(
     session: AsyncSession, hotel: Hotel, kind: JobKind, params: dict[str, Any]
 ) -> Job:
-    # Uploads stack up in the queue; a second weather, events or training run
-    # would only repeat the first (and spend API credits or training time).
+    # Uploads stack up in the queue; a second weather, events, training or price
+    # run would only repeat the first (and spend API credits or training time).
     if kind not in file_ingest.FILE_KINDS:
         running = await job_repo.find_unfinished_job(
             session, hotel_id=hotel.id, kind=kind
