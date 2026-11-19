@@ -1,6 +1,6 @@
 import { formatEuro, formatSignedEuro } from '../../lib/format.js'
 import ChangeBadge from './ChangeBadge.jsx'
-import { daysOut, longDate } from './calendarUtils.js'
+import { daysOut, longDate, roundForDisplay } from './calendarUtils.js'
 
 /**
  * The hover card: why this night costs what it does. Always in the DOM and shown by CSS
@@ -9,6 +9,7 @@ import { daysOut, longDate } from './calendarUtils.js'
  */
 export default function DayPopover({ rec, className }) {
   const out = daysOut(rec.date)
+  const factors = roundForDisplay(rec.rate, rec.baseline, rec.factors)
 
   return (
     <div
@@ -36,11 +37,11 @@ export default function DayPopover({ rec, className }) {
             <span>Starting point</span>
             <span>{formatEuro(rec.baseline)}</span>
           </li>
-          {rec.factors.map((f) => (
+          {factors.map((f) => (
             <li key={f.detail} className="flex justify-between gap-4">
               <span className="truncate">{f.detail}</span>
-              <span className={f.amount > 0 ? 'text-price-up' : f.amount < 0 ? 'text-price-down' : 'text-stone-500'}>
-                {formatSignedEuro(f.amount)}
+              <span className={f.sign > 0 ? 'text-price-up' : 'text-price-down'}>
+                {formatSignedEuro(f.shown, f.sign)}
               </span>
             </li>
           ))}
