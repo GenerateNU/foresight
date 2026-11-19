@@ -50,7 +50,8 @@ process.
 - Events belong to a city, but jobs are per hotel, so two hotels in one city
   fetch the same events twice.
 - On a hotel's first day, price waits one check (15 minutes) for the first
-  model.
+  model when `SCHEDULED_TRAINING` is on. With it off, price waits until a
+  model is trained by hand.
 - On a paid plan, a deploy starts the new instance before stopping the old. So
   the new one waits 6 minutes, longer than Render's longest shutdown delay,
   then fails only the unfinished jobs it doesn't hold. Until then a job the old
