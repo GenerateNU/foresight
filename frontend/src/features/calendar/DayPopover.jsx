@@ -9,7 +9,6 @@ import { daysOut, longDate } from './calendarUtils.js'
  */
 export default function DayPopover({ rec, className }) {
   const out = daysOut(rec.date)
-  const topFactors = rec.factors.slice(0, 4)
 
   return (
     <div
@@ -37,7 +36,7 @@ export default function DayPopover({ rec, className }) {
             <span>Starting point</span>
             <span>{formatEuro(rec.baseline)}</span>
           </li>
-          {topFactors.map((f) => (
+          {rec.factors.map((f) => (
             <li key={f.detail} className="flex justify-between gap-4">
               <span className="truncate">{f.detail}</span>
               <span className={f.amount > 0 ? 'text-price-up' : f.amount < 0 ? 'text-price-down' : 'text-stone-500'}>
