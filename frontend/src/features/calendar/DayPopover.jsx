@@ -48,19 +48,22 @@ export default function DayPopover({ rec, className }) {
       </div>
 
       {rec.events.length > 0 && (
-        <ul className="mt-3 space-y-0.5 border-t border-stone-100 pt-3 text-sm text-stone-700">
-          {rec.events.slice(0, 3).map((e) => (
-            <li key={e.id}>
-              {e.title}
-              {e.dayCount > 1 && (
-                <span className="text-stone-500">
-                  {' '}
-                  (day {e.dayNumber} of {e.dayCount})
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+        <div className="mt-3 border-t border-stone-100 pt-3">
+          <p className="mb-1 text-xs font-medium text-stone-600">Events in the city that night</p>
+          <ul className="space-y-0.5 text-sm text-stone-700">
+            {rec.events.slice(0, 3).map((e) => (
+              <li key={e.id}>
+                {e.title}
+                {e.dayCount > 1 && (
+                  <span className="text-stone-500">
+                    {' '}
+                    (day {e.dayNumber} of {e.dayCount})
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
