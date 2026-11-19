@@ -73,13 +73,11 @@ class BacktestResult:
     """Each test row's actual and predicted rate, and how far off they were."""
 
     hotel_name: str
-    target: str  # what was predicted: "adr_nett" (booked rooms) or "arr" (nights)
     inputs: list[str]  # the features the model was trained on
     event_days: int | None  # event history the model saw; None means all of it
-    # One row per test night, or per booked room per night: stay_date,
-    # room_type, actual, predicted, low, high (the (1 - ALPHA) interval);
-    # lead_days on booked rooms; with baselines, also one column per BASELINES
-    # key (NaN where it had no history)
+    # One row per booked room per night: stay_date, room_type, lead_days,
+    # actual, predicted, low, high (the (1 - ALPHA) interval); with baselines,
+    # also one column per BASELINES key (NaN where it had no history)
     rows: pd.DataFrame
     metrics: dict[str, float | None]  # mae, rmse, mape, r2, bias, coverage
     baselines: dict[str, BaselineScore]  # keyed like BASELINES; empty if not asked
@@ -137,28 +135,15 @@ async def run_backtest(
     input the training data has, like the model that's served. With
     `baselines`, also scores the BASELINES on the same nights.
 
-    Raises InvalidRequestError if an input the training data doesn't have is
-    asked for, or baselines are asked for on booked rooms.
+    Raises InvalidRequestError for a bad `event_days`.
     """
     if event_days is not None and event_days < 1:
         raise InvalidRequestError("--event-days must be at least 1")
-    data = split.data
-    have = list(data.x.columns)
-    columns = in_feature_order(have if inputs is None else inputs)
-    if missing := [c for c in columns if c not in have]:
-        raise InvalidRequestError(
-            f"no {', '.join(missing)} in this hotel's training data: "
-            f"it trains on nights because {data.reason}"
-        )
-    if baselines and data.from_bookings:
-        raise InvalidRequestError(
-            "baselines compare nights, but this hotel trains on booked rooms"
-        )
+    columns = in_feature_order(FEATURES if inputs is None else inputs)
     predicted, low, high = await _fit_predict(split, columns, event_days)
     rows = _test_rows(split, predicted, low, high, baselines=baselines)
     return BacktestResult(
         hotel_name=split.hotel_name,
-        target=data.target,
         inputs=columns,
         event_days=event_days,
         rows=rows,
@@ -220,23 +205,33 @@ def _test_rows(
     *,
     baselines: bool,
 ) -> pd.DataFrame:
-    """The test rows' actual and predicted rates, and the baselines' if asked."""
+    """The test rows' actual and predicted rates, and the baselines' if asked.
+
+    A baseline predicts a night, so it's built from each training night's
+    average booked rate and scored against every booked room on the test
+    night, as the model is (decision 0076).
+    """
     nights, seen = split.data.nights, split.seen
-    history, targets = nights.loc[seen], nights.loc[~seen]
+    targets = nights.loc[~seen]
     result = pd.DataFrame(
         {
             "stay_date": targets["stay_date"],
             "room_type": targets["room_type"],
+            LEAD: split.data.x.loc[~seen, LEAD].to_numpy(),
             "actual": split.data.y[~seen],
             "predicted": predicted,
             "low": low,
             "high": high,
         }
     )
-    if split.data.from_bookings:
-        result[LEAD] = split.data.x.loc[~seen, LEAD].to_numpy()
     if baselines:
         # Baselines see only nights up to the cutoff, as the model did.
+        history = (
+            nights.loc[seen]
+            .assign(rate=split.data.y[seen])
+            .groupby(["stay_date", "room_type"], as_index=False)["rate"]
+            .mean()
+        )
         result["last_year"] = same_weekday_last_year(history, targets)
         result["recent_weekday"] = recent_weekday_mean(history, targets, split.cutoff)
     return result
@@ -544,10 +539,10 @@ def _held_out_nights(
 ) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
     """One row per held-out room type and night: its key, inputs and rate.
 
-    On booked rooms a night has many rows; the manager prices the night, not
-    a booking, so the night's rate is its average booked rate and its inputs
-    are its first room's with days ahead set to 1, booked the day before
-    (decision 0076). Night rows come back as they are. Oldest night first.
+    A night has many booked rooms; the manager prices the night, not a
+    booking, so the night's rate is its average booked rate and its inputs are
+    its first room's with days ahead set to 1, booked the day before (decision
+    0076). Oldest night first.
     """
     held = ~seen
     rows = data.nights.loc[held, ["stay_date", "room_type"]].reset_index(drop=True)

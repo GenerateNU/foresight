@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from foresight.database.enums import FeedbackTiming, FeedbackVerdict
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import recommendation as snapshot_repo
-from foresight.services.domain import prices
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel, get_room_type
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
@@ -55,10 +54,8 @@ async def add_feedback(
 ) -> Feedback:
     """Save the next version of the feedback for this room type and night.
 
-    `rate` is what the manager chose to list, VAT included, and `snapshot_id`
-    the recommendation they saw. For a version trained on booked rooms the rate
-    is taken back to nett before anything else (decision 0076), so it's
-    compared with the snapshot and stored on the model's own basis; the
+    `rate` is what the manager chose, before VAT like the recommendation
+    (decision 0076), and `snapshot_id` the recommendation they saw; the
     verdict is worked out by comparing the two.
     Whether it came before or after the night is set here, from the stay date
     in the hotel's timezone: a night before today is over; today and later are
@@ -82,9 +79,6 @@ async def add_feedback(
         raise InvalidRequestError(
             f"snapshot {snapshot_id} is for another room type or night"
         )
-
-    basis = prices.basis_of(snapshot.inputs)
-    rate = prices.to_stored(rate, prices.vat_factor(hotel.city, basis))
 
     timing = (
         FeedbackTiming.AFTER

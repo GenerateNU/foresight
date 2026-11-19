@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Date, case, func, select
+from sqlalchemy import Date, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from foresight.database.enums import FeedbackReasonTag
@@ -210,21 +210,16 @@ async def manager_rates(
 
 
 async def alignment_by_week(
-    session: AsyncSession, hotel_id: int, *, nett_factor: Decimal
+    session: AsyncSession, hotel_id: int
 ) -> Sequence[Mapping[str, Any]]:
     """How far the manager's rates were from the rates they were shown, by week.
 
     Every version of feedback that has a rate and still has its snapshot counts
     once, in the week (Monday, UTC) it was given. Rows carry week, nights,
     mean_gap (manager minus model, so positive means the model priced low) and
-    mean_abs_gap, oldest week first (decision 0071). A gap on a snapshot from a
-    version trained on booked rooms (it read `lead_days`) is stored nett, so
-    it's multiplied by `nett_factor` to show it as listed (decision 0076).
+    mean_abs_gap, oldest week first (decision 0071).
     """
-    nett = RecommendationSnapshot.inputs["features"]["lead_days"].astext.is_not(None)
-    gap = (Feedback.rate - RecommendationSnapshot.rate) * case(
-        (nett, nett_factor), else_=1
-    )
+    gap = Feedback.rate - RecommendationSnapshot.rate
     week = func.date_trunc("week", Feedback.created_at)
     stmt = (
         select(

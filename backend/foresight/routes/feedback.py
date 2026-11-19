@@ -41,10 +41,8 @@ class FeedbackRequest(RequestSchema):
         gt=0,
         max_digits=10,
         decimal_places=2,
-        description="The nightly rate the manager chose, in EUR, as they'd list "
-        "it: VAT included. Send what the calendar shows, changed. Stored before "
-        "VAT for a model trained on bookings, and compared with the "
-        "recommendation to set the verdict",
+        description="The nightly rate the manager chose, in EUR, before VAT like "
+        "the recommendation. Compared with it to set the verdict",
         examples=["210.00"],
     )
     reason_tags: list[FeedbackReasonTag] = Field(
@@ -85,9 +83,8 @@ class FeedbackResponse(ResponseSchema):
         "right; set by the server by comparing `rate` with it"
     )
     rate: Decimal | None = Field(
-        description="The rate the manager chose, in EUR, as stored: before VAT "
-        "for a model trained on bookings. Null only on feedback saved before a "
-        "rate was required"
+        description="The rate the manager chose, in EUR, before VAT; null only "
+        "on feedback saved before a rate was required"
     )
     reason_tags: list[FeedbackReasonTag] = Field(description="Why, from a fixed list")
     reason_text: str | None = Field(description="Why, in their words; null if none")

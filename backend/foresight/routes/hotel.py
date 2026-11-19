@@ -237,16 +237,14 @@ class RecommendationResponse(ResponseSchema):
         "Null if the model wasn't trained on bookings"
     )
     rate_basis: str = Field(
-        description="What the model predicts: `nett` (a booked room's rate "
-        "before VAT, from a model trained on bookings; every price here has VAT "
-        "added) or `arr` (the night's average rate, from a model trained on "
-        "nights; prices shown as they are)",
+        description="What the rate is: `nett`, a booked room's rate before VAT, "
+        "from every version trained now; `arr`, the night's average rate, only "
+        "from versions trained on nights before decision 0076",
         examples=["nett"],
     )
     recommended_rate: Decimal = Field(
-        description="The rate to list, in `currency`. VAT included when "
-        "`rate_basis` is `nett`: the model works before VAT and adds it here, as "
-        "it does to the interval, uncertainty and every factor"
+        description="The rate to list, in `currency`, before VAT when "
+        "`rate_basis` is `nett`"
     )
     currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
     explanation: ExplanationResponse = Field(description="Why the rate is what it is")
@@ -271,9 +269,9 @@ class RecommendationResponse(ResponseSchema):
     )
     manager_rate: Decimal | None = Field(
         default=None,
-        description="The rate the manager set for the night, in `currency`, VAT "
-        "included like `recommended_rate`; null if they haven't. Shown alongside "
-        "it so a calendar needs one call",
+        description="The rate the manager set for the night, in `currency`, "
+        "before VAT like `recommended_rate`; null if they haven't. Shown "
+        "alongside it so a calendar needs one call",
         examples=["210.00"],
     )
     snapshot_id: int | None = Field(

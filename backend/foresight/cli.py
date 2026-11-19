@@ -76,19 +76,15 @@ async def backtest(
     described = _describe_inputs(result.inputs)
     if result.event_days is not None:
         described += f"; {result.event_days} days of event history"
-    booked = LEAD in rows
-    tested = (
-        f"{len(rows)} booked rooms over {n_nights} nights"
-        if booked
-        else f"{n_nights} test nights"
+    print(
+        f"{len(rows)} booked rooms over {n_nights} nights, {first} to {last}; "
+        f"inputs: {described}"
     )
-    print(f"{tested} ({result.target}), {first} to {last}; inputs: {described}")
     scores = _format_metrics(result.metrics)
     for name, value in scores:
         print(f"{name:<13} {value}")
-    if booked:
-        print()
-        print(_lead_table(rows))
+    print()
+    print(_lead_table(rows))
     if result.baselines:
         print()
         print(_baseline_table(result.baselines, len(rows)))
@@ -99,7 +95,7 @@ async def backtest(
     _save_plot(
         rows.groupby("stay_date", as_index=False).mean(numeric_only=True),
         path,
-        ylabel="Average rate per booked room (€)" if booked else "Rate (€)",
+        ylabel="Average rate per booked room (€)",
         title=(
             f"Backtest: {result.hotel_name}, actual vs predicted rate, "
             f"{first:%-d %b} – {last:%-d %b %Y} ({described})"

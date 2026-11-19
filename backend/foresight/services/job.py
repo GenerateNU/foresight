@@ -415,7 +415,7 @@ async def _train(
         {
             "stage": "fitting",
             "training_rows": len(prepared.data.nights),
-            "target": prepared.data.target,
+            "target": pricing_model_service.TARGET,
         },
         None,
     )

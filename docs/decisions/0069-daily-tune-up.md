@@ -1,6 +1,6 @@
 # 0069. A daily tune-up corrects the active model with the manager's rates
 
-**Status:** Accepted, amended by [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md), [0075](0075-correction-ignores-month.md), [0076](0076-feedback-on-booked-rooms-and-vat.md) · **Date:** 2026-11-07
+**Status:** Accepted, amended by [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md), [0075](0075-correction-ignores-month.md), [0076](0076-booked-rooms-only-and-manager-rows.md) · **Date:** 2026-11-07
 
 ## Context
 The manager records the rate they chose for a night

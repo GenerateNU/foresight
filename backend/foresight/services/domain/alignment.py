@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from foresight.repository import feedback as feedback_repo
-from foresight.services.domain import prices
 from foresight.services.domain.hotel import get_hotel
 
 if TYPE_CHECKING:
@@ -36,10 +35,7 @@ async def get_alignment(session: AsyncSession, hotel_id: int) -> list[WeekAlignm
         NotFoundError: Unknown hotel.
     """
     hotel = await get_hotel(session, hotel_id)
-    # Shown as listed prices, like the recommendations (decision 0076).
-    rows = await feedback_repo.alignment_by_week(
-        session, hotel.id, nett_factor=prices.vat_factor(hotel.city, prices.NETT)
-    )
+    rows = await feedback_repo.alignment_by_week(session, hotel.id)
     return [
         WeekAlignment(
             r["week"],

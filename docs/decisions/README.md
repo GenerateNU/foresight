@@ -23,7 +23,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 |---|---|---|
 | [0001](0001-ebm-pricing-model.md) | Explainable Boosting Machine is the pricing model | ML |
 | [0002](0002-predict-rate-in-currency.md) | Predict the nightly rate in currency | ML |
-| [0003](0003-sample-weighting.md) | Weight training nights by occupancy | ML |
+| [0003](0003-sample-weighting.md) | Weight training nights by occupancy (superseded by 0076) | ML |
 | [0004](0004-exclude-free-nights.md) | Exclude free and staff nights from training | ML |
 | [0005](0005-conformal-confidence-interval.md) | Conformal confidence interval, 80% by default | ML |
 | [0006](0006-uncertainty-alongside-interval.md) | Report model uncertainty alongside the interval | ML |
@@ -89,4 +89,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0073](0073-how-the-backtest-judges-the-tune-up.md) | The tuning backtest replays the tune-up after N days of manager rates | ML |
 | [0074](0074-only-past-nights-are-no-change.md) | Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager | ML |
 | [0075](0075-correction-ignores-month.md) | The tune-up's correction never sees `month` (reversed for now by 0076; open) | ML |
-| [0076](0076-feedback-on-booked-rooms-and-vat.md) | Manager feedback on booked rooms, shown and taken with VAT | ML / API |
+| [0076](0076-booked-rooms-only-and-manager-rows.md) | Train on booked rooms only; manager feedback as booked-room rows; prices before VAT | ML / API |

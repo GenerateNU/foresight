@@ -31,7 +31,6 @@ import math
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
@@ -42,7 +41,6 @@ from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
 from foresight.services.domain import event as event_service
-from foresight.services.domain import prices
 from foresight.services.domain.city import local_today
 from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
@@ -206,63 +204,7 @@ async def get_recommendations(
     rates = await feedback_repo.manager_rates(
         session, room_type.id, start=start, end=end
     )
-    # Stored nett; shown as listed prices, VAT added (decision 0076).
-    return [
-        _listed(replace(r, manager_rate=rates.get(r.stay_date)), hotel) for r in out
-    ]
-
-
-def _listed(rec: Recommendation, hotel: Hotel) -> Recommendation:
-    """Every price in a recommendation as the manager lists it.
-
-    Nett versions get VAT added to the rate, interval, uncertainty, baseline and
-    each factor alike, so the factors still add up to the rate (to the cent:
-    "Smaller effects combined" absorbs rounding). ARR versions are unchanged.
-    """
-    factor = prices.vat_factor(hotel.city, rec.rate_basis)
-    if factor == 1:
-        return rec
-    listed = partial(prices.to_listed, factor=factor)
-    rate = listed(rec.recommended_rate)
-    baseline = listed(rec.explanation.baseline)
-    factors = [Factor(f.detail, listed(f.amount)) for f in rec.explanation.factors]
-    gap = rate - baseline - sum((f.amount for f in factors), Decimal(0))
-    if gap:
-        factors = _absorb(factors, gap)
-    return replace(
-        rec,
-        recommended_rate=rate,
-        explanation=Explanation(
-            _relisted(rec.explanation, rate, baseline, factors), baseline, factors
-        ),  # fmt: skip
-        confidence_interval=ConfidenceInterval(
-            listed(rec.confidence_interval.lower),
-            listed(rec.confidence_interval.upper),
-            rec.confidence_interval.level,
-        ),
-        uncertainty=listed(rec.uncertainty),
-        manager_rate=None if rec.manager_rate is None else listed(rec.manager_rate),
-    )
-
-
-def _absorb(factors: list[Factor], gap: Decimal) -> list[Factor]:
-    """Put a rounding gap into "Smaller effects combined", adding it if needed."""
-    other = "Smaller effects combined"
-    if factors and factors[-1].detail == other:
-        return [*factors[:-1], Factor(other, factors[-1].amount + gap)]
-    return [*factors, Factor(other, gap)]
-
-
-def _relisted(
-    old: Explanation, rate: Decimal, baseline: Decimal, factors: list[Factor]
-) -> str:
-    """The summary sentence, with the listed prices."""
-    top = (
-        f"{factors[0].detail}: {_signed(float(factors[0].amount))}"
-        if factors
-        else "no strong factors"
-    )
-    return f"€{rate:.0f} from a typical €{baseline:.0f}; biggest factor: {top}."
+    return [replace(r, manager_rate=rates.get(r.stay_date)) for r in out]
 
 
 # --- inputs -----------------------------------------------------------------
@@ -569,7 +511,7 @@ def _lead_days(inputs: dict[str, Any]) -> int | None:
 def _rate_basis(inputs: dict[str, Any]) -> str:
     """ "nett" for a version trained on booked rooms, which always reads days
     ahead; "arr" for one trained on nights (decision 0056)."""
-    return prices.basis_of(inputs)
+    return "nett" if _lead_days(inputs) is not None else "arr"
 
 
 def _version(stored: PricingModel) -> str:
