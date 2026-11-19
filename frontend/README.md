@@ -7,11 +7,16 @@ React + Vite + Tailwind CSS (v4) + React Router. Plain JavaScript.
 From the repo root:
 
 ```sh
-just frontend-install        # npm ci
+just frontend-install        # npm ci, with npm 10
 just frontend                # http://localhost:5173
 just frontend --mocks        # same, with fake data and no backend
 just lint                    # ruff + ESLint
 ```
+
+**Use npm 10.** CI runs Node 22 (`.nvmrc`) and npm 10, and npm 11 writes a `package-lock.json`
+CI rejects, so `engine-strict` in `.npmrc` makes `npm install` and `npm ci` refuse any other npm.
+On a newer npm, add or remove packages with `npx -y npm@10 install <pkg>`, or switch to Node 22
+(`nvm use`).
 
 Or from `frontend/`: `npm run dev`, `npm run lint`, `npm run build`. To change a setting,
 `cp .env.example .env.local` and edit it.
