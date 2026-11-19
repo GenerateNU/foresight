@@ -1,7 +1,7 @@
 from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # Also retrain daily. Training runs in the web process, so turn this on
     # only on a plan with the memory for it.
     scheduled_training: bool = False
+    # Hour of the day (0-23, each hotel's local time) scheduled training runs.
+    # A missed hour is caught up at the next check.
+    scheduled_training_hour: int = Field(default=3, ge=0, le=23)
 
     # Sign-in
     google_client_id: str = ""

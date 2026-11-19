@@ -433,6 +433,8 @@ every 15 minutes
   job_service.start_due_jobs(session)
     for each hotel, in order: events, train (SCHEDULED_TRAINING), price
       last finished run of that kind: none, or 24h ago (1h if it failed)?
+      train instead: no scheduled run since SCHEDULED_TRAINING_HOUR (hotel
+      time) passed, or the last one failed 1h ago? Manual runs don't count.
         → the same start_* the routes call; skipped if it can't start
   commit; worker.enqueue each job      same per-hotel queue as uploads
 ```

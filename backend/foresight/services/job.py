@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_cls
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
@@ -69,8 +70,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # A routine job runs again this long after it ran, or after it failed.
+# Training is the exception: it runs at a fixed hour (_train_due).
 ROUTINE_EVERY = timedelta(hours=24)
 RETRY_AFTER = timedelta(hours=1)
+# Marks a training job the scheduler started, so manual ones don't count.
+SCHEDULED_TRAIN = {"scheduled": True}
 # Nights a price job saves recommendations for, from today.
 PRICE_NIGHTS = 30
 # How far back the first routine events refresh looks for revisions.
@@ -171,8 +175,10 @@ async def start_train_job(
     end: date | None,
     activate: bool,
     ebm_params: dict[str, Any],
+    scheduled: bool = False,
 ) -> Job:
-    """Train a new model version on what's already ingested.
+    """Train a new model version on what's already ingested. `scheduled` is
+    for the scheduler's own runs, the only ones that set its next run.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -188,6 +194,7 @@ async def start_train_job(
         "end": end.isoformat() if end else None,
         "activate": activate,
         "ebm_params": ebm_params,
+        "scheduled": scheduled,
     }
     return await _queue(session, hotel, JobKind.TRAIN, params)
 
@@ -210,8 +217,9 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
     """Queue every hotel's routine jobs that are due, in the order they run.
 
     A job is due ROUTINE_EVERY after its last run succeeded or stopped on a
-    quota, or RETRY_AFTER a run that failed. One that can't start (already
-    queued, not configured) is skipped until the next check.
+    quota, or RETRY_AFTER a run that failed; training instead at a fixed hour
+    (`_train_due`). One that can't start (already queued, not configured) is
+    skipped until the next check.
     """
     # (kind, params that mark its routine run, how to start it)
     routine: list[tuple[JobKind, dict[str, Any], Callable[[int], Awaitable[Job]]]]
@@ -226,7 +234,7 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             [
                 (
                     JobKind.TRAIN,
-                    {},
+                    SCHEDULED_TRAIN,
                     lambda h: start_train_job(
                         session,
                         h,
@@ -235,6 +243,7 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
                         end=None,
                         activate=True,
                         ebm_params={},
+                        scheduled=True,
                     ),
                 )
             ]
@@ -248,7 +257,12 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
     now = _now()
     for hotel in await list_hotels(session):
         for kind, params, start in routine:
-            if not await _due(session, hotel.id, kind, params, now):
+            due = (
+                _train_due(session, hotel, now)
+                if kind == JobKind.TRAIN
+                else _due(session, hotel.id, kind, params, now)
+            )
+            if not await due:
                 continue
             try:
                 queued.append(await start(hotel.id))
@@ -303,6 +317,29 @@ async def _due(
     # A stopped run hit a quota; retrying within the hour would hit it again.
     wait = RETRY_AFTER if last.status == JobStatus.FAILED else ROUTINE_EVERY
     return last.finished_at + wait <= now
+
+
+async def _train_due(session: AsyncSession, hotel: Hotel, now: datetime) -> bool:
+    """Due once a day at SCHEDULED_TRAINING_HOUR, hotel time, or RETRY_AFTER a
+    scheduled run that failed. Only scheduled runs count, so a manual one
+    doesn't move it. A missed hour (server down or asleep) is caught up at the
+    next check."""
+    tz = ZoneInfo(hotel.city.timezone)
+    local_now = now.astimezone(tz)
+    # The latest scheduled time that has passed: today's, or yesterday's if
+    # today's hasn't come yet.
+    slot = datetime.combine(
+        local_now.date(), time(settings.scheduled_training_hour), tzinfo=tz
+    )
+    if slot > local_now:
+        slot -= timedelta(days=1)
+    last = await job_repo.latest_finished_job(
+        session, hotel_id=hotel.id, kind=JobKind.TRAIN, params=SCHEDULED_TRAIN
+    )
+    if last is None or last.created_at < slot:
+        return True
+    assert last.finished_at is not None  # the query only returns finished jobs
+    return last.status == JobStatus.FAILED and last.finished_at + RETRY_AFTER <= now
 
 
 async def _queue(
