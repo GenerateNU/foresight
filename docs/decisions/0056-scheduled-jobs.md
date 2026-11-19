@@ -4,8 +4,9 @@
 
 ## Context
 Nothing ran unless someone called the API
-([0054](0054-hosted-on-render.md)). Events, weather, retraining and pricing
-the coming nights all need to run on their own. PredictHQ only returns about
+([0054](0054-hosted-on-render.md)). Events, retraining and pricing the
+coming nights all need to run on their own. Weather isn't scheduled: it's out
+of the model ([0055](0055-events-back-in-the-model.md)). PredictHQ only returns about
 90 days, so a missed events refresh can lose data for good. Every route needs a
 Google sign-in, and uploads share a per-hotel queue
 ([0052](0052-one-upload-route-and-a-queue-per-hotel.md)) that lives in the API
@@ -22,7 +23,7 @@ process.
   restart or sleep delays a run but never skips it; the next check catches up.
   A routine events refresh already starts from the last success, so a gap
   shorter than PredictHQ's window is filled.
-- **The routine, in queue order:** weather forecast, events refresh, training
+- **The routine, in queue order:** events refresh, training
   (only with `SCHEDULED_TRAINING`), then a `PRICE` job that saves
   recommendations for today and the next 29 nights for each room type the
   active model covers ([0038](0038-recommendations-reused-while-inputs-hold.md)).

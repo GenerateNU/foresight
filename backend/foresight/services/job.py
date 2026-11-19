@@ -215,12 +215,8 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
     """
     # (kind, params that mark its routine run, how to start it)
     routine: list[tuple[JobKind, dict[str, Any], Callable[[int], Awaitable[Job]]]]
+    # No weather: it's out of the model (0055).
     routine = [
-        (
-            JobKind.WEATHER,
-            {"mode": "forecast"},
-            lambda h: start_weather_job(session, h, start=None, end=None),
-        ),
         (
             JobKind.EVENTS,
             {"mode": "recent"},

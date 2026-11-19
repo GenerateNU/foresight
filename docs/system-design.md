@@ -431,7 +431,7 @@ With `SCHEDULER_ENABLED`, `worker.schedule_forever` runs from startup
 ```
 every 15 minutes
   job_service.start_due_jobs(session)
-    for each hotel, in order: weather, events, train (SCHEDULED_TRAINING), price
+    for each hotel, in order: events, train (SCHEDULED_TRAINING), price
       last finished run of that kind: none, or 24h ago (1h if it failed)?
         → the same start_* the routes call; skipped if it can't start
   commit; worker.enqueue each job      same per-hotel queue as uploads
