@@ -15,8 +15,8 @@ export default function MonthGrid({ weeks, byDate, mode }) {
         ))}
       </div>
       <div className="grid grid-cols-7 gap-2">
-        {weeks.flatMap((week, row) =>
-          week.map((day, col) => {
+        {weeks.flatMap((week) =>
+          week.map((day) => {
             const rec = byDate.get(day.date)
             const context = { priceLevel: rec ? priceLevel(rec.rate, min, max) : 1 }
             return (
@@ -26,8 +26,6 @@ export default function MonthGrid({ weeks, byDate, mode }) {
                 rec={rec}
                 mode={mode}
                 context={context}
-                row={row}
-                col={col}
               />
             )
           }),

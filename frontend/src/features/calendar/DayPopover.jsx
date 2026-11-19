@@ -3,18 +3,19 @@ import ChangeBadge from './ChangeBadge.jsx'
 import { daysOut, longDate, roundForDisplay } from './calendarUtils.js'
 
 /**
- * The hover card: why this night costs what it does. Always in the DOM and shown by CSS
- * on hover or keyboard focus, so there's no hover state to manage. Keyboard focus only
- * (focus-visible): a mouse click also focuses the night, and would pin its card open.
+ * The hover card: why this night costs what it does. DayCell decides when it shows and
+ * where; `ref`, `style` and the rest of `props` come from Floating UI.
  */
-export default function DayPopover({ rec, className }) {
+export default function DayPopover({ rec, ref, style, ...props }) {
   const out = daysOut(rec.date)
   const factors = roundForDisplay(rec.rate, rec.baseline, rec.factors)
 
   return (
     <div
-      role="tooltip"
-      className={`invisible absolute z-20 w-80 rounded-card border border-stone-100 bg-white p-4 text-left opacity-0 shadow-xl transition-opacity group-focus-visible:visible group-focus-visible:opacity-100 group-hover:visible group-hover:opacity-100 ${className}`}
+      ref={ref}
+      style={style}
+      className="z-20 w-80 rounded-card border border-stone-100 bg-white p-4 text-left shadow-xl"
+      {...props}
     >
       <p className="text-base font-medium">{longDate(rec.date)}</p>
       <p className="text-xs text-stone-500">
