@@ -68,3 +68,28 @@ export function priceLevel(rate, min, max) {
   if (max === min) return 3
   return Math.min(5, 1 + Math.floor(((rate - min) / (max - min)) * 5))
 }
+
+const LEFTOVER_LINE = 'Smaller effects combined'
+
+/**
+ * The factors in whole euros that add up to the rate the card shows (docs/decisions/0057).
+ * Each amount is rounded; one under €1 counts as 0 and shows as "<€1". What rounding
+ * leaves over goes to "Smaller effects combined", or the biggest factor if the API sent
+ * none. Returns `{ detail, shown, sign }`: `shown` is whole euros, 0 meaning "<€1",
+ * and `sign` is +1 or -1 for which way it moved the rate.
+ */
+export function roundForDisplay(rate, baseline, factors) {
+  const lines = factors.map((f) => ({
+    detail: f.detail,
+    shown: Math.abs(f.amount) < 1 ? 0 : Math.round(f.amount),
+    sign: f.amount < 0 ? -1 : 1,
+  }))
+  if (lines.length === 0) return lines
+
+  const sum = lines.reduce((total, line) => total + line.shown, 0)
+  const leftover = Math.round(rate) - Math.round(baseline) - sum
+  const target = lines.find((line) => line.detail === LEFTOVER_LINE) ?? lines[0]
+  target.shown += leftover
+  if (target.shown !== 0) target.sign = Math.sign(target.shown)
+  return lines
+}
