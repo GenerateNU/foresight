@@ -31,7 +31,7 @@ process.
   check; the day after, it's back on the hour.
 - **The routine, in queue order:** events refresh, training
   (only with `SCHEDULED_TRAINING`), then a `PRICE` job that saves
-  recommendations for today and the next 29 nights for each room type the
+  recommendations for today and the next 89 nights for each room type the
   active model covers ([0038](0038-recommendations-reused-while-inputs-hold.md)).
   When both are due in the same check, training is queued first, so pricing
   uses the new model; otherwise price uses whichever model is live. Manager

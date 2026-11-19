@@ -345,7 +345,7 @@ uploaded report, through one queue per hotel
 | `files` (multipart) | one per file: `ACTUAL_FORECAST`, `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
 
 Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
-queue. `PRICE` saves recommendations for the next 30 nights; only the
+queue. `PRICE` saves recommendations for the next 90 nights; only the
 scheduler starts it (section 5.3).
 
 **Window rules** (`services/ingest/window.py`):

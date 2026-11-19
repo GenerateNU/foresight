@@ -76,7 +76,7 @@ RETRY_AFTER = timedelta(hours=1)
 # Marks a training job the scheduler started, so manual ones don't count.
 SCHEDULED_TRAIN = {"scheduled": True}
 # Nights a price job saves recommendations for, from today.
-PRICE_NIGHTS = 30
+PRICE_NIGHTS = 90
 # How far back the first routine events refresh looks for revisions.
 FIRST_REFRESH_DAYS = 7
 # A source's quota or rate limit: the job stops rather than fails.
