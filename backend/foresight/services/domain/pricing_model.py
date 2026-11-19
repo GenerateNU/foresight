@@ -67,7 +67,7 @@ class TrainingData:
     y: pd.Series  # the rate
     weights: np.ndarray  # sample weights (decision 0003)
     events_fetched: set[date]  # nights an events backfill covered (0041)
-    one_off_dropped: int  # nights left out as one-off (decision 0058)
+    one_off_dropped: int  # nights left out as one-off (decision 0070)
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +129,7 @@ async def train(
             f"{MIN_TRAINING_NIGHTS}"
         )
 
-    # Decision 0059: the manager's rate is the target for a night they priced,
+    # Decision 0071: the manager's rate is the target for a night they priced,
     # the same rule the daily tune-up follows.
     feedback_rows = await feedback_repo.tuning_feedback(
         session, hotel.id, start=start, end=end
@@ -197,7 +197,7 @@ async def training_data(
     # so all three line up row for row.
     nights = nights.loc[training_mask(rate)].reset_index(drop=True)
 
-    # Decision 0058: a night the manager marked one-off teaches nothing.
+    # Decision 0070: a night the manager marked one-off teaches nothing.
     one_off = await feedback_repo.one_off_nights(
         session, hotel.id, start=start, end=end
     )

@@ -6,7 +6,7 @@ predicts those nights. The inputs come from `pricing_model.training_data`, the
 same loader training uses, so the backtest scores the model that would ship.
 
 `run_backtest` scores one set of inputs; compare sets by running it once per set.
-`run_tuning_backtest` scores the daily tune-up against the base (decision 0061).
+`run_tuning_backtest` scores the daily tune-up against the base (decision 0073).
 """
 
 from __future__ import annotations
@@ -242,7 +242,7 @@ def _score_baseline(nights: pd.DataFrame, column: str) -> BaselineScore:
     )
 
 
-# --- Tune-up backtest (decision 0061) ---
+# --- Tune-up backtest (decision 0073) ---
 
 # Days of manager feedback the tuning backtest tries, by default.
 TUNING_SIZES = (5, 10, 20, 30)
@@ -264,7 +264,7 @@ class ManagerRule:
 
     E.g. ManagerRule("weekend", 0.15): every Friday and Saturday 15% above
     what the base model says, every other night as the base says. The base
-    can't know this, so the tune-up is the only way to learn it (decision 0062).
+    can't know this, so the tune-up is the only way to learn it (decision 0074).
     """
 
     nights: str  # a key of RULE_NIGHTS
@@ -294,7 +294,7 @@ class TuningRow:
 
     feedback_days: int
     feedback_nights: int  # rows (night x room type) the manager "priced"
-    untouched_nights: int  # rows learned as "no change" (decision 0060)
+    untouched_nights: int  # rows learned as "no change" (decision 0072)
     feedback_dates: tuple[date, date]  # first and last feedback night
     untouched_dates: tuple[date, date] | None  # None when there were none
     # As BacktestResult.metrics, no coverage; empty when skipped.
@@ -348,7 +348,7 @@ async def run_tuning_backtest(
     Trains the base on every night before the newest `test_days` priced
     days, as if it went live then. For each size N, the recorded rates of the first N
     priced days after the cutoff stand in for the manager's, the correction is
-    fit on them (with and without the untouched nights of decision 0060), and
+    fit on them (with and without the untouched nights of decision 0072), and
     both are scored, with the base, on the nights after the first max(sizes)
     priced days, the same nights for every size.
 
@@ -359,7 +359,7 @@ async def run_tuning_backtest(
     rate is the base's with the rule applied, on feedback and scored nights
     alike, and on a reviewed day they set a rate only where the rule changes
     it, accepting the rest. The score then says how much of a known habit the
-    tune-up learned (decision 0062).
+    tune-up learned (decision 0074).
 
     Raises NotFoundError for an unknown hotel, and InvalidRequestError for bad
     sizes or if no nights are left to score.
@@ -418,7 +418,7 @@ async def run_tuning_backtest(
     for n in sizes:
         # "Today" is the day after the last feedback day. Untouched nights
         # are feedback days the manager didn't price, within UNTOUCHED_DAYS
-        # back: past nights left alone (decision 0062). Snapshots start at
+        # back: past nights left alone (decision 0074). Snapshots start at
         # the cutoff, so nothing before it counts.
         today = days_after[n - 1] + timedelta(days=1)
         window = (rank >= 1) & (rank <= n)

@@ -1,4 +1,4 @@
-# 0056. The manager sends the rate they chose; the verdict is worked out from it
+# 0068. The manager sends the rate they chose; the verdict is worked out from it
 
 **Status:** Accepted · **Date:** 2026-11-07
 
@@ -25,7 +25,7 @@ sent with a lower rate).
   can change it later (a new version, as in 0043).
 - A new reason tag, `ONE_OFF`, for something that won't happen again (a
   buyout, a private event). It is stored like the others;
-  [0058](0058-one-off-nights-teach-the-model-nothing.md) decides how training
+  [0070](0070-one-off-nights-teach-the-model-nothing.md) decides how training
   uses it.
 - Tags and free text stay optional, as in 0043.
 - No schema change. `verdict` stays a required column, now always set by the
@@ -40,7 +40,7 @@ sent with a lower rate).
   get feedback after it.
 - `verdict` now means "how the manager's rate compares with ours", not the
   manager's opinion. Old rows keep the verdict the manager chose.
-- **Training didn't fit this at first; [0059](0059-manager-rate-is-the-target-everywhere.md) fixes it.**
+- **Training didn't fit this at first; [0071](0071-manager-rate-is-the-target-everywhere.md) fixes it.**
   [0044](0044-train-on-feedback-given-after-the-night.md) compares the
   manager's rate with the night's *recorded* rate, and only uses feedback
   given after the night. If the manager charged the rate they entered, the

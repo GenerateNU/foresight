@@ -238,7 +238,7 @@ class TunedEBMModel(EBMModel):
 
     The correction learns only the gap between the base's predictions and the
     rates it's fit on (`init_score`), so a prediction is the base's plus the
-    correction's (decision 0057). It has no pairwise terms, so its terms are a
+    correction's (decision 0069). It has no pairwise terms, so its terms are a
     subset of the base's and `explain` can add them up by name. The interval
     and uncertainty are the base's.
     """
@@ -248,7 +248,7 @@ class TunedEBMModel(EBMModel):
     # rounds: on a handful of rows early stopping has almost nothing to judge
     # by, and the library's 25,000-round limit makes 5 rows take a minute.
     CORRECTION_DEFAULTS = {"interactions": 0, "max_rounds": 300}
-    # Inputs the correction never sees (decision 0063). A feedback window spans
+    # Inputs the correction never sees (decision 0075). A feedback window spans
     # a month or two, so a seasonal input is nearly constant in what it learns
     # from; it learns a month effect that is wrong for every other month and
     # shifts nights nobody touched. The base already carries the seasonality.

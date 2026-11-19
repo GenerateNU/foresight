@@ -186,13 +186,13 @@ def _tuning_table(
         )
     lines.append(
         "Skill > 0 means the tune-up beats the base. '+untouched' is what ships "
-        "(decision 0060)."
+        "(decision 0072)."
     )
     if synthetic:
         lines.append(
             "Learned: share of the manager's habit the shipped tune-up adds on the "
             "nights it applies to (100% is all of it). Drift: mean change on the "
-            "other nights (€0 is right). Decision 0062."
+            "other nights (€0 is right). Decision 0074."
         )
     lines.append("")
     lines.append(f"{'Feedback':<10}{'Feedback nights':<26}Untouched nights")

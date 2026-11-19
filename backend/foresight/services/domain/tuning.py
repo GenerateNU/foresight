@@ -2,7 +2,7 @@
 
 The active model is left as it is; a small EBM learns the gap between its
 predictions and the rates the manager chose, and the two are saved together
-as a new version (decision 0057). A tune-up always starts from the active
+as a new version (decision 0069). A tune-up always starts from the active
 model's base, so corrections are rebuilt each time, never stacked.
 """
 
@@ -37,7 +37,7 @@ ALGORITHM = "ebm-tuned"
 # Fewer manager rates than this and the tune-up is skipped.
 MIN_TUNE_NIGHTS = 5
 # Nights the manager left alone teach the correction "no change here": every
-# past night with a snapshot this many days back (decisions 0060, 0062).
+# past night with a snapshot this many days back (decisions 0072, 0074).
 UNTOUCHED_DAYS = 30
 
 
@@ -95,7 +95,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     loaded = EBMModel.from_bytes(artifact)
     # The active version may itself be tuned: unwrap it, so the untouched
     # nights' "no change" target is the base's price, not base plus the old
-    # correction. Otherwise each tune-up carries the last one forward (0057).
+    # correction. Otherwise each tune-up carries the last one forward (0069).
     base = loaded.base if isinstance(loaded, TunedEBMModel) else loaded
 
     # The manager's nights first, then the nights they left alone, whose
@@ -166,7 +166,7 @@ def fit_correction(
     """Fits the correction on the manager's rates and the untouched nights.
 
     The untouched nights' target is the base's own prediction, a gap of 0
-    (decision 0060). Pure and CPU-bound: `tune` and the tuning backtest both
+    (decision 0072). Pure and CPU-bound: `tune` and the tuning backtest both
     call it, so the backtest scores the tune-up that ships.
     """
     if isinstance(base, TunedEBMModel):
@@ -194,9 +194,9 @@ async def _untouched(
     """The nights the manager left alone: stay_date and room_type, one row each.
 
     Every room type and night in the UNTOUCHED_DAYS before today with a
-    snapshot, no manager rate, no one-off tag (decision 0058), and a room type
+    snapshot, no manager rate, no one-off tag (decision 0070), and a room type
     the model was trained on. Only past nights: the manager could still change
-    a future one, so leaving it alone doesn't mean "no change" yet (0062).
+    a future one, so leaving it alone doesn't mean "no change" yet (0074).
     """
     today = local_today(hotel.city)
     start = today - timedelta(days=UNTOUCHED_DAYS)

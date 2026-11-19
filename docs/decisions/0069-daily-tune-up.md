@@ -1,10 +1,10 @@
-# 0057. A daily tune-up corrects the active model with the manager's rates
+# 0069. A daily tune-up corrects the active model with the manager's rates
 
-**Status:** Accepted, amended by [0060](0060-tune-up-learns-untouched-nights-as-unchanged.md), [0063](0063-correction-ignores-month.md) · **Date:** 2026-11-07
+**Status:** Accepted, amended by [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md), [0075](0075-correction-ignores-month.md) · **Date:** 2026-11-07
 
 ## Context
 The manager records the rate they chose for a night
-([0056](0056-manager-sends-the-rate-they-chose.md)). We want the model to learn
+([0068](0068-manager-sends-the-rate-they-chose.md)). We want the model to learn
 from it every day without a full retrain, and without later nights counting
 more just because they were learned from more recently.
 

@@ -6,9 +6,9 @@ import pandas as pd
 
 @dataclass(frozen=True, slots=True)
 class FeedbackSettings:
-    """How the manager's rates enter training (decision 0059)."""
+    """How the manager's rates enter training (decision 0071)."""
 
-    # Weight of a night the manager priced. Flat, like the tune-up (0057): the
+    # Weight of a night the manager priced. Flat, like the tune-up (0069): the
     # rate is the manager's judgement, so the vacancy-based weight no longer
     # applies.
     manager_weight: float = 1.0

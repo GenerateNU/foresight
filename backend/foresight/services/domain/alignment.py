@@ -1,4 +1,4 @@
-"""Is the model getting closer to how the manager prices? (decision 0059)
+"""Is the model getting closer to how the manager prices? (decision 0071)
 
 Each piece of feedback with a rate is compared with the recommendation the
 manager saw when they gave it. If tune-ups and retrains are working, the gap

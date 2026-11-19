@@ -1,9 +1,9 @@
-# 0060. The tune-up also learns the nights the manager left alone, as "no change"
+# 0072. The tune-up also learns the nights the manager left alone, as "no change"
 
-**Status:** Accepted, amended by [0062](0062-only-past-nights-are-no-change.md) (past nights only) · **Date:** 2026-11-15 · Amends [0057](0057-daily-tune-up.md)
+**Status:** Accepted, amended by [0074](0074-only-past-nights-are-no-change.md) (past nights only) · **Date:** 2026-11-15 · Amends [0069](0069-daily-tune-up.md)
 
 ## Context
-[0057](0057-daily-tune-up.md) trains the correction only on nights the manager
+[0069](0069-daily-tune-up.md) trains the correction only on nights the manager
 priced, each with a gap from the base. With few rates, the correction has no
 example of a night that needs nothing, so the average gap goes into its
 intercept and shifts every night: three Saturdays raised by €30 raised every
@@ -17,7 +17,7 @@ move without a reason.
 - **Which nights.** Every room type and night with a snapshot (so the manager
   was shown a rate) within `UNTOUCHED_DAYS` (30) of today, back and ahead, that
   has no manager rate, isn't tagged `ONE_OFF`
-  ([0058](0058-one-off-nights-teach-the-model-nothing.md)), and whose room
+  ([0070](0070-one-off-nights-teach-the-model-nothing.md)), and whose room
   type the model was trained on (`repository/recommendation.snapshotted_nights`).
 - **Weight.** Equal to the manager's nights; no cap yet.
 - **Skip rule.** `MIN_TUNE_NIGHTS` still counts manager rates only. A tune-up
@@ -36,4 +36,4 @@ move without a reason.
 - Past nights inside the window count too, with the snapshot they had. Nights
   further out than 30 days don't, even if they have snapshots.
 - A full retrain doesn't need this: untouched nights already train as recorded
-  ([0059](0059-manager-rate-is-the-target-everywhere.md)).
+  ([0071](0071-manager-rate-is-the-target-everywhere.md)).

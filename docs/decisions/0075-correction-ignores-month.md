@@ -1,10 +1,10 @@
-# 0063. The tune-up's correction never sees `month`
+# 0075. The tune-up's correction never sees `month`
 
-**Status:** Accepted · **Date:** 2026-11-18 · Amends [0057](0057-daily-tune-up.md)
+**Status:** Accepted · **Date:** 2026-11-18 · Amends [0069](0069-daily-tune-up.md)
 
 ## Context
-The tuning backtest ([0061](0061-how-the-backtest-judges-the-tune-up.md),
-[0062](0062-only-past-nights-are-no-change.md)) gave very different results
+The tuning backtest ([0073](0073-how-the-backtest-judges-the-tune-up.md),
+[0074](0074-only-past-nights-are-no-change.md)) gave very different results
 depending only on where the cutoff fell. Swept over six cutoffs, three manager
 shares and several seeds on hotel 1 (synthetic `weekend+15%`), the tune-up beat
 the base in 78% of runs, but the worst were −82% and the median at the 90- and
@@ -29,7 +29,7 @@ help: they shrank the real signal along with the spurious one.
   EBM** (`feature_names_in_`), not from the setting, so a tuned model stored
   before this change, whose correction has a `month` term, still works.
 - Nothing else about the correction changes: no pairwise terms, at most 300
-  rounds ([0057](0057-daily-tune-up.md)).
+  rounds ([0069](0069-daily-tune-up.md)).
 
 ## Consequences
 - On hotel 1, `weekend+15%`, 3 seeds, 6 cutoffs, 20 and 30 days of feedback:

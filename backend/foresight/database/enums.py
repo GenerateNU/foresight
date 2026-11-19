@@ -85,7 +85,7 @@ class FeedbackVerdict(StrEnum):
     """How the manager's rate compares with the one we recommended.
 
     Worked out by the server from the two rates, never sent by the client
-    (decision 0056): a higher rate means ours was too low, and so on.
+    (decision 0068): a higher rate means ours was too low, and so on.
     """
 
     TOO_HIGH = "too_high"

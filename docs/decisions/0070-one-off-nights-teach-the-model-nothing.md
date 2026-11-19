@@ -1,11 +1,11 @@
-# 0058. A night tagged one-off teaches the model nothing
+# 0070. A night tagged one-off teaches the model nothing
 
 **Status:** Accepted · **Date:** 2026-11-16
 
 ## Context
-[0056](0056-manager-sends-the-rate-they-chose.md) added the `ONE_OFF` reason
+[0068](0068-manager-sends-the-rate-they-chose.md) added the `ONE_OFF` reason
 tag for a night that won't happen again (a buyout, a private event), but
-nothing used it. The daily tune-up ([0057](0057-daily-tune-up.md)) learned
+nothing used it. The daily tune-up ([0069](0069-daily-tune-up.md)) learned
 from a one-off rate like any other, and with few rates its correction moves
 every night by about the same amount, so one buyout could lift the whole
 calendar. A full retrain trained on the night's recorded rate, which is just
@@ -24,7 +24,7 @@ as unusual.
 - **Tune-up.** `feedback_repo.tuning_feedback` leaves out one-off feedback, so
   its rate isn't learned and doesn't count toward `MIN_TUNE_NIGHTS`. Nor is
   the night used as an untouched "no change" night
-  ([0060](0060-tune-up-learns-untouched-nights-as-unchanged.md)).
+  ([0072](0072-tune-up-learns-untouched-nights-as-unchanged.md)).
 - `feedback_repo.training_feedback` leaves it out too. The night is dropped
   anyway, so this only keeps the two in step.
 - No schema change: tags are VARCHARs, filtered with Postgres `@>`.

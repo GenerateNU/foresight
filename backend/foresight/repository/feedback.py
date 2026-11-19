@@ -114,8 +114,8 @@ async def tuning_feedback(
 
     One row per room type and night. Takes each night's current (highest)
     version, given before or after the night, and keeps it if it has a rate
-    (decisions 0057 and 0059) and isn't
-    tagged ONE_OFF (decision 0058). Rows carry id, stay_date, room_type_id,
+    (decisions 0069 and 0071) and isn't
+    tagged ONE_OFF (decision 0070). Rows carry id, stay_date, room_type_id,
     room_type (its name) and rate, oldest night first. `start` and `end` limit
     the nights.
     """
@@ -154,7 +154,7 @@ async def one_off_nights(
 
     A room type's night is one-off when its current (highest) version of
     feedback carries the ONE_OFF tag, given before or after the night
-    (decision 0058). Rows carry stay_date and room_type (its name).
+    (decision 0070). Rows carry stay_date and room_type (its name).
     """
     current = select(Feedback).where(Feedback.hotel_id == hotel_id)
     if start is not None:
@@ -181,7 +181,7 @@ async def manager_rates(
     """The rate the manager has set for each night in [start, end], if any.
 
     Takes each night's current (highest) version and keeps it if it has a rate,
-    so a night whose latest version has no rate has none (decision 0059).
+    so a night whose latest version has no rate has none (decision 0071).
     """
     current = (
         select(Feedback.stay_date, Feedback.rate)
@@ -208,7 +208,7 @@ async def alignment_by_week(
     Every version of feedback that has a rate and still has its snapshot counts
     once, in the week (Monday, UTC) it was given. Rows carry week, nights,
     mean_gap (manager minus model, so positive means the model priced low) and
-    mean_abs_gap, oldest week first (decision 0059).
+    mean_abs_gap, oldest week first (decision 0071).
     """
     gap = Feedback.rate - RecommendationSnapshot.rate
     week = func.date_trunc("week", Feedback.created_at)

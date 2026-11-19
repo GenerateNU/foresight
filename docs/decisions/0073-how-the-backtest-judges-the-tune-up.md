@@ -1,10 +1,10 @@
-# 0061. The tuning backtest replays the tune-up after N days of manager rates
+# 0073. The tuning backtest replays the tune-up after N days of manager rates
 
-**Status:** Accepted, amended by [0062](0062-only-past-nights-are-no-change.md) (past untouched nights, synthetic manager) · **Date:** 2026-11-17
+**Status:** Accepted, amended by [0074](0074-only-past-nights-are-no-change.md) (past untouched nights, synthetic manager) · **Date:** 2026-11-17
 
 ## Context
-The daily tune-up ([0057](0057-daily-tune-up.md),
-[0060](0060-tune-up-learns-untouched-nights-as-unchanged.md)) serves a
+The daily tune-up ([0069](0069-daily-tune-up.md),
+[0072](0072-tune-up-learns-untouched-nights-as-unchanged.md)) serves a
 correction with no accuracy check. Nothing said whether it beats the base
 model, or how much manager feedback it needs before it does. The base-model
 backtest ([0042](0042-how-the-backtest-judges-the-model.md)) can't answer

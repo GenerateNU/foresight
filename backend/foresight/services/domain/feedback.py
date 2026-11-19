@@ -3,7 +3,7 @@
 Feedback is only ever added: changing it adds the next version for that room
 type and night, and the highest version is the current one (decision 0043).
 The manager sends the rate they chose; whether ours was too high, too low or
-about right is worked out from it (decision 0056).
+about right is worked out from it (decision 0068).
 """
 
 from __future__ import annotations

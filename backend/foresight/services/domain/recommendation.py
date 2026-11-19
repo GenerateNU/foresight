@@ -110,7 +110,7 @@ class Recommendation:
     snapshot_id: int | None  # None for a past night priced but not saved
     priced_at: datetime  # when the model produced this rate
     # The rate the manager set for the night; None if they haven't. Read live,
-    # never stored in a snapshot, so it never triggers a new one (decision 0059).
+    # never stored in a snapshot, so it never triggers a new one (decision 0071).
     manager_rate: Decimal | None = None
 
 

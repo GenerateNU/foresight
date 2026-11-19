@@ -1,9 +1,9 @@
-# 0062. Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager
+# 0074. Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager
 
-**Status:** Accepted · **Date:** 2026-11-17 · Amends [0060](0060-tune-up-learns-untouched-nights-as-unchanged.md), [0061](0061-how-the-backtest-judges-the-tune-up.md)
+**Status:** Accepted · **Date:** 2026-11-17 · Amends [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md), [0073](0073-how-the-backtest-judges-the-tune-up.md)
 
 ## Context
-The tuning backtest ([0061](0061-how-the-backtest-judges-the-tune-up.md)) showed
+The tuning backtest ([0073](0073-how-the-backtest-judges-the-tune-up.md)) showed
 the tune-up barely moving the base. That had two causes:
 
 - **The test had nothing to learn.** The recorded rate stood in for the
@@ -11,7 +11,7 @@ the tune-up barely moving the base. That had two causes:
   it averaged about €1 with a std of €33–37, mostly event spikes. A flat
   correction is the right answer there. It said nothing about whether the
   tune-up learns a habit the base lacks, which is what it's for.
-- **Untouched nights cancelled the habit.** 0060 counted nights within 30
+- **Untouched nights cancelled the habit.** 0072 counted nights within 30
   days *either side* of today. The future ones are mostly nights the manager
   hasn't reviewed yet, not nights they agreed with. Against a synthetic
   "weekends +15%" manager, the correction learned 63–99% of the habit without
@@ -23,7 +23,7 @@ the tune-up barely moving the base. That had two causes:
   nights in the `UNTOUCHED_DAYS` (30) *before* today with a snapshot, no
   manager rate and no one-off tag. A night that already happened and that the
   manager didn't change is one they accepted; a future one may still change.
-  The rest of 0060 (target = base's prediction, equal weight) is unchanged.
+  The rest of 0072 (target = base's prediction, equal weight) is unchanged.
 - **The backtest's untouched nights match.** "Today" is the day after the last
   feedback day. Untouched nights are the feedback days the manager didn't
   review, within `UNTOUCHED_DAYS` back, never nights ahead of today.
@@ -52,7 +52,7 @@ the tune-up barely moving the base. That had two causes:
   €23 to €36. Correction settings that hold it back on small data are still
   open; choose them with both modes of this backtest.
 - Right after a model goes live there are few past nights, so the early
-  tune-ups lean on the manager's rates alone, with 0057's "every night moves"
+  tune-ups lean on the manager's rates alone, with 0069's "every night moves"
   effect, until past nights build up.
 - A synthetic manager is a test of the mechanism, not of a real hotel. Check
   real gains with `just alignment` as manager rates arrive.

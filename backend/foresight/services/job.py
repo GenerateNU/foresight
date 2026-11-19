@@ -175,7 +175,7 @@ async def start_train_job(
 async def start_tune_job(
     session: AsyncSession, hotel_id: int, *, activate: bool
 ) -> Job:
-    """Correct the active model with the manager's rates (decision 0057).
+    """Correct the active model with the manager's rates (decision 0069).
 
     Raises:
         NotFoundError: Unknown hotel.

@@ -1,11 +1,11 @@
-# 0059. The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation
+# 0071. The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation
 
 **Status:** Accepted · **Date:** 2026-11-15 · Supersedes [0044](0044-train-on-feedback-given-after-the-night.md)
 
 ## Context
 The model's job is to copy how the manager prices, and the manager makes the
-final call. [0056](0056-manager-sends-the-rate-they-chose.md) has the manager
-send the rate they chose, and [0057](0057-daily-tune-up.md) tunes the model
+final call. [0068](0068-manager-sends-the-rate-they-chose.md) has the manager
+send the rate they chose, and [0069](0069-daily-tune-up.md) tunes the model
 with it. A full retrain still followed 0044: only feedback given after the
 night, a verdict-based weight, and a halved weight when the rate and verdict
 disagreed. With the manager now sending a rate before the night, that rule
@@ -21,8 +21,8 @@ was getting closer to the manager.
   a rate. Nights without a manager rate train as recorded, as before.
 - **No verdict weights, no cap.** The 0044 weights (×2 about right, ×0.5 wrong
   with no rate) and the 30% cap on the manager's rate are gone. The verdict is
-  worked out from the rate (0056), so it adds nothing; and the tune-up never
-  capped the rate (0057).
+  worked out from the rate (0068), so it adds nothing; and the tune-up never
+  capped the rate (0069).
 - **`pricing_model_feedback`** still records each rate a version used.
   `feedback_rates_replaced` equals `feedback_nights`.
 - **Recommendations carry `manager_rate`.** `GET /hotels/{id}/recommendations`
@@ -43,7 +43,7 @@ was getting closer to the manager.
   on which nights the manager priced.
 - Nights the manager left alone: a retrain trains them as recorded, and the
   tune-up learns them as "no change"
-  ([0060](0060-tune-up-learns-untouched-nights-as-unchanged.md)).
+  ([0072](0072-tune-up-learns-untouched-nights-as-unchanged.md)).
 - The alignment metric uses the recommendation the manager saw, so it measures
   the model at the time of each decision, not how today's model would price
   those nights. It leaves out feedback whose snapshot was deleted.

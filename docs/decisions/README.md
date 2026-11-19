@@ -64,7 +64,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0041](0041-events-in-the-model.md) | Events reach the model; nights no backfill covered are unknown (restored by 0055) | ML |
 | [0042](0042-how-the-backtest-judges-the-model.md) | The backtest judges the model against baselines and smaller input sets | ML |
 | [0043](0043-manager-feedback-is-versioned.md) | Manager feedback is added to, never changed | data model |
-| [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight (superseded by 0059) | ML |
+| [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight (superseded by 0071) | ML |
 | [0045](0045-refit-on-every-row.md) | The kept model is refit on every row; the holdout only sets the interval and scores | ML |
 | [0046](0046-record-training-cost.md) | Every version records its fit's time and peak memory | ML |
 | [0047](0047-bookings-and-cancellations.md) | Bookings and cancellations are stored as Guestline gives them | data model |
@@ -76,11 +76,11 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0053](0053-drop-base-rate.md) | Room types have no base rate | data model |
 | [0055](0055-events-back-in-the-model.md) | Events are back in the model, counted from when PredictHQ first saw them | ML |
 | [0054](0054-hosted-on-render.md) | The backend is hosted on Render's free plan | operations |
-| [0056](0056-manager-sends-the-rate-they-chose.md) | The manager sends the rate they chose; the verdict is worked out from it | API |
-| [0057](0057-daily-tune-up.md) | A daily tune-up corrects the active model with the manager's rates | ML |
-| [0058](0058-one-off-nights-teach-the-model-nothing.md) | A night tagged one-off teaches the model nothing | ML |
-| [0059](0059-manager-rate-is-the-target-everywhere.md) | The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation | ML |
-| [0060](0060-tune-up-learns-untouched-nights-as-unchanged.md) | The tune-up also learns the nights the manager left alone, as "no change" | ML |
-| [0061](0061-how-the-backtest-judges-the-tune-up.md) | The tuning backtest replays the tune-up after N days of manager rates | ML |
-| [0062](0062-only-past-nights-are-no-change.md) | Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager | ML |
-| [0063](0063-correction-ignores-month.md) | The tune-up's correction never sees `month` | ML |
+| [0068](0068-manager-sends-the-rate-they-chose.md) | The manager sends the rate they chose; the verdict is worked out from it | API |
+| [0069](0069-daily-tune-up.md) | A daily tune-up corrects the active model with the manager's rates | ML |
+| [0070](0070-one-off-nights-teach-the-model-nothing.md) | A night tagged one-off teaches the model nothing | ML |
+| [0071](0071-manager-rate-is-the-target-everywhere.md) | The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation | ML |
+| [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md) | The tune-up also learns the nights the manager left alone, as "no change" | ML |
+| [0073](0073-how-the-backtest-judges-the-tune-up.md) | The tuning backtest replays the tune-up after N days of manager rates | ML |
+| [0074](0074-only-past-nights-are-no-change.md) | Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager | ML |
+| [0075](0075-correction-ignores-month.md) | The tune-up's correction never sees `month` | ML |
