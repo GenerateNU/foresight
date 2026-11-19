@@ -1,7 +1,5 @@
-const ROOM_TYPES = [
-  { id: 1, name: 'Double', base: 180 },
-  { id: 2, name: 'Suite', base: 290 },
-]
+/** The real endpoint prices one room type, the hotel's first, unless `room_type_id` is given. */
+const ROOM_TYPE = { id: 1, name: 'Double', base: 180 }
 
 /** Each runs for three nights, on the 1st-3rd, 10th-12th, 19th-21st and 28th-30th. */
 const EVENTS = [
@@ -12,14 +10,10 @@ const EVENTS = [
 
 /**
  * Made-up rates in the shape of RecommendationResponse (backend/foresight/routes/hotel.py),
- * one row per night per room type. Stable: the same night always gets the same price.
+ * one row per night for one room type. Stable: the same night always gets the same price.
  */
 export function mockRecommendations(hotelId, { start, end }) {
-  const rows = []
-  for (const date of eachNight(start, end)) {
-    for (const room of ROOM_TYPES) rows.push(night(hotelId, room, date))
-  }
-  return rows
+  return [...eachNight(start, end)].map((date) => night(hotelId, ROOM_TYPE, date))
 }
 
 function night(hotelId, room, date) {

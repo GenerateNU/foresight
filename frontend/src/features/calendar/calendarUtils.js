@@ -56,17 +56,9 @@ export function buildMonthGrid(year, month) {
   return weeks
 }
 
-/**
- * The API returns one row per night per room type. The calendar shows one number per
- * night, so keep the lowest rate (the Figma header says "lowest available").
- */
-export function lowestRatePerNight(recommendations) {
-  const byDate = new Map()
-  for (const rec of recommendations) {
-    const best = byDate.get(rec.date)
-    if (!best || rec.rate < best.rate) byDate.set(rec.date, rec)
-  }
-  return byDate
+/** The recommendations keyed by night, for the grid to look each day up. */
+export function ratesByNight(recommendations) {
+  return new Map(recommendations.map((rec) => [rec.date, rec]))
 }
 
 /**

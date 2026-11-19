@@ -9,7 +9,7 @@ import { HOTEL_ID } from '../../lib/config.js'
 import { useAsync } from '../../hooks/useAsync.js'
 import ColorByChips from './ColorByChips.jsx'
 import MonthGrid from './MonthGrid.jsx'
-import { buildMonthGrid, lowestRatePerNight, monthLabel } from './calendarUtils.js'
+import { buildMonthGrid, monthLabel, ratesByNight } from './calendarUtils.js'
 
 /**
  * The Calendar screen: owns "which month" and "color by", fetches that month's prices,
@@ -27,7 +27,8 @@ export default function CalendarPage() {
   const { data, error, loading, reload } = useAsync(`${start}:${end}`, () =>
     getRecommendations(HOTEL_ID, { start, end }),
   )
-  const byDate = useMemo(() => lowestRatePerNight(data ?? []), [data])
+  const byDate = useMemo(() => ratesByNight(data ?? []), [data])
+  const roomType = data?.[0]?.roomType
 
   function shiftMonth(delta) {
     const next = new Date(year, month + delta, 1)
@@ -37,7 +38,7 @@ export default function CalendarPage() {
   return (
     <div className="space-y-6 px-8 py-8">
       <PageHeader
-        eyebrow="Rates shown are the lowest available"
+        eyebrow={roomType ? `Rates for the ${roomType} room` : 'Rates'}
         title={monthLabel(year, month)}
         actions={
           <>

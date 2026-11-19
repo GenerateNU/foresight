@@ -2,7 +2,8 @@ import { apiGet } from './client.js'
 
 /**
  * GET /hotels/{id}/recommendations?start=YYYY-MM-DD&end=YYYY-MM-DD (max 90 nights).
- * Returns one entry per night per room type; see docs/decisions/0038 in the repo.
+ * Returns one entry per night, for the hotel's first room type (the API takes a
+ * `room_type_id` to price another); see docs/decisions/0038 in the repo.
  * The API sends money as strings ("279.00"), so they become numbers here, once.
  */
 export async function getRecommendations(hotelId, { start, end }) {
