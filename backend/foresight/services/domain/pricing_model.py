@@ -1,7 +1,7 @@
 """Pricing models: train a new version for a hotel, and read the versions.
 
-Training only reads what's already ingested (bookings, performance and
-events); it never fetches. Every run makes a new version, so earlier ones stay
+Training only reads what's already ingested (bookings and events); it never
+fetches. Every run makes a new version, so earlier ones stay
 to compare against. Activation follows decision 0009: a new version is saved
 inactive and becomes the hotel's active one only once training succeeded,
 unless the caller asks to keep the current one serving.
@@ -10,7 +10,6 @@ unless the caller asks to keep the current one serving.
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -19,23 +18,21 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from foresight.repository import booking as booking_repo
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
-from foresight.services.domain.booking import booking_rows
+from foresight.services.domain.booking import BOOKING_ROW_COLUMNS, booking_rows
+from foresight.services.domain.city import local_date
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import FEATURES, LEAD, build_features
-from foresight.services.ml.feedback import apply_feedback
+from foresight.services.ml.features import FEATURES, build_features
+from foresight.services.ml.feedback import manager_row_weights
 from foresight.services.ml.resources import measure
-from foresight.services.ml.weighting import (
-    combine_identical_rows,
-    sample_weights,
-    training_mask,
-)
+from foresight.services.ml.weighting import combine_identical_rows
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -43,53 +40,34 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.models.hotel import Hotel
+    from foresight.database.models.hotel import Hotel, RoomType
     from foresight.database.models.pricing_model import PricingModel
-
-logger = logging.getLogger(__name__)
 
 ALGORITHM = "ebm"
 # EBM needs enough rows for its own validation split plus our calibration set.
-# Rows are booked rooms or nights, whichever the hotel trains on (0056).
+# Rows are booked rooms (decision 0076).
 MIN_TRAINING_ROWS = 120
-# What a version learned to predict, stored in its metrics as `target`
-# (decision 0056): each booked room's nett rate, or the night's average rate.
-TARGET_BOOKINGS = "adr_nett"
-TARGET_NIGHTS = "arr"
+# What every version learns to predict, stored in its metrics as `target`: each
+# booked room's rate per night before VAT (decisions 0056, 0076).
+TARGET = "adr_nett"
 # Share of the most recent rows scored after training; also the conformal
 # calibration share (decision 0005), so metrics describe unseen nights.
 HOLDOUT_FRAC = 0.15
-_NIGHT_COLUMNS = [
-    "stay_date",
-    "room_type",
-    "rate",
-    "rooms_sold",
-    "rooms_available",
-    "rooms_out_of_service",
-]
-_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "verdict", "rate"]
-_LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
+_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "rate", "shown_at"]
+LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
 @dataclass(frozen=True, slots=True)
 class TrainingData:
-    """The rows a model trains on and its inputs for them, row for row.
+    """Booked rooms, one row per room per night, and the model's inputs for
+    them, row for row (decision 0076). Oldest night first."""
 
-    Rows are booked rooms, one per room per night, if the hotel can train on
-    bookings; otherwise priced nights (decision 0056). Oldest first.
-    """
-
-    nights: pd.DataFrame  # stay_date, room_type, rate, ...; one row per row of x
-    x: pd.DataFrame  # the inputs this version trains on, in FEATURES order
-    y: pd.Series  # the rate: adr_nett for booked rooms, the night's rate otherwise
-    weights: np.ndarray  # 1 per booked room; occupancy for nights (0003)
+    nights: pd.DataFrame  # stay_date, room_type, booked_on, rate; one per row of x
+    x: pd.DataFrame  # every input in FEATURES order
+    y: pd.Series  # each room's rate per night before VAT (adr_nett)
+    weights: np.ndarray  # 1 per booked room; manager rows more (0076)
     events_fetched: set[date]  # nights an events backfill covered (0041)
-    target: str  # TARGET_BOOKINGS or TARGET_NIGHTS
-    reason: str | None  # why it fell back to nights; None on booked rooms
-
-    @property
-    def from_bookings(self) -> bool:
-        return self.target == TARGET_BOOKINGS
+    one_off_dropped: int  # nights left out as one-off (decision 0070)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,21 +87,22 @@ async def check_trainable(
 
     Raises:
         NotFoundError: Unknown hotel.
-        InvalidRequestError: start is after end, or no nights are loaded in
-            the window.
+        InvalidRequestError: start is after end, the hotel doesn't have
+            exactly one room type, or no booked nights fall in the window.
     """
     hotel = await get_hotel(session, hotel_id)
     if start is not None and end is not None and start > end:
         raise InvalidRequestError(f"start {start} is after end {end}")
-    loaded = await hotel_repo.stay_date_range(session, hotel.id)
+    await _only_room_type(session, hotel)
+    loaded = await booking_repo.booked_night_range(session, hotel.id)
     if loaded is None:
         raise InvalidRequestError(
-            "no nights are loaded for this hotel; ingest performance first"
+            "no bookings are loaded for this hotel; upload reservations first"
         )
     first, last = loaded
     if (start is not None and start > last) or (end is not None and end < first):
         raise InvalidRequestError(
-            f"no nights in the window; loaded nights run {first} to {last}"
+            f"no booked nights in the window; bookings run {first} to {last}"
         )
     return hotel
 
@@ -153,31 +132,77 @@ async def prepare_training(
     data = await training_data(session, hotel, start=start, end=end)
     nights = data.nights
     if len(nights) < MIN_TRAINING_ROWS:
-        what = "booked rooms" if data.from_bookings else "priced nights"
         raise InvalidRequestError(
-            f"{len(nights)} {what} to train on; need at least {MIN_TRAINING_ROWS}"
+            f"{len(nights)} booked rooms to train on; need at least {MIN_TRAINING_ROWS}"
         )
 
-    # Decision 0044: what the manager said after a night changes how it trains.
-    feedback_rows = await feedback_repo.training_feedback(
+    # Decision 0071: the manager's current rate is a target, before or after the
+    # night, the same rule the tune-up follows.
+    feedback_rows = await feedback_repo.tuning_feedback(
         session, hotel.id, start=start, end=end
     )
     feedback = pd.DataFrame(feedback_rows, columns=pd.Index(_FEEDBACK_COLUMNS))
-    feedback["rate"] = pd.to_numeric(feedback["rate"], errors="coerce")  # None -> NaN
-    # Feedback judges a night, so it's weighed against the night's average
-    # rate and carried onto each of its booked rooms as a ratio, keeping how
-    # far apart they were (decision 0056). On night rows the average is the
-    # night's own rate, so the ratio is the replacement itself.
-    key = [nights["stay_date"], nights["room_type"]]
-    night_rate = data.y.groupby(key).transform("mean")
-    effect = apply_feedback(nights, feedback, night_rate, data.weights)
-    return PreparedTraining(
-        data=data,
-        y=data.y * (effect.rate / night_rate),
-        weights=effect.weights,
-        used=effect.used.drop_duplicates("feedback_id"),  # not once per room
-        began=began,
+    feedback["rate"] = pd.to_numeric(feedback["rate"], errors="coerce")
+    return await _with_manager_rows(session, hotel, data, feedback, began)
+
+
+async def _with_manager_rows(
+    session: AsyncSession,
+    hotel: Hotel,
+    data: TrainingData,
+    feedback: pd.DataFrame,
+    began: float,
+) -> PreparedTraining:
+    """Booked rooms plus one row per manager rate (decision 0076).
+
+    A manager rate is the price for booking that night on the day they saw the
+    recommendation, so it's a row booked that day, next to the night's real
+    sales, which stay as they are. It weighs `manager_share` of the night's
+    booked rooms, and at least 1.
+    """
+    if feedback.empty:
+        used = pd.DataFrame(columns=["feedback_id", "rate_replaced", "weight_factor",
+                                     "training_rate"])  # fmt: skip
+        return PreparedTraining(data, data.y, data.weights, used, began)
+    rows = feedback.assign(
+        booked_on=[local_date(hotel.city, t) for t in feedback["shown_at"]]
+    )[["stay_date", "room_type", "booked_on", "rate"]]
+    events = await events_for(session, hotel.city, sorted(set(rows["stay_date"])))
+    x_manager = build_features(
+        rows,
+        events.frame,
+        events_fetched=events.fetched,
+        events_impacts=events.impacts,
+        hotel_location=hotel_location(hotel),
+        booked_on=rows["booked_on"],
+    )[list(data.x.columns)]
+    rooms = data.nights.groupby("stay_date").size()
+    weights = manager_row_weights(rows["stay_date"], rooms)
+
+    # Every row oldest night first, so the holdout stays the newest nights.
+    nights = pd.concat([data.nights, rows], ignore_index=True)
+    order = nights["stay_date"].argsort(kind="stable").to_numpy()
+    merged = TrainingData(
+        nights=nights.iloc[order].reset_index(drop=True),
+        x=pd.concat([data.x, x_manager], ignore_index=True)
+        .iloc[order]
+        .reset_index(drop=True),
+        y=pd.concat([data.y, rows["rate"]], ignore_index=True)
+        .iloc[order]
+        .reset_index(drop=True),
+        weights=np.concatenate([data.weights, weights])[order],
+        events_fetched=data.events_fetched | events.fetched,
+        one_off_dropped=data.one_off_dropped,
     )
+    used = pd.DataFrame(
+        {
+            "feedback_id": feedback["id"].astype(int).to_numpy(),
+            "rate_replaced": False,
+            "weight_factor": weights,
+            "training_rate": rows["rate"].to_numpy(float),
+        }
+    )
+    return PreparedTraining(merged, merged.y, merged.weights, used, began)
 
 
 async def fit(
@@ -192,11 +217,12 @@ async def fit(
     metrics, artifact = await asyncio.to_thread(
         _fit, data.x, prepared.y, prepared.weights, data.nights, params
     )
-    metrics["target"] = data.target
+    metrics["target"] = TARGET
     metrics["training_rows"] = len(data.nights)
     metrics["training_nights"] = int(data.nights["stay_date"].nunique())
     metrics["feedback_nights"] = len(prepared.used)
     metrics["feedback_rates_replaced"] = int(prepared.used["rate_replaced"].sum())
+    metrics["one_off_nights"] = data.one_off_dropped
     return metrics, artifact
 
 
@@ -221,7 +247,7 @@ async def save_version(
         artifact=artifact,
         features=list(prepared.data.x.columns),
         metrics=metrics,
-        lib_versions={lib: version(lib) for lib in _LIBS},
+        lib_versions={lib: version(lib) for lib in LIBS},
         data_start=nights["stay_date"].min(),
         data_end=nights["stay_date"].max(),
     )
@@ -249,88 +275,75 @@ async def training_data(
     start: date | None,
     end: date | None,
 ) -> TrainingData:
-    """The hotel's training rows in [start, end] and their model inputs.
+    """The hotel's booked rooms on nights in [start, end] and their inputs.
 
-    Rows are booked rooms, one per room per night with its days booked ahead,
-    when the hotel has bookings and a single room type; otherwise priced
-    nights, without lead_days (decision 0056). The one place training data is
+    One row per booked room per night, from live bookings alone (decision
+    0076): a night's rows are its rooms sold, so how full it was is already in
+    how much it counts, and each room weighs 1. The one place training data is
     prepared, so `train` and the backtest always see the same inputs.
+
+    Raises:
+        InvalidRequestError: The hotel doesn't have exactly one room type.
     """
-    rows = await hotel_repo.list_nights(session, hotel.id, start=start, end=end)
-    nights = pd.DataFrame(rows, columns=pd.Index(_NIGHT_COLUMNS))
-    # Rates arrive as Decimal or None; None becomes NaN.
-    rate = pd.Series(nights["rate"], dtype=float)
-    nights["rate"] = rate
-
-    # Decision 0004: free/staff/unpriced nights go before features and weights,
-    # so all three line up row for row.
-    nights = nights.loc[training_mask(rate)].reset_index(drop=True)
-
-    booked, reason = await _booked_rooms(session, hotel, nights)
-    if booked is None:
-        logger.info("hotel %s trains on nights: %s", hotel.id, reason)
-        sellable = nights["rooms_available"] - nights["rooms_out_of_service"].fillna(0)
-        occupancy = nights["rooms_sold"] / sellable
-        train_rows, booked_on = nights, None
-        weights = sample_weights(occupancy.clip(0, 1))
-        columns = [f for f in FEATURES if f != LEAD]
-        target = TARGET_NIGHTS
+    room_type = await _only_room_type(session, hotel)
+    loaded = await booking_repo.booked_night_range(session, hotel.id)
+    if loaded is None:
+        booked = pd.DataFrame(columns=pd.Index(BOOKING_ROW_COLUMNS))
     else:
-        # Each row is a price a guest paid, so each counts once: the vacancy
-        # weight (0003) judges a night's listed rate, not a sale (0056).
-        train_rows, booked_on = booked, booked["booked_on"]
-        weights = np.ones(len(booked))
-        columns = FEATURES
-        target = TARGET_BOOKINGS
+        first, last = loaded
+        booked = await booking_rows(
+            session,
+            hotel.id,
+            start=max(first, start) if start else first,
+            end=min(last, end) if end else last,
+        )
+    booked["room_type"] = room_type.name
 
-    days = sorted(set(train_rows["stay_date"]))
+    # Decision 0070: a night the manager marked one-off teaches nothing.
+    one_off = await feedback_repo.one_off_nights(
+        session, hotel.id, start=start, end=end
+    )
+    marked = {r["stay_date"] for r in one_off if r["room_type"] == room_type.name}
+    keep = ~booked["stay_date"].isin(marked)
+    one_off_dropped = int(booked.loc[~keep, "stay_date"].nunique())
+    booked = booked.loc[keep].reset_index(drop=True)
+
+    days = sorted(set(booked["stay_date"]))
     events = await events_for(session, hotel.city, days)
     x = build_features(
-        train_rows,
+        booked,
         events.frame,
         events_fetched=events.fetched,
         events_impacts=events.impacts,
         hotel_location=hotel_location(hotel),
-        booked_on=booked_on,
+        booked_on=booked["booked_on"],
     )
     return TrainingData(
-        nights=train_rows,
-        x=x[columns],
-        y=train_rows["rate"],
-        weights=weights,
+        nights=booked,
+        x=x[FEATURES],
+        y=booked["rate"].astype(float),
+        weights=np.ones(len(booked)),
         events_fetched=events.fetched,
-        target=target,
-        reason=reason,
+        one_off_dropped=one_off_dropped,
     )
 
 
-async def _booked_rooms(
-    session: AsyncSession, hotel: Hotel, nights: pd.DataFrame
-) -> tuple[pd.DataFrame | None, str | None]:
-    """Booked rooms over the priced nights' span, or None and why not.
+async def _only_room_type(session: AsyncSession, hotel: Hotel) -> RoomType:
+    """The hotel's one room type.
 
     Bookings carry Guestline's room codes, which don't map to room types yet,
-    so only a hotel with a single room type trains on them; every booking
-    takes that type (decision 0056).
+    so every booking takes the hotel's single room type (decision 0056).
+
+    Raises:
+        InvalidRequestError: The hotel has none, or more than one.
     """
-    if nights.empty:
-        return None, "no priced nights"
     room_types = await hotel_repo.list_room_types(session, hotel.id)
     if len(room_types) != 1:
-        return None, (
-            f"it has {len(room_types)} room types, and bookings don't map to "
-            "room types yet"
+        raise InvalidRequestError(
+            f"training needs exactly one room type; this hotel has "
+            f"{len(room_types)}, and bookings don't map to room types yet"
         )
-    booked = await booking_rows(
-        session,
-        hotel.id,
-        start=nights["stay_date"].min(),
-        end=nights["stay_date"].max(),
-    )
-    if booked.empty:
-        return None, "it has no bookings loaded in the window"
-    booked["room_type"] = room_types[0].name
-    return booked, None
+    return room_types[0]
 
 
 async def list_models(

@@ -67,6 +67,11 @@ def local_today(city: City) -> date:
     return datetime.now(ZoneInfo(city.timezone)).date()
 
 
+def local_date(city: City, moment: datetime) -> date:
+    """The date in the city at `moment`, e.g. the day a manager saw a price."""
+    return moment.astimezone(ZoneInfo(city.timezone)).date()
+
+
 def _slug(name: str) -> str:
     slug = slugify_city(name)
     if not slug:

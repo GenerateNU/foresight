@@ -105,6 +105,17 @@ backtest hotel_id *flags:
     @echo "Database: {{ if flags =~ '(^|\s)--neon(\s|$)' { "neon" } else { "local" } }}"
     cd backend && {{ if flags =~ '(^|\s)--neon(\s|$)' { "" } else { _env_local } }} uv run python -m foresight.cli backtest {{hotel_id}} {{ trim(replace(flags, "--neon", "")) }}
 
+# Score the daily tune-up against the base model, by days of manager feedback
+# e.g. `just tuning-backtest 7 --test-days 90 --sizes 5,10,20,30 --manager-rule weekend+15%`
+tuning-backtest hotel_id *flags:
+    @echo "Database: {{ if flags =~ '(^|\s)--neon(\s|$)' { "neon" } else { "local" } }}"
+    cd backend && {{ if flags =~ '(^|\s)--neon(\s|$)' { "" } else { _env_local } }} uv run python -m foresight.cli tuning-backtest {{hotel_id}} {{ trim(replace(flags, "--neon", "")) }}
+
+# Show how far the model's recommendations are from the manager's rates, by week
+alignment hotel_id *flags:
+    @echo "Database: {{ if flags == "--neon" { "neon" } else { "local" } }}"
+    cd backend && {{ if flags == "--neon" { "" } else { _env_local } }} uv run python -m foresight.cli alignment {{hotel_id}}
+
 # --- Testing ---
 
 # Run the test suite

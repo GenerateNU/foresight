@@ -26,6 +26,7 @@ from foresight.repository import job as job_repo
 from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
+from foresight.services.domain import tuning as tuning_service
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.errors import (
@@ -169,6 +170,20 @@ async def start_train_job(
         "ebm_params": ebm_params,
     }
     return await _queue(session, hotel, JobKind.TRAIN, params)
+
+
+async def start_tune_job(
+    session: AsyncSession, hotel_id: int, *, activate: bool
+) -> Job:
+    """Correct the active model with the manager's rates (decision 0069).
+
+    Raises:
+        NotFoundError: Unknown hotel.
+        InvalidRequestError: The hotel has no active model.
+        ConflictError: A tune-up is already queued or running.
+    """
+    hotel = await tuning_service.check_tunable(session, hotel_id)
+    return await _queue(session, hotel, JobKind.TUNE, {"activate": activate})
 
 
 async def get_job(session: AsyncSession, job_id: int) -> Job:
@@ -400,7 +415,7 @@ async def _train(
         {
             "stage": "fitting",
             "training_rows": len(prepared.data.nights),
-            "target": prepared.data.target,
+            "target": pricing_model_service.TARGET,
         },
         None,
     )
@@ -441,6 +456,27 @@ async def _train(
     )
 
 
+async def _tune(
+    session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
+) -> AsyncIterator[Step]:
+    result = await tuning_service.tune(session, hotel, activate=params["activate"])
+    model = result.model
+    yield Step(
+        {
+            "model_id": None if model is None else model.id,
+            "version": None if model is None else model.version,
+            "activated": result.activated,
+            "nights_used": result.nights_used,
+            "untouched_used": result.untouched_used,
+            "skipped": result.skipped,
+            "mean_correction": None
+            if model is None
+            else model.metrics["mean_correction"],
+        },
+        None,
+    )
+
+
 _HANDLERS: dict[JobKind, Handler] = {
     JobKind.WEATHER: _weather,
     JobKind.EVENTS: _events,
@@ -448,6 +484,7 @@ _HANDLERS: dict[JobKind, Handler] = {
     JobKind.RESERVATIONS: _file,
     JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,
+    JobKind.TUNE: _tune,
 }
 
 

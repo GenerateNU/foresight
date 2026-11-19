@@ -231,3 +231,124 @@ class EBMModel(Model):
         if not isinstance(model, cls):
             raise TypeError(f"Expected {cls.__name__}, got {type(model).__name__}")
         return model
+
+
+class TunedEBMModel(EBMModel):
+    """A trained EBM left as it is, plus a small EBM that corrects it.
+
+    The correction learns only the gap between the base's predictions and the
+    rates it's fit on (`init_score`), so a prediction is the base's plus the
+    correction's (decision 0069). It has no pairwise terms, so its terms are a
+    subset of the base's and `explain` can add them up by name. The interval
+    and uncertainty are the base's.
+    """
+
+    name = "ebm-tuned"
+    # No pairwise terms, so `explain` can add terms up by name. A few hundred
+    # rounds: on a handful of rows early stopping has almost nothing to judge
+    # by, and the library's 25,000-round limit makes 5 rows take a minute.
+    CORRECTION_DEFAULTS = {"interactions": 0, "max_rounds": 300}
+    # Inputs the correction never sees. Empty: it sees every input the base
+    # does (decision 0076). 0075 found that `month` made the correction learn a
+    # wrong seasonal effect; that is open for the team to settle.
+    CORRECTION_EXCLUDED_INPUTS: tuple[str, ...] = ()
+
+    def __init__(self, base: EBMModel, **params):
+        """Wraps a trained base model; `fit` then trains the correction.
+
+        Args:
+            base (EBMModel): The trained model to correct. If it is itself a
+                tuned model, its own base is used, so corrections never stack.
+            **params: Settings passed through to the correction EBM.
+
+        Raises:
+            RuntimeError: If the base has not been fit.
+        """
+        if isinstance(base, TunedEBMModel):
+            base = base.base
+        base._fitted()
+        super().__init__(
+            alpha=base.alpha,
+            calibration_frac=base.calibration_frac,
+            seed=base.seed,
+            **params,
+        )
+        self.base = base
+        self._residuals = base._residuals
+
+    def fit(self, x, y, sample_weight=None):
+        """Trains the correction on the gap between `y` and the base.
+
+        Args:
+            x (pd.DataFrame): Features of the nights to learn from.
+            y (pd.Series): The rate each night should get.
+            sample_weight (np.ndarray | None): How much each row counts. None
+                weights every row equally.
+
+        Returns:
+            TunedEBMModel: The model with its correction trained.
+        """
+        inputs = x.drop(columns=list(self.CORRECTION_EXCLUDED_INPUTS), errors="ignore")
+        self._model = ExplainableBoostingRegressor(
+            random_state=self.seed, **{**self.CORRECTION_DEFAULTS, **self.params}
+        ).fit(inputs, y, sample_weight=sample_weight, init_score=self.base.predict(x))
+        return self
+
+    def _inputs(self, x):
+        """The columns of x the fitted correction was trained on.
+
+        Read from the fitted EBM, not from CORRECTION_EXCLUDED_INPUTS, so a
+        tuned model saved before that setting existed still predicts.
+        """
+        return x[list(self._fitted().feature_names_in_)]
+
+    def correction(self, x):
+        """How much the correction moves each prediction.
+
+        Args:
+            x (pd.DataFrame): Features to predict on.
+
+        Returns:
+            np.ndarray: One amount per row of x, in rate units.
+
+        Raises:
+            RuntimeError: If fit has not been called yet.
+        """
+        return self._fitted().predict(self._inputs(x))
+
+    def predict(self, x):
+        """The base's prediction plus the correction, per row.
+
+        Raises:
+            RuntimeError: If fit has not been called yet.
+        """
+        return self.base.predict(x) + self.correction(x)
+
+    def predict_uncertainty(self, x):
+        """The base's uncertainty; the correction doesn't change it."""
+        self._fitted()
+        return self.base.predict_uncertainty(x)
+
+    def explain(self, x):
+        """The base's contributions with the correction's added, term by term.
+
+        Raises:
+            RuntimeError: If fit has not been called yet.
+        """
+        correction = self._fitted()
+        base = self.base.explain(x)
+        extra = pd.DataFrame(
+            correction.eval_terms(self._inputs(x)),
+            columns=correction.term_names_,
+            index=x.index,
+        )
+        return base.add(extra, fill_value=0.0)[base.columns]
+
+    @property
+    def intercept(self):
+        """The base's intercept plus the correction's.
+
+        Raises:
+            RuntimeError: If fit has not been called yet.
+        """
+        return self.base.intercept + float(self._fitted().intercept_)

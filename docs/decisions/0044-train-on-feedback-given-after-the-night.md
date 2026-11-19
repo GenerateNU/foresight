@@ -1,6 +1,6 @@
 # 0044. Training uses feedback given after the night: its rate, and a weight
 
-**Status:** Accepted · **Date:** 2026-10-31
+**Status:** Superseded by [0071](0071-manager-rate-is-the-target-everywhere.md) · **Date:** 2026-10-31
 
 ## Context
 Managers tell us (decision [0043](0043-manager-feedback-is-versioned.md)) when

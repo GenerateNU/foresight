@@ -23,7 +23,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 |---|---|---|
 | [0001](0001-ebm-pricing-model.md) | Explainable Boosting Machine is the pricing model | ML |
 | [0002](0002-predict-rate-in-currency.md) | Predict the nightly rate in currency | ML |
-| [0003](0003-sample-weighting.md) | Weight training nights by occupancy | ML |
+| [0003](0003-sample-weighting.md) | Weight training nights by occupancy (superseded by 0076) | ML |
 | [0004](0004-exclude-free-nights.md) | Exclude free and staff nights from training | ML |
 | [0005](0005-conformal-confidence-interval.md) | Conformal confidence interval, 80% by default | ML |
 | [0006](0006-uncertainty-alongside-interval.md) | Report model uncertainty alongside the interval | ML |
@@ -64,7 +64,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0041](0041-events-in-the-model.md) | Events reach the model; nights no backfill covered are unknown (restored by 0055) | ML |
 | [0042](0042-how-the-backtest-judges-the-model.md) | The backtest judges the model against baselines and smaller input sets | ML |
 | [0043](0043-manager-feedback-is-versioned.md) | Manager feedback is added to, never changed | data model |
-| [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight | ML |
+| [0044](0044-train-on-feedback-given-after-the-night.md) | Training uses feedback given after the night: its rate, and a weight (superseded by 0071) | ML |
 | [0045](0045-refit-on-every-row.md) | The kept model is refit on every row; the holdout only sets the interval and scores | ML |
 | [0046](0046-record-training-cost.md) | Every version records its fit's time and peak memory | ML |
 | [0047](0047-bookings-and-cancellations.md) | Bookings and cancellations are stored as Guestline gives them | data model |
@@ -81,3 +81,12 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0066](0066-popups-placed-by-floating-ui.md) | Popups are placed by Floating UI | frontend |
 | [0056](0056-lead-days-input.md) | Days booked ahead is a model input, trained on booked rooms | ML |
 | [0067](0067-night-before-holiday-input.md) | The night before a public holiday is a model input, worked out from the date | ML |
+| [0068](0068-manager-sends-the-rate-they-chose.md) | The manager sends the rate they chose; the verdict is worked out from it | API |
+| [0069](0069-daily-tune-up.md) | A daily tune-up corrects the active model with the manager's rates | ML |
+| [0070](0070-one-off-nights-teach-the-model-nothing.md) | A night tagged one-off teaches the model nothing | ML |
+| [0071](0071-manager-rate-is-the-target-everywhere.md) | The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation | ML |
+| [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md) | The tune-up also learns the nights the manager left alone, as "no change" | ML |
+| [0073](0073-how-the-backtest-judges-the-tune-up.md) | The tuning backtest replays the tune-up after N days of manager rates | ML |
+| [0074](0074-only-past-nights-are-no-change.md) | Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager | ML |
+| [0075](0075-correction-ignores-month.md) | The tune-up's correction never sees `month` (reversed for now by 0076; open) | ML |
+| [0076](0076-booked-rooms-only-and-manager-rows.md) | Train on booked rooms only; manager feedback as booked-room rows; prices before VAT | ML / API |

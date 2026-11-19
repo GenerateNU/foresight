@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
+from foresight.database.models.hotel import RoomType
 from foresight.database.models.recommendation import RecommendationSnapshot
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
     from datetime import date, datetime
     from decimal import Decimal
 
@@ -73,6 +75,37 @@ async def latest_snapshots(
         )
     )
     return {s.stay_date: s for s in await session.scalars(stmt)}
+
+
+async def snapshotted_nights(
+    session: AsyncSession, hotel_id: int, *, start: date, end: date
+) -> Sequence[Mapping[str, Any]]:
+    """Each room type and night in [start, end] the hotel has a snapshot for.
+
+    One row per room type and night, however many snapshots it has. Rows carry
+    stay_date, room_type_id, room_type (its name) and shown_at, when its latest
+    snapshot was made, oldest night first.
+    """
+    stmt = (
+        select(
+            RecommendationSnapshot.stay_date,
+            RecommendationSnapshot.room_type_id,
+            RoomType.name.label("room_type"),
+            func.max(RecommendationSnapshot.created_at).label("shown_at"),
+        )
+        .join(RoomType, RecommendationSnapshot.room_type_id == RoomType.id)
+        .where(
+            RecommendationSnapshot.hotel_id == hotel_id,
+            RecommendationSnapshot.stay_date.between(start, end),
+        )
+        .group_by(
+            RecommendationSnapshot.stay_date,
+            RecommendationSnapshot.room_type_id,
+            RoomType.name,
+        )
+        .order_by(RecommendationSnapshot.stay_date, RoomType.name)
+    )
+    return (await session.execute(stmt)).mappings().all()
 
 
 async def latest_snapshot_at(session: AsyncSession, hotel_id: int) -> datetime | None:
