@@ -9,21 +9,24 @@ const DEMAND_DOT = [
 const NEUTRAL = { bg: 'bg-stone-25', dot: 'bg-stone-300' }
 
 /**
- * What the "Color by" chips do. Each mode's `style(rec, { demandLevel })` turns a night's
+ * What the "Color by" chips do. Each mode's `style(rec, { priceLevel })` turns a night's
  * recommendation into `{ bg, dot }` classes. A mode with `disabled` says why it's off.
  */
 export const COLOR_MODES = [
   {
-    id: 'demand',
-    label: 'Demand',
-    style: (rec, { demandLevel }) => ({
-      bg: DEMAND_BG[demandLevel - 1],
-      dot: DEMAND_DOT[demandLevel - 1],
+    // Colors by the rate, not by demand: there's no booking data yet to show demand.
+    id: 'price-level',
+    label: 'Price level',
+    style: (rec, { priceLevel }) => ({
+      bg: DEMAND_BG[priceLevel - 1],
+      dot: DEMAND_DOT[priceLevel - 1],
     }),
   },
   {
     id: 'price-change',
     label: 'Price change',
+    // Off until the API sends `previous_rate` (issue #96); the style is ready for then.
+    disabled: 'Needs previous_rate',
     style: (rec) => {
       if (!rec.change) return NEUTRAL
       return rec.change > 0
@@ -46,5 +49,5 @@ export const COLOR_MODES = [
 /** The `{ bg, dot }` classes for one night under `modeId`; neutral for a disabled mode. */
 export function nightStyle(modeId, rec, context) {
   const mode = COLOR_MODES.find((m) => m.id === modeId)
-  return mode?.style ? mode.style(rec, context) : NEUTRAL
+  return mode?.style && !mode.disabled ? mode.style(rec, context) : NEUTRAL
 }

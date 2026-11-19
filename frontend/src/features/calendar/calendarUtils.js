@@ -62,10 +62,9 @@ export function ratesByNight(recommendations) {
 }
 
 /**
- * Which of 5 demand buckets (1 quiet .. 5 peak) a rate falls in, relative to the month.
- * Stand-in until real occupancy / pickup data exists: pricier night = busier night.
+ * Which of 5 price buckets (1 cheapest .. 5 dearest) a rate falls in, relative to the month.
  */
-export function demandLevel(rate, min, max) {
+export function priceLevel(rate, min, max) {
   if (max === min) return 3
   return Math.min(5, 1 + Math.floor(((rate - min) / (max - min)) * 5))
 }

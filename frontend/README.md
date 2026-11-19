@@ -76,4 +76,4 @@ or to the calendar.
 
 - The designed sign-in page, logout and the signed-in user in the top bar (issue #108).
 - Every screen behind a placeholder route.
-- Calendar: the occupancy, comp set gap and weather colour modes (waiting on booking data and competitor rates), and the up/down price badge, which shows once the API returns `previous_rate` (issue #96).
+- Calendar: the occupancy, comp set gap and weather colour modes (waiting on booking data and competitor rates), and the price change colour mode and up/down price badge, which work once the API returns `previous_rate` (issue #96).
