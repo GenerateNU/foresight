@@ -21,7 +21,6 @@ class Hotel(Base):
     # Its market. Timezone and every outside signal come from here.
     # RESTRICT: a city can't be deleted while hotels are in it.
     city_id: Mapped[int] = mapped_column(ForeignKey("cities.id", ondelete="RESTRICT"))
-    total_rooms: Mapped[int]
 
     # The hotel's own location, for distance to event venues. The city's
     # centre is used for searching.

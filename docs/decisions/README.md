@@ -26,7 +26,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0003](0003-sample-weighting.md) | Weight training nights by occupancy (superseded by 0076) | ML |
 | [0004](0004-exclude-free-nights.md) | Exclude free and staff nights from training | ML |
 | [0005](0005-conformal-confidence-interval.md) | Conformal confidence interval, 80% by default | ML |
-| [0006](0006-uncertainty-alongside-interval.md) | Report model uncertainty alongside the interval | ML |
+| [0006](0006-uncertainty-alongside-interval.md) | Report model uncertainty alongside the interval (superseded by 0082) | ML |
 | [0007](0007-shared-feature-builder.md) | One feature builder for training and serving | ML |
 | [0008](0008-models-stored-in-postgres.md) | Store trained models in Postgres | ML / database |
 | [0009](0009-one-model-per-hotel.md) | One model per hotel, one active at a time | ML / database |
@@ -68,7 +68,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0045](0045-refit-on-every-row.md) | The kept model is refit on every row; the holdout only sets the interval and scores | ML |
 | [0046](0046-record-training-cost.md) | Every version records its fit's time and peak memory | ML |
 | [0047](0047-bookings-and-cancellations.md) | Bookings and cancellations are stored as Guestline gives them | data model |
-| [0048](0048-rooms-booked-rebuilt-when-asked.md) | How full a night was is rebuilt when asked | data model |
+| [0048](0048-rooms-booked-rebuilt-when-asked.md) | How full a night was is rebuilt when asked (superseded by 0082) | data model |
 | [0049](0049-booking-pace-measured-before-served.md) | ~~Booking pace is measured in the backtest before it's served~~ (superseded by 0050) | ML |
 | [0050](0050-drop-flights-and-booking-pace.md) | Flights, competitor rates and booking pace are removed | ML / data model |
 | [0051](0051-calendar-only-model.md) | The model reads only the calendar until experiments say otherwise (events back in 0055) | ML |
@@ -95,3 +95,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0079](0079-one-main-room-type-double-room-only.md) | The model prices one product: DOUBLE, room only | ML / database |
 | [0080](0080-actual-and-forecast-removed.md) | Actual & Forecast is no longer read; its table is kept for now | ingest / database |
 | [0081](0081-weather-removed.md) | Weather is removed; its table is kept for now | ingest / database |
+| [0082](0082-dead-code-removed.md) | Unused pieces are removed: uncertainty, rate basis, booking curves, feedback flags, total rooms | ML / API / database |

@@ -1,6 +1,6 @@
 # 0006. Report model uncertainty alongside the interval
 
-**Status:** Accepted · **Date:** 2026-10-13
+**Status:** Superseded by [0082](0082-dead-code-removed.md) · **Date:** 2026-10-13
 
 ## Context
 EBM trains 14 sub-models (`outer_bags`) and averages them. How much they

@@ -63,8 +63,7 @@ class EBMSettings(RequestSchema):
         default=None,
         ge=2,
         le=64,
-        description="Sub-models averaged; also drives the uncertainty signal. "
-        "Library default: 14",
+        description="Sub-models averaged. Library default: 14",
     )
     min_samples_leaf: int | None = Field(
         default=None,

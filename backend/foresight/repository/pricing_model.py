@@ -63,8 +63,7 @@ async def link_feedback(
 ) -> None:
     """Record the feedback a model version was trained with.
 
-    Each row carries feedback_id, rate_replaced, weight_factor and
-    training_rate. Does nothing for an empty list.
+    Each row carries feedback_id and training_rate. Does nothing for an empty list.
     """
     if used:
         await session.execute(

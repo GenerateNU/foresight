@@ -14,7 +14,6 @@ export function mockHotel(id) {
       airport_iata: 'DUB',
       airport_icao: 'EIDW',
     },
-    total_rooms: 24,
     latitude: 53.3389,
     longitude: -6.2591,
   }

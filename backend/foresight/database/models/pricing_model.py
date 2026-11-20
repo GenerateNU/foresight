@@ -83,10 +83,9 @@ class PricingModel(Base):
 class PricingModelFeedback(Base):
     """A piece of manager feedback that a model version was trained with.
 
-    One row per piece of feedback that changed a night's training rate or
-    weight (decision 0044). A night with no row here trained exactly as
-    recorded. Feedback is only ever added, so a row still points at what the
-    manager said at the time.
+    One row per manager rate a version learnt from: a retrain's manager rows
+    (decision 0076) or a tune-up's rates (0069). Feedback is only ever added,
+    so a row still points at what the manager said at the time.
     """
 
     __tablename__ = "pricing_model_feedback"
@@ -99,11 +98,5 @@ class PricingModelFeedback(Base):
     feedback_id: Mapped[int] = mapped_column(
         ForeignKey("feedback.id", ondelete="CASCADE"), primary_key=True, index=True
     )
-    # True if the manager's rate replaced the recorded one for this night.
-    rate_replaced: Mapped[bool]
-    # The night's weight with feedback, over its weight without. Above 1 counts
-    # the night more, below 1 less.
-    weight_factor: Mapped[Decimal] = mapped_column(Numeric(10, 3))
-    # The rate this night was trained on: the manager's (within the cap) when
-    # replaced, else the recorded rate.
+    # The manager's rate, as trained on.
     training_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2))

@@ -92,10 +92,6 @@ def parse_files(files: Sequence[tuple[str, bytes]]) -> list[ParsedFile]:
     return [_parse_file(name, content) for name, content in files]
 
 
-def report_for(kind: JobKind) -> Report:
-    return _BY_KIND[kind]
-
-
 def chunks(rows: Sequence[Any]) -> list[Sequence[Any]]:
     return [rows[i : i + CHUNK_ROWS] for i in range(0, len(rows), CHUNK_ROWS)]
 

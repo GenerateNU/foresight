@@ -531,7 +531,7 @@ GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
       feedback_repo.manager_rates               the manager's rate per night, read live (0071)
-  ← one per night: rate, manager_rate, rate_basis, lead_days, 80% interval, factors in €
+  ← one per night: rate, manager_rate, lead_days, 80% interval, factors in €
 ```
 
 A version trained on booked rooms also reads days booked ahead
@@ -725,26 +725,6 @@ cli.tuning_backtest
     backend/backtest-out/ of actual, base and each tune-up per scored night
 ```
 
-### 6.8 How full a night was on an earlier date
-
-Computed when asked, never stored
-([0048](decisions/0048-rooms-booked-rebuilt-when-asked.md)). There's no route yet.
-
-```
-domain/booking.booking_curves(session, 7, start=…, end=…)
-  get_hotel                                       404 if missing
-  booking_repo.list_live_bookings                 no cancellation for the ref
-  booking_repo.list_cancellations
-  per night of each stay: +1 the day booked, −1 the day cancelled
-← {night: {day the count changed: rooms booked at the end of that day}}
-
-domain/booking.rooms_on(curve, as_of)             reads one night at any date
-domain/booking.rooms_booked(session, 7, night=…, as_of=…)     one night
-```
-
-The check of the rebuild against Actual & Forecast's rooms sold went with that
-report ([0080](decisions/0080-actual-and-forecast-removed.md)).
-
 ---
 
 ## 7. API
@@ -831,5 +811,5 @@ removed ([0081](decisions/0081-weather-removed.md)); events reach the model
    PredictHQ key.
 4. **Amended bookings.** A booking keeps the dates it had when first uploaded
    ([0047](decisions/0047-bookings-and-cancellations.md)), and how often dates
-   change isn't known. The rebuild (6.8) matches final rooms sold, but nothing
-   independent checks its counts at earlier dates.
+   change isn't known, and nothing checks the bookings against the hotel's
+   final rooms sold any more (0080).

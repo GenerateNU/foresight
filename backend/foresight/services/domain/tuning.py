@@ -152,8 +152,6 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         [
             {
                 "feedback_id": int(row["id"]),
-                "rate_replaced": True,
-                "weight_factor": 1.0,
                 "training_rate": float(row["rate"]),
             }
             for row in rows

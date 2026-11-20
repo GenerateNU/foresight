@@ -1,6 +1,6 @@
 # 0048. How full a night was is rebuilt when asked
 
-**Status:** Accepted, amended by [0080](0080-actual-and-forecast-removed.md) (the final-count check is gone) · **Date:** 2026-11-02
+**Status:** Superseded by [0082](0082-dead-code-removed.md) (the rebuild is removed) · **Date:** 2026-11-02
 
 ## Context
 [0037](0037-three-guestline-reports.md) defined how full a night was on an

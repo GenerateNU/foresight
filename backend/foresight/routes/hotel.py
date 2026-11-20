@@ -37,11 +37,6 @@ _CITY_ID: dict[str, Any] = {
     "description": "The city the hotel sits in; see /cities",
     "examples": [1],
 }
-_TOTAL_ROOMS: dict[str, Any] = {
-    "gt": 0,
-    "description": "Rooms across every room type",
-    "examples": [100],
-}
 _LATITUDE: dict[str, Any] = {
     "ge": -90,
     "le": 90,
@@ -59,7 +54,6 @@ _LONGITUDE: dict[str, Any] = {
 class HotelRequest(RequestSchema):
     name: str = Field(**_HOTEL_NAME)
     city_id: int = Field(**_CITY_ID)
-    total_rooms: int = Field(**_TOTAL_ROOMS)
     latitude: float | None = Field(default=None, **_LATITUDE)
     longitude: float | None = Field(default=None, **_LONGITUDE)
 
@@ -69,11 +63,10 @@ class HotelUpdateRequest(RequestSchema):
 
     name: str | None = Field(default=None, **_HOTEL_NAME)
     city_id: int | None = Field(default=None, **_CITY_ID)
-    total_rooms: int | None = Field(default=None, **_TOTAL_ROOMS)
     latitude: float | None = Field(default=None, **_LATITUDE)
     longitude: float | None = Field(default=None, **_LONGITUDE)
 
-    @field_validator("name", "city_id", "total_rooms")
+    @field_validator("name", "city_id")
     @classmethod
     def _not_null(cls, value: object) -> object:
         # Required columns: omitting them leaves them alone, null can't clear them.
@@ -86,7 +79,6 @@ class HotelResponse(ResponseSchema):
     id: int = Field(description="The hotel's id")
     name: str = Field(description="The hotel's name")
     city: CityResponse = Field(description="The city the hotel sits in")
-    total_rooms: int = Field(description="Rooms across every room type")
     latitude: float | None = Field(description="The hotel itself, in degrees")
     longitude: float | None = Field(description="The hotel itself, in degrees")
 
@@ -167,26 +159,15 @@ class RecommendationResponse(ResponseSchema):
     lead_days: int | None = Field(
         description="Days from today to the night (0 for today and past "
         "nights). The rate is what the night would sell for if booked today. "
-        "Null if the model wasn't trained on bookings"
-    )
-    rate_basis: str = Field(
-        description="What the rate is: `nett`, a booked room's rate before VAT, "
-        "from every version trained now; `arr`, the night's average rate, only "
-        "from versions trained on nights before decision 0076",
-        examples=["nett"],
+        "Null on snapshots from versions that didn't read it"
     )
     recommended_rate: Decimal = Field(
-        description="The rate to list, in `currency`, before VAT when "
-        "`rate_basis` is `nett`"
+        description="The rate to list, in `currency`, before VAT (decision 0076)"
     )
     currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
     explanation: ExplanationResponse = Field(description="Why the rate is what it is")
     confidence_interval: ConfidenceIntervalResponse = Field(
         description="The range the rate is likely to fall in"
-    )
-    uncertainty: Decimal = Field(
-        description="How much the model's sub-models disagree, in EUR. High "
-        "means an unusual night: review the rate"
     )
     model_id: int = Field(description="The model version that priced it")
     model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])
