@@ -46,7 +46,7 @@ src/
     layout/             the shell (sidebar, top bar) and PageHeader
     ui/                 shared building blocks: Button, Card, Input, Badge, Chip, states
   features/           one folder per built screen; everything for it lives together
-    auth/               the sign-in page and the return to the saved page after it
+    auth/               who's signed in (AuthProvider, useAuth, RequireAuth), sign-in and sign-out
     calendar/           the month calendar: page, grid, hover card, colour modes
   pages/              placeholder, not-found and the dev component gallery
 ```
@@ -72,6 +72,13 @@ src/
 
 ## Signing in
 
+`AuthProvider` (in `main.jsx`) asks `GET /auth/me` once. Read it with `useAuth()`:
+`{ user, hotels, hotel, status, retry }`, where `hotel` is the first of `hotels` (one hotel
+per user for now) and `status` is `loading`, `authed`, `anon`, `no-hotel` or `error`. Anything
+hotel-scoped takes `hotel.id` from there. `RequireAuth` wraps every page in the app shell and
+shows a full-screen state for everything but `authed`; those states have no Figma design yet.
+With `VITE_USE_MOCKS=true`, `/auth/me` returns one hotel (Beresford, Dublin).
+
 A 401 from the API saves the current page in `sessionStorage` and sends the browser to
 `/sign-in`. Its button is a plain link to the API's `/auth/google/login`, not a `fetch`. After
 Google, the API always redirects to the app's root (`FRONTEND_URL`) and ignores any `next`
@@ -80,6 +87,7 @@ or to the calendar.
 
 ## Not built yet
 
-- The designed sign-in page, logout and the signed-in user in the top bar (issue #108).
+- An error on the sign-in page when Google sign-in fails: the API's callback shows its own error and doesn't come back to the app.
+- Choosing between hotels, for a user linked to more than one.
 - Every screen behind a placeholder route.
 - Calendar: the occupancy, comp set gap and weather colour modes (waiting on booking data and competitor rates), and the price change colour mode and up/down price badge, which work once the API returns `previous_rate` (issue #96).
