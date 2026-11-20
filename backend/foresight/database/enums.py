@@ -98,9 +98,8 @@ class FeedbackVerdict(StrEnum):
 class FeedbackTiming(StrEnum):
     """Whether feedback came before or after the night it is about.
 
-    Set by the server from the stay date, never sent by the client. Training
-    uses what was said before a night (a prediction) and after it (a
-    judgement with the result known) separately.
+    Set by the server from the stay date, never sent by the client. A record
+    only: training and the tune-up treat both the same (decision 0071).
     """
 
     BEFORE = "before"
