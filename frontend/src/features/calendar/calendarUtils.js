@@ -93,3 +93,12 @@ export function roundForDisplay(rate, baseline, factors) {
   if (target.shown !== 0) target.sign = Math.sign(target.shown)
   return lines
 }
+
+/**
+ * What a rate is, from the API's `rate_basis`, worded to follow "rates" or a price:
+ * "before VAT" for "nett" (every model since decision 0076), "as the night's average" for
+ * "arr" (older models; the API doesn't say whether that includes VAT).
+ */
+export function rateBasisLabel(rateBasis) {
+  return rateBasis === 'arr' ? "as the night's average" : 'before VAT'
+}
