@@ -2,7 +2,7 @@
 export function mockHotel(id) {
   return {
     id,
-    name: 'The Linden House',
+    name: 'Beresford',
     city: {
       id: 1,
       name: 'Dublin',
@@ -17,4 +17,9 @@ export function mockHotel(id) {
     latitude: 53.3389,
     longitude: -6.2591,
   }
+}
+
+/** A signed-in user in the shape of MeResponse (backend/foresight/routes/auth.py), with one hotel. */
+export function mockMe() {
+  return { id: 1, email: 'manager@example.com', name: 'Hotel Manager', hotels: [mockHotel(1)] }
 }
