@@ -11,9 +11,14 @@ commits. A job outlives the request that queued it, and it commits after every
 chunk so a run that ends early keeps its finished work and records where to
 resume. Everything it does goes through `services/job.py`.
 
+With SCHEDULER_ENABLED, `schedule_forever` also queues each hotel's routine
+jobs once they're due.
+
 The queues live in the API process, so production runs a single uvicorn
-worker. A restart loses them; on startup `fail_interrupted_jobs` marks jobs
-left queued or running failed so they can be started again.
+worker. A restart, deploy or sleep loses them; on startup
+`fail_interrupted_jobs` marks jobs left queued or running failed so they can
+be started again. That's safe on Render's free plan, where the old process has
+stopped before the new one starts; a paid plan overlaps them (decision 0077).
 """
 
 from __future__ import annotations
@@ -21,12 +26,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from foresight.database.session import async_session_factory
 from foresight.services import job as job_service
 
+if TYPE_CHECKING:
+    from foresight.database.models.job import Job
+
 log = logging.getLogger(__name__)
+
+SCHEDULE_CHECK_SECONDS = 15 * 60
 
 # hotel id → job ids waiting, oldest first
 _queues: dict[int, deque[int]] = {}
@@ -82,6 +92,7 @@ async def run_job(job_id: int, payload: Any = None) -> None:
         job = await job_service.get_job(session, job_id)
 
         resume_from = job_service.initial_resume_from(job)
+        follow_ups: list[Job] = []
         try:
             async for step in job_service.run(session, job, payload):
                 await job_service.record_progress(session, job_id, step.progress)
@@ -93,7 +104,10 @@ async def run_job(job_id: int, payload: Any = None) -> None:
             await job_service.mark_ended_early(session, job_id, exc, resume_from)
         else:
             await job_service.mark_succeeded(session, job_id)
+            follow_ups = await job_service.start_follow_up_jobs(session, job_id)
         await session.commit()
+    for follow_up in follow_ups:
+        await enqueue(follow_up.id, follow_up.hotel_id)
 
 
 async def fail_interrupted_jobs() -> None:
@@ -102,3 +116,16 @@ async def fail_interrupted_jobs() -> None:
         await session.commit()
     if count:
         log.warning("marked %d interrupted job(s) failed", count)
+
+
+async def schedule_forever() -> None:
+    while True:
+        try:
+            async with async_session_factory() as session:
+                jobs = await job_service.start_due_jobs(session)
+                await session.commit()
+            for job in jobs:
+                await enqueue(job.id, job.hotel_id)
+        except Exception:
+            log.exception("scheduled jobs could not be started")
+        await asyncio.sleep(SCHEDULE_CHECK_SECONDS)

@@ -69,6 +69,7 @@ class JobKind(StrEnum):
     RESERVATIONS = "reservations"  # Daily New Reservations
     CANCELLATIONS = "cancellations"  # Cancellations
     TRAIN = "train"  # a new pricing model version
+    PRICE = "price"  # recommendations for the coming nights, saved ahead
     TUNE = "tune"  # the active model corrected with the manager's rates
 
 

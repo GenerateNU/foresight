@@ -11,26 +11,34 @@ ends early.
 
 Dates: with neither `start` nor `end` a job does its signal's routine refresh;
 with either it backfills the window `services/ingest/window.py` resolves.
+
+`start_due_jobs` queues each hotel's routine refreshes once they're due, for
+the worker's scheduler.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from datetime import date as date_cls
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
+from foresight.repository import pricing_model as model_repo
 from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
+from foresight.services.domain import recommendation as recommendation_service
 from foresight.services.domain import tuning as tuning_service
 from foresight.services.domain.city import local_today
-from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.hotel import get_hotel, list_hotels, list_room_types
 from foresight.services.errors import (
     ConflictError,
+    DomainError,
     NotConfiguredError,
     NotFoundError,
 )
@@ -40,7 +48,13 @@ from foresight.services.ingest import weather as weather_ingest
 from foresight.services.ingest.window import InvalidWindowError, Window, resolve_window
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+    from collections.abc import (
+        AsyncIterator,
+        Awaitable,
+        Callable,
+        Mapping,
+        Sequence,
+    )
     from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +67,16 @@ if TYPE_CHECKING:
         [AsyncSession, Hotel, Mapping[str, Any], Any], AsyncIterator[Step]
     ]
 
+log = logging.getLogger(__name__)
+
+# The routine runs once a day at SCHEDULE_HOUR (_due); a scheduled run that
+# failed is retried this long after.
+RETRY_AFTER = timedelta(hours=1)
+# Marks a job the scheduler started. Only these set the next scheduled run, so
+# a manual run doesn't move it.
+SCHEDULED = {"scheduled": True}
+# Nights a price job saves recommendations for, from today.
+PRICE_NIGHTS = 90
 # How far back the first routine events refresh looks for revisions.
 FIRST_REFRESH_DAYS = 7
 # A source's quota or rate limit: the job stops rather than fails.
@@ -98,10 +122,16 @@ async def start_weather_job(
 
 
 async def start_events_job(
-    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    start: date | None,
+    end: date | None,
+    scheduled: bool = False,
 ) -> Job:
     """No dates: upcoming events PredictHQ revised since the last such run
     (or the last week, the first time). Dates: every event in the window.
+    `scheduled` is for the scheduler's own runs.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -122,6 +152,7 @@ async def start_events_job(
             session, hotel.id, start, end, today=local_today(hotel.city)
         )
         params = {"mode": "window", **window.as_params()}
+    params["scheduled"] = scheduled
     return await _queue(session, hotel, JobKind.EVENTS, params)
 
 
@@ -151,8 +182,10 @@ async def start_train_job(
     end: date | None,
     activate: bool,
     ebm_params: dict[str, Any],
+    scheduled: bool = False,
 ) -> Job:
-    """Train a new model version on what's already ingested.
+    """Train a new model version on what's already ingested. `scheduled` is
+    for the scheduler's own runs.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -168,8 +201,80 @@ async def start_train_job(
         "end": end.isoformat() if end else None,
         "activate": activate,
         "ebm_params": ebm_params,
+        "scheduled": scheduled,
     }
     return await _queue(session, hotel, JobKind.TRAIN, params)
+
+
+async def start_price_job(
+    session: AsyncSession, hotel_id: int, *, scheduled: bool = False
+) -> Job:
+    """Save recommendations for the next PRICE_NIGHTS nights, so the calendar
+    opens without pricing them first. `scheduled` is for the scheduler's own
+    runs.
+
+    Raises:
+        NotFoundError: Unknown hotel, or no active model.
+        ConflictError: A price job is already queued or running.
+    """
+    hotel = await get_hotel(session, hotel_id)
+    if await model_repo.get_active_pricing_model(session, hotel.id) is None:
+        raise NotFoundError("Active pricing model for hotel", hotel.id)
+    return await _queue(session, hotel, JobKind.PRICE, {"scheduled": scheduled})
+
+
+async def start_due_jobs(session: AsyncSession) -> list[Job]:
+    """Queue every hotel's routine jobs that are due, in the order they run.
+
+    Each is due once a day at SCHEDULE_HOUR, hotel time (`_due`). One that
+    can't start (already queued, not configured) is skipped until the next
+    check.
+    """
+    # (kind, how to start its scheduled run)
+    routine: list[tuple[JobKind, Callable[[int], Awaitable[Job]]]]
+    # Events first, so training learns from them and pricing reads them; then
+    # training, so pricing uses the new model. No weather: it's out of the
+    # model (0055).
+    routine = [
+        (
+            JobKind.EVENTS,
+            lambda h: start_events_job(
+                session, h, start=None, end=None, scheduled=True
+            ),
+        ),
+        *(
+            [
+                (
+                    JobKind.TRAIN,
+                    lambda h: start_train_job(
+                        session,
+                        h,
+                        description="scheduled",
+                        start=None,
+                        end=None,
+                        activate=True,
+                        ebm_params={},
+                        scheduled=True,
+                    ),
+                )
+            ]
+            if settings.scheduled_training
+            else []
+        ),
+        (JobKind.PRICE, lambda h: start_price_job(session, h, scheduled=True)),
+    ]
+
+    queued: list[Job] = []
+    now = _now()
+    for hotel in await list_hotels(session):
+        for kind, start in routine:
+            if not await _due(session, hotel, kind, now):
+                continue
+            try:
+                queued.append(await start(hotel.id))
+            except DomainError as exc:
+                log.info("hotel %s: %s not started: %s", hotel.id, kind.value, exc)
+    return queued
 
 
 async def start_tune_job(
@@ -216,11 +321,34 @@ async def cancel_job(session: AsyncSession, job_id: int) -> Job:
     return await get_job(session, job_id)
 
 
+async def _due(
+    session: AsyncSession, hotel: Hotel, kind: JobKind, now: datetime
+) -> bool:
+    """Due once a day at SCHEDULE_HOUR, hotel time, or RETRY_AFTER a scheduled
+    run that failed. Only scheduled runs count, so a manual one doesn't move
+    it. A missed hour (server down or asleep) is caught up at the next check.
+    A run that stopped on a quota waits for the next day, like a success."""
+    tz = ZoneInfo(hotel.city.timezone)
+    local_now = now.astimezone(tz)
+    # The latest scheduled time that has passed: today's, or yesterday's if
+    # today's hasn't come yet.
+    slot = datetime.combine(local_now.date(), time(settings.schedule_hour), tzinfo=tz)
+    if slot > local_now:
+        slot -= timedelta(days=1)
+    last = await job_repo.latest_finished_job(
+        session, hotel_id=hotel.id, kind=kind, params=SCHEDULED
+    )
+    if last is None or last.created_at < slot:
+        return True
+    assert last.finished_at is not None  # the query only returns finished jobs
+    return last.status == JobStatus.FAILED and last.finished_at + RETRY_AFTER <= now
+
+
 async def _queue(
     session: AsyncSession, hotel: Hotel, kind: JobKind, params: dict[str, Any]
 ) -> Job:
-    # Uploads stack up in the queue; a second weather, events or training run
-    # would only repeat the first (and spend API credits or training time).
+    # Uploads stack up in the queue; a second weather, events, training or price
+    # run would only repeat the first (and spend API credits or training time).
     if kind not in file_ingest.FILE_KINDS:
         running = await job_repo.find_unfinished_job(
             session, hotel_id=hotel.id, kind=kind
@@ -276,6 +404,21 @@ async def mark_succeeded(session: AsyncSession, job_id: int) -> None:
         resume_from=None,
         finished_at=_now(),
     )
+
+
+async def start_follow_up_jobs(session: AsyncSession, job_id: int) -> list[Job]:
+    """Jobs a succeeded job starts. A manual events run re-saves prices with
+    its new events, so the calendar opens without pricing them first; a
+    scheduled one doesn't, since the routine prices after it. One that can't
+    start (no model, a price job already queued) is skipped."""
+    job = await get_job(session, job_id)
+    if job.kind != JobKind.EVENTS or job.params.get("scheduled"):
+        return []
+    try:
+        return [await start_price_job(session, job.hotel_id)]
+    except DomainError as exc:
+        log.info("hotel %s: price after events not started: %s", job.hotel_id, exc)
+        return []
 
 
 async def mark_ended_early(
@@ -456,6 +599,37 @@ async def _train(
     )
 
 
+async def _price(
+    session: AsyncSession, hotel: Hotel, _params: Mapping[str, Any], _: Any
+) -> AsyncIterator[Step]:
+    model = await model_repo.get_active_pricing_model(session, hotel.id)
+    if model is None:
+        raise NotFoundError("Active pricing model for hotel", hotel.id)
+    # Older versions list the room types they were trained on; newer ones all.
+    trained_on = model.training_summary.get("room_types", [])
+    room_types = [
+        r
+        for r in await list_room_types(session, hotel.id)
+        if not trained_on or r.name in trained_on
+    ]
+    start = local_today(hotel.city)
+    end = start + timedelta(days=PRICE_NIGHTS - 1)
+    for done, room_type in enumerate(room_types, 1):
+        await recommendation_service.get_recommendations(
+            session, hotel.id, start=start, end=end, room_type_id=room_type.id
+        )
+        yield Step(
+            {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "model_version": model.version,
+                "room_types_done": done,
+                "room_types_total": len(room_types),
+            },
+            None,
+        )
+
+
 async def _tune(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
@@ -484,6 +658,7 @@ _HANDLERS: dict[JobKind, Handler] = {
     JobKind.RESERVATIONS: _file,
     JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,
+    JobKind.PRICE: _price,
     JobKind.TUNE: _tune,
 }
 

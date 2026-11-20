@@ -1,7 +1,7 @@
 from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -62,6 +62,17 @@ class Settings(BaseSettings):
     # memory until their job runs, so these bound what one upload can hold.
     upload_max_files: int = 10
     upload_max_file_mb: int = 50
+
+    # Runs each hotel's routine jobs when they're due. Off locally so a dev
+    # server doesn't call paid APIs on its own.
+    scheduler_enabled: bool = False
+    # Also retrain daily. Training runs in the web process, so turn this on
+    # only on a plan with the memory for it.
+    scheduled_training: bool = False
+    # Hour of the day (0-23, each hotel's local time) the scheduler runs each
+    # hotel's events refresh, training and pricing. A missed hour is caught up
+    # at the next check.
+    schedule_hour: int = Field(default=3, ge=0, le=23)
 
     # Sign-in
     google_client_id: str = ""

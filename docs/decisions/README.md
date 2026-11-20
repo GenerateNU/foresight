@@ -90,3 +90,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0074](0074-only-past-nights-are-no-change.md) | Only past nights the manager left alone count as "no change"; the tuning backtest can use a synthetic manager | ML |
 | [0075](0075-correction-ignores-month.md) | The tune-up's correction never sees `month` (reversed for now by 0076; open) | ML |
 | [0076](0076-booked-rooms-only-and-manager-rows.md) | Train on booked rooms only; manager feedback as booked-room rows; prices before VAT | ML / API |
+| [0077](0077-scheduled-jobs.md) | Routine jobs are scheduled inside the API process | jobs / operations |

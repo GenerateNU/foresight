@@ -21,7 +21,7 @@ nightly rate.
                                    │ plain arguments in, domain objects out
                     ┌──────────────▼───────────────────────────────┐
   worker.py ──────▶ │ services                                      │
-  (background jobs) │   domain/    rules and reads per domain       │
+  (jobs, schedule)  │   domain/    rules and reads per domain       │
                     │   ingest/    fetch + save, in chunks          │
                     │   adapters/  outside APIs and files, no DB    │──▶ outside APIs
                     │   job.py     job kinds + lifecycle            │
@@ -348,7 +348,8 @@ uploaded report, through one queue per hotel
 | `files` (multipart) | one per file: `ACTUAL_FORECAST`, `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
 
 Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
-queue.
+queue. `PRICE` saves recommendations for the next 90 nights; only the
+scheduler starts it (section 5.3).
 
 **Window rules** (`services/ingest/window.py`):
 
@@ -413,17 +414,36 @@ safe.
 - A hotel's jobs run one at a time, first in, first out; different hotels
   run side by side. A long backfill holds up the hotel's queue behind it.
 - A failed job doesn't stop the jobs queued after it.
-- One unfinished weather, events or training job per hotel; a second gets a
-  409. File jobs stack up in the queue instead.
-- A restart loses the queues and the parsed files waiting in them. On startup
-  every queued or running job is marked failed.
+- One unfinished weather, events, training or price job per hotel; a second
+  gets a 409. File jobs stack up in the queue instead.
+- A restart, deploy or sleep loses the queues and the parsed files waiting in
+  them. On startup every queued or running job is marked failed. That's safe on
+  the free plan, where the old process has stopped first; a paid plan needs
+  more (0077, "Moving to a paid plan").
 - Production runs a single uvicorn worker, because the queues and parsed files
   live in that process.
 - Production is a Render free-plan service
   ([0054](decisions/0054-hosted-on-render.md)). It sleeps after 15 minutes
   without requests, which kills running jobs and loses the queues the same
   way a restart does.
-- Nothing runs on a schedule; the routine refreshes run when called.
+
+### 5.3 Scheduled jobs
+
+With `SCHEDULER_ENABLED`, `worker.schedule_forever` runs from startup
+([0077](decisions/0077-scheduled-jobs.md)):
+
+```
+every 15 minutes
+  job_service.start_due_jobs(session)
+    for each hotel, in order: events, train (SCHEDULED_TRAINING), price
+      no scheduled run of that kind since SCHEDULE_HOUR (hotel time) last
+      passed, or the last one failed 1h ago? Manual runs don't count.
+        → the same start_* the routes call; skipped if it can't start
+  commit; worker.enqueue each job      same per-hotel queue as uploads
+
+after a manual events job succeeds
+  job_service.start_follow_up_jobs → a PRICE job, same queue
+```
 
 ---
 
