@@ -93,3 +93,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0077](0077-scheduled-jobs.md) | Routine jobs are scheduled inside the API process | jobs / operations |
 | [0078](0078-tune-up-keeps-what-was-shown-and-points-to-its-base.md) | Untouched nights keep the rate the manager was shown; a tune-up points to its base | ML / database |
 | [0079](0079-one-main-room-type-double-room-only.md) | The model prices one product: DOUBLE, room only | ML / database |
+| [0080](0080-actual-and-forecast-removed.md) | Actual & Forecast is no longer read; its table is kept for now | ingest / database |

@@ -75,7 +75,7 @@ _DATE_EXAMPLES: dict[str, Any] = {
     },
     "end_only": {
         "summary": "Backfill back to the first loaded night",
-        "description": "Needs performance data loaded first; walks newest first.",
+        "description": "Needs bookings loaded first; walks newest first.",
         "value": {"end": _FULL["end"]},
     },
     "refresh": {
@@ -150,9 +150,9 @@ async def ingest_files(
     files: Annotated[
         list[UploadFile],
         File(
-            description="Guestline CSV exports: Actual & Forecast, Daily New "
-            "Reservations or Cancellations, in any mix. Each file's report is "
-            "recognised from its header"
+            description="Guestline CSV exports: Daily New Reservations or "
+            "Cancellations, in any mix. Each file's report is recognised from "
+            "its header"
         ),
     ],
 ) -> list[JobResponse]:

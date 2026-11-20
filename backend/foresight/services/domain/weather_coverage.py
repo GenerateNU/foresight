@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
-from foresight.repository import hotel as hotel_repo
+from foresight.repository import booking as booking_repo
 from foresight.repository.signals import weather as weather_repo
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.ingest.window import InvalidWindowError
@@ -64,11 +64,10 @@ async def hotel_weather_coverage(
     """Coverage of the hotel's city; omitted dates default to its loaded nights."""
     hotel = await get_hotel(session, hotel_id)
     if start is None or end is None:
-        loaded = await hotel_repo.stay_date_range(session, hotel.id)
+        loaded = await booking_repo.booked_night_range(session, hotel.id)
         if loaded is None:
             raise InvalidWindowError(
-                "no hotel nights loaded; load performance data or give both "
-                "start and end"
+                "no bookings loaded; upload reservations or give both start and end"
             )
         start, end = start or loaded[0], end or loaded[1]
     if start > end:

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from foresight.database.enums import JobKind
 from foresight.services.errors import InvalidRequestError
-from foresight.services.ingest import actual_forecast, bookings
+from foresight.services.ingest import bookings
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -48,15 +48,6 @@ class Report:
 
 
 REPORTS: tuple[Report, ...] = (
-    Report(
-        JobKind.ACTUAL_FORECAST,
-        "Actual & Forecast",
-        actual_forecast.COLUMNS,
-        actual_forecast.DATE_FIELD,
-        actual_forecast.parse,
-        actual_forecast.save,
-        actual_forecast.PARSE_ERRORS,
-    ),
     Report(
         JobKind.RESERVATIONS,
         "Daily New Reservations",

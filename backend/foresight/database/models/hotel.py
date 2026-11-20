@@ -1,10 +1,8 @@
-"""A hotel, its room types, and how each room type sold per night."""
+"""A hotel and its room types."""
 
-from datetime import date
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from foresight.database.base import Base
@@ -49,36 +47,6 @@ class RoomType(Base):
     name: Mapped[str] = mapped_column(String(120))
 
     hotel: Mapped["Hotel"] = relationship(back_populates="room_types", lazy="raise")
-    nights: Mapped[list["DailyPerformance"]] = relationship(
-        back_populates="room_type", lazy="raise", passive_deletes=True
-    )
 
     # Leads on hotel_id, so it also serves as the foreign key index.
     __table_args__ = (UniqueConstraint("hotel_id", "name"),)
-
-
-class DailyPerformance(Base):
-    """One room type, one night: what we charged and how it sold."""
-
-    __tablename__ = "daily_performance"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    room_type_id: Mapped[int] = mapped_column(
-        ForeignKey("room_types.id", ondelete="CASCADE")
-    )
-
-    stay_date: Mapped[date] = mapped_column(Date)  # the night being sold
-    rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # price we listed
-    rooms_available: Mapped[int]  # rooms in stock, including any out of service
-    rooms_sold: Mapped[int] = mapped_column(default=0)
-    room_revenue: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
-    # From Actual & Forecast. Empty for nights imported before these were read,
-    # or from an export that left the columns out.
-    rooms_blocked: Mapped[int | None]  # sold through group blocks
-    rooms_out_of_service: Mapped[int | None]  # Guestline's ROOS
-    waitlist: Mapped[int | None]  # guests waiting for a room
-
-    room_type: Mapped["RoomType"] = relationship(back_populates="nights", lazy="raise")
-
-    # One row per room type per night. Also serves as the foreign key index.
-    __table_args__ = (UniqueConstraint("room_type_id", "stay_date"),)

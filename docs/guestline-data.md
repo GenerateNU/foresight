@@ -1,5 +1,7 @@
 # Guestline export data
 
+> Actual & Forecast is no longer imported ([0080](decisions/0080-actual-and-forecast-removed.md)); what this page says about it is kept as a record.
+
 Beresford Hotel exports from Rezlynx, checked on 25 Oct 2026. [0037](decisions/0037-three-guestline-reports.md) lists the reports and why each one matters. This page records what the exports actually contain.
 
 The real exports are not in the repo. `backend/hidden_data/` is gitignored:
@@ -7,7 +9,7 @@ The real exports are not in the repo. `backend/hidden_data/` is gitignored:
 - `backend/hidden_data/*.csv` are the raw exports, with guest names.
 - `backend/hidden_data/clean/` holds the same four files with guest columns removed.
 
-`backend/data/` is committed and holds synthetic files for tests. They have the real headers, date formats and quoting, for a made-up 10-room hotel over 1 to 14 Sep 2025. Guest columns hold placeholders. Cancelled rooms appear only in `Cancellation.csv`, a few bookings have more than one room, and the live bookings add up to `Total` on every night. Regenerate them with `python3 data/generate.py` from `backend/`.
+`backend/data/` is committed and holds synthetic files for tests. They have the real headers, date formats and quoting, for a made-up 10-room hotel over 1 to 14 Sep 2025. Guest columns hold placeholders. Cancelled rooms appear only in `Cancellation.csv`, a few bookings have more than one room, and the live bookings add up to `Total` on every night. Actual & Forecast is no longer among them (0080). Regenerate them with `python3 data/generate.py` from `backend/`.
 
 ## Columns removed in `clean/`
 

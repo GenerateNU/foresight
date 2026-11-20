@@ -5,14 +5,12 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import Counter, defaultdict
-from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from foresight.repository import booking as booking_repo
-from foresight.repository import hotel as hotel_repo
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.ml.weighting import training_mask
 
@@ -26,12 +24,6 @@ if TYPE_CHECKING:
 
 
 BOOKING_ROW_COLUMNS = ["stay_date", "booked_on", "room_type_code", "rate"]
-
-
-@dataclass(frozen=True, slots=True)
-class FinalCountCheck:
-    nights: int  # nights with a final count to compare
-    mismatches: dict[date, int]  # night -> rooms rebuilt minus rooms sold
 
 
 async def rooms_booked(
@@ -129,29 +121,6 @@ async def booking_rows(
         rows.loc[training_mask(rows["rate"])]
         .sort_values("stay_date", kind="stable")
         .reset_index(drop=True)
-    )
-
-
-async def check_final_counts(
-    session: AsyncSession, hotel_id: int, *, start: date, end: date
-) -> FinalCountCheck:
-    """Compare the rebuild with rooms sold on each night from `start` to `end`.
-
-    Pass a `start` the booking export fully covers, or early nights run short.
-    """
-    curves = await booking_curves(session, hotel_id, start=start, end=end)
-    sold: Counter[date] = Counter()
-    for row in await hotel_repo.list_nights(session, hotel_id, start=start, end=end):
-        sold[row["stay_date"]] += row["rooms_sold"]
-
-    # The day after: late bookings and no-shows can be dated after the stay night.
-    differences = {
-        night: rooms_on(curves.get(night, {}), night + timedelta(days=1)) - rooms
-        for night, rooms in sold.items()
-    }
-    return FinalCountCheck(
-        nights=len(sold),
-        mismatches={night: gap for night, gap in differences.items() if gap},
     )
 
 

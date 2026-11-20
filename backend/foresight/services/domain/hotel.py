@@ -1,4 +1,4 @@
-"""Hotels, their room types, and nightly performance."""
+"""Hotels and their room types."""
 
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ from foresight.services.errors import ConflictError, NotFoundError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import date
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
+    from foresight.database.models.hotel import Hotel, RoomType
     from foresight.database.models.user import User
 
 
@@ -136,25 +135,3 @@ async def get_room_type(session: AsyncSession, room_type_id: int) -> RoomType:
 async def list_room_types(session: AsyncSession, hotel_id: int) -> Sequence[RoomType]:
     await get_hotel(session, hotel_id)
     return await hotel_repo.list_room_types(session, hotel_id)
-
-
-async def list_performance(
-    session: AsyncSession,
-    hotel_id: int,
-    *,
-    start: date | None,
-    end: date | None,
-    room_type_id: int | None,
-    limit: int,
-    offset: int,
-) -> tuple[Sequence[DailyPerformance], int]:
-    await get_hotel(session, hotel_id)
-    return await hotel_repo.list_performance(
-        session,
-        hotel_id,
-        start=start,
-        end=end,
-        room_type_id=room_type_id,
-        limit=limit,
-        offset=offset,
-    )

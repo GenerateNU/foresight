@@ -647,7 +647,6 @@ async def _tune(
 _HANDLERS: dict[JobKind, Handler] = {
     JobKind.WEATHER: _weather,
     JobKind.EVENTS: _events,
-    JobKind.ACTUAL_FORECAST: _file,
     JobKind.RESERVATIONS: _file,
     JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,

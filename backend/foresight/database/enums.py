@@ -65,7 +65,8 @@ class JobKind(StrEnum):
     WEATHER = "weather"  # Open-Meteo forecast and recorded weather
     EVENTS = "events"  # PredictHQ events
     # One per uploaded Guestline report (`services/ingest/files.py`)
-    ACTUAL_FORECAST = "actual_forecast"  # nightly rooms sold and revenue
+    # No longer queued (decision 0080); kept so its old job rows still load.
+    ACTUAL_FORECAST = "actual_forecast"
     RESERVATIONS = "reservations"  # Daily New Reservations
     CANCELLATIONS = "cancellations"  # Cancellations
     TRAIN = "train"  # a new pricing model version
