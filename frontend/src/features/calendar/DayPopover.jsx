@@ -24,8 +24,13 @@ export default function DayPopover({ rec, ref, style, ...props }) {
 
       <div className="mt-3 flex items-baseline gap-2">
         <span className="font-display text-3xl font-medium tracking-tight">{formatEuro(rec.rate)}</span>
-        <span className="text-xs text-stone-500">{rateBasisLabel(rec.rateBasis)}</span>
+        <span className="text-xs whitespace-nowrap text-stone-500">{rateBasisLabel(rec.rateBasis)}</span>
         <ChangeBadge change={rec.change} />
+        {rec.managerRate != null && (
+          <span className="ml-auto text-sm whitespace-nowrap text-stone-600">
+            Manager's rate <span className="font-medium text-stone-900">{formatEuro(rec.managerRate)}</span>
+          </span>
+        )}
       </div>
 
       <div className="mt-3 border-t border-stone-100 pt-3">
