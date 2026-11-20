@@ -5,12 +5,12 @@ and the job joins the back of the hotel's queue after the response: a hotel's
 jobs run one at a time, oldest first. Poll `GET /jobs/{id}` (routes/job.py)
 for status and progress.
 
-Dates (weather and events): send neither for the routine refresh, or either to
+Dates (events): send neither for the routine refresh, or either to
 backfill a window:
 
 - start and end: that window.
 - start only: start to today.
-- end only: back from end to the hotel's first loaded night, newest first.
+- end only: back from end to the hotel's first booked night, newest first.
 
 If a job stops or fails part-way, `resume_from` says where to pick up: send it
 as `start` again (or as `end` for a run walking backwards).
@@ -80,8 +80,8 @@ _DATE_EXAMPLES: dict[str, Any] = {
     },
     "refresh": {
         "summary": "Routine refresh (no dates)",
-        "description": "Send no body, or {}. Weather: the 16-day forecast. "
-        "Events: what PredictHQ revised since the last refresh.",
+        "description": "Send no body, or {}: what PredictHQ revised since the "
+        "last refresh.",
         "value": {},
     },
 }
@@ -94,28 +94,6 @@ _ACCEPTED = {"status_code": status.HTTP_202_ACCEPTED, "response_model": JobRespo
 #          ╭──────────────────────────────────────────────────────────╮
 #          │                        Endpoints                         │
 #          ╰──────────────────────────────────────────────────────────╯
-
-
-@router.post("/hotels/{hotel_id}/ingest/weather", **_ACCEPTED)
-async def ingest_weather(
-    hotel_id: HotelId,
-    session: SessionDep,
-    tasks: BackgroundTasks,
-    data: IngestBody = None,
-) -> JobResponse:
-    """Open-Meteo weather for the hotel's city.
-
-    No dates: the next 16 days of forecast. Dates: recorded weather for the
-    past days in the window, forecast for the next 16; days beyond that have
-    no source and are listed in `progress.beyond_forecast`.
-    """
-    data = data or IngestRequest()
-    job = await job_service.start_weather_job(
-        session, hotel_id, start=data.start, end=data.end
-    )
-    # Queued after the response, by which time get_session has committed the row.
-    tasks.add_task(worker.enqueue, job.id, job.hotel_id)
-    return JobResponse.model_validate(job)
 
 
 @router.post("/hotels/{hotel_id}/ingest/events", **_ACCEPTED)

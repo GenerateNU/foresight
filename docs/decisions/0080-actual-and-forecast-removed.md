@@ -24,7 +24,7 @@ decided yet.
   `GET /hotels/{id}/performance`, `list_performance`, `list_nights`,
   `stay_date_range`, `upsert_daily_performance` and
   `booking.check_final_counts`.
-- **Windows and weather coverage take the hotel's first and last booked night**
+- **Windows (and weather coverage, until 0081) take the hotel's first and last booked night**
   instead of its first loaded night.
 - **Freshness `hotel_data` is the last Daily New Reservations upload.**
 - **The table and its rows stay** until the team decides. Alembic ignores the

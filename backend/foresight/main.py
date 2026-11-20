@@ -23,7 +23,6 @@ from foresight.routes import (
     ingest,
     job,
     pricing_model,
-    weather,
 )
 from foresight.routes.access import SESSION_COOKIE, get_current_user
 from foresight.routes.errors import register_error_handlers
@@ -84,7 +83,6 @@ app.include_router(auth.router)
 app.include_router(city.router, **login_required)
 app.include_router(hotel.router, **login_required)
 app.include_router(feedback.router, **login_required)
-app.include_router(weather.router, **login_required)
 app.include_router(event.router, **login_required)
 app.include_router(ingest.router, **login_required)
 app.include_router(job.router, **login_required)

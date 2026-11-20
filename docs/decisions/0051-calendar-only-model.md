@@ -1,6 +1,6 @@
 # 0051. The model reads only the calendar until experiments say otherwise
 
-**Status:** Partly superseded by [0055](0055-events-back-in-the-model.md) (events are back; weather stays out) · **Date:** 2026-11-07
+**Status:** Partly superseded by [0055](0055-events-back-in-the-model.md) (events are back; weather stays out), amended by [0081](0081-weather-removed.md) (weather removed) · **Date:** 2026-11-07
 
 Supersedes [0024](0024-weather-for-future-nights.md),
 [0032](0032-events-on-a-night-follow-the-model.md) and

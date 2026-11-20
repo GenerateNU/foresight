@@ -11,7 +11,7 @@ repeating them.
 ## 1. The system in one page
 
 Foresight stores a hotel's nightly sales history and the outside signals that
-move demand (weather, events), so a pricing model can recommend a
+move demand (events), so a pricing model can recommend a
 nightly rate.
 
 ```
@@ -40,7 +40,7 @@ Two kinds of work enter the system:
 
 - **Requests** (reads, creates, updates). One request is one database
   transaction, committed before the response is sent.
-- **Jobs** (ingesting weather, events and bookings). The request
+- **Jobs** (ingesting events and bookings, training, tune-ups). The request
   validates the input, stores a job and returns `202` at once. The job runs in
   the background in the same process and commits after every chunk.
 
@@ -90,7 +90,7 @@ backend/foresight/
   routes/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
-    city.py hotel.py weather.py event.py ingest.py job.py
+    city.py hotel.py event.py ingest.py job.py
     pricing_model.py feedback.py health.py
     auth.py                Google sign-in, logout, /auth/me
     access.py              CurrentUserDep
@@ -98,11 +98,11 @@ backend/foresight/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured /
                            NotSignedIn / Forbidden
     job.py                 job kinds, validation, handlers, lifecycle
-    domain/                booking, city, hotel, user, weather, weather_coverage, event,
+    domain/                booking, city, hotel, user, event,
                            pricing_model, recommendation, feedback, freshness
-    ingest/                weather, event, window; files (report kinds, header
+    ingest/                event, window; files (report kinds, header
                            recognition), bookings
-    adapters/              open_meteo, predicthq, normalize
+    adapters/              predicthq, normalize
       hotel/               one per CSV report: reservations, cancellations;
                            common (shared reading)
     ml/                    base, ebm, features, holidays, weighting, baselines
@@ -110,12 +110,12 @@ backend/foresight/
     upsert.py pagination.py
     booking.py city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
     user.py
-    signals/               weather, event
+    signals/               event
   database/
     base.py enums.py session.py
     models/                booking, city, hotel, job, pricing_model, recommendation, feedback,
                            user
-      signals/             weather, event
+      signals/             event
     migrations/
 ```
 
@@ -185,7 +185,7 @@ Constraints and indexes are named by the convention on `Base.metadata`:
 | Kind | Type |
 |---|---|
 | money | `Numeric(10, 2)` ↔ `Decimal` |
-| a night (stay, weather day, event date, arrival day) | `Date`, local to the city ([0023](decisions/0023-stay-nights-are-local-dates.md)) |
+| a night (stay, event date, arrival day) | `Date`, local to the city ([0023](decisions/0023-stay-nights-are-local-dates.md)) |
 | an instant | `DateTime(timezone=True)` |
 | enums | VARCHAR holding the member name; adding a member needs no migration |
 | raw source payloads | `JSONB`, kept verbatim |
@@ -197,7 +197,6 @@ Every write from an outside source or a file is an upsert on a natural key
 
 | Table | Natural key |
 |---|---|
-| `weather` | city_id, weather_date, is_forecast, source |
 | `bookings` | hotel_id, book_ref |
 | `booking_cancellations` | hotel_id, cancel_ref |
 | `room_types` (CSV import) | hotel_id, name |
@@ -231,7 +230,7 @@ HTTP schemas live in the route module that uses them
 - Derived values (occupancy, ADR, RevPAR) are `@computed_field`s, never stored.
 
 Lists that grow without bound take `?limit=&offset=` (default 50, max 200) and
-return `{"items", "total", "limit", "offset"}`: weather, events,
+return `{"items", "total", "limit", "offset"}`: events,
 and jobs. Cities, hotels and room types return a plain list.
 
 ### 3.7 Outside HTTP
@@ -243,7 +242,6 @@ turns its source's quota responses into a named error:
 | Source | Quota error |
 |---|---|
 | PredictHQ | 402/403 → `OutOfCreditsError`; 429 → `RateLimitedError` |
-| Open-Meteo | none; any failure raises |
 
 ---
 
@@ -261,8 +259,7 @@ cities ─┬─< hotels ─┬─< room_types                       (DOUBLE, th
         │           ├─< feedback (also > room_types)      (the manager's view of a night; 0043)
         │           └─< jobs                              (ingest runs)
         │
-        ├─< weather                                       ┐
-        └─< events ─< event_observations                  ┘ outside signals,
+        └─< events ─< event_observations                    outside signals,
                                                             shared by every hotel
                                                             in the city
 
@@ -272,8 +269,8 @@ users ─< feedback >─ recommendation_snapshots               (who said it; th
 
 **Cities are the market** ([0017](decisions/0017-cities-are-the-market.md)).
 A city holds its name, a unique normalized slug, country, IANA timezone,
-and centre coordinates. Weather is read and events are
-searched at the centre; "today" for a job is today in the city's timezone. A
+and centre coordinates. Events are searched at the
+centre; "today" for a job is today in the city's timezone. A
 hotel keeps its own coordinates for distance to venues.
 
 **Users** ([0035](decisions/0035-users-keyed-on-google-id.md)) are Google
@@ -343,7 +340,6 @@ uploaded report, through one queue per hotel
 
 | `POST /hotels/{id}/ingest/…` | Kind | No dates | With dates | Chunk |
 |---|---|---|---|---|
-| `weather` | `WEATHER` | next 16 days of forecast | recorded weather for past days, forecast for the next 16 | one year of recorded; the forecast |
 | `events` | `EVENTS` | events PredictHQ revised since the last refresh (7 days the first time) | every event active in the window | one month |
 | `files` (multipart) | one per file: `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
 
@@ -357,10 +353,7 @@ scheduler starts it (section 5.3).
 |---|---|
 | start and end | that window |
 | start only | start to today |
-| end only | the hotel's first loaded night to end, walked newest first |
-
-Weather days beyond the forecast have no source; they're listed in the job's
-`progress.beyond_forecast` instead of being fetched.
+| end only | the hotel's first booked night to end, walked newest first |
 
 Events use a 10km radius around the city centre and need `PREDICTHQ_TOKEN`
 (a 503 if it isn't set).
@@ -414,7 +407,7 @@ safe.
 - A hotel's jobs run one at a time, first in, first out; different hotels
   run side by side. A long backfill holds up the hotel's queue behind it.
 - A failed job doesn't stop the jobs queued after it.
-- One unfinished weather, events, training or price job per hotel; a second
+- One unfinished events, training, price or tune-up job per hotel; a second
   gets a 409. File jobs stack up in the queue instead.
 - A restart, deploy or sleep loses the queues and the parsed files waiting in
   them. On startup every queued or running job is marked failed. That's safe on
@@ -449,16 +442,15 @@ after a manual events job succeeds
 
 ## 6. End-to-end flows
 
-### 6.1 A read: `GET /hotels/7/weather?start=…`
+### 6.1 A read: `GET /hotels/7/events?start=…`
 
 ```
-routes/weather.list_weather
-  → services/domain/weather.list_weather(session, 7, …)
+routes/event.list_events
+  → services/domain/event.list_events(session, 7, …)
       → get_hotel(7)                                   404 if missing
-      → repository/signals/weather.list_weather(city_id=hotel.city_id, …)
-          → fetch_page(SELECT … WHERE city_id = … ORDER BY weather_date, id)
+      → repository/signals/event.list_events(city_id=hotel.city_id, …)
   ← (rows, total)
-  → paginate(WeatherResponse, rows, total, page)
+  → paginate(EventResponse, rows, total, page)
 ```
 
 ### 6.2 A hotel file upload
@@ -772,8 +764,6 @@ report ([0080](decisions/0080-actual-and-forecast-removed.md)).
 | POST | `/hotels/{id}/users` | `{email}`; links a colleague who has signed in; 204 |
 | POST, GET | `/hotels/{id}/room-types` | |
 | GET | `/room-types/{id}` | |
-| GET | `/hotels/{id}/weather` | paginated; forecast and recorded rows |
-| GET | `/hotels/{id}/coverage/weather` | recorded-weather gaps in a window |
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
 | POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)) |
@@ -784,7 +774,7 @@ report ([0080](decisions/0080-actual-and-forecast-removed.md)).
 | GET | `/hotels/{id}/models` | paginated, newest version first |
 | GET | `/models/{id}` | one version, no artifact |
 | POST | `/models/{id}/activate` | serve this version |
-| POST | `/hotels/{id}/ingest/{weather,events}` | job, 202; optional `{start, end}` |
+| POST | `/hotels/{id}/ingest/events` | job, 202; optional `{start, end}` |
 | POST | `/hotels/{id}/ingest/files` | a job per file, 202; multipart files only, each recognised by its header |
 | GET | `/jobs/{id}` | |
 | POST | `/jobs/{id}/cancel` | a queued job only; 409 otherwise |
@@ -824,18 +814,17 @@ sign-in is requested.
 | — | nothing at the moment |
 
 Flights, competitor rates and booking-pace inputs were removed
-([0050](decisions/0050-drop-flights-and-booking-pace.md)). Weather is ingested
-and listed but doesn't reach the model
-([0051](decisions/0051-calendar-only-model.md)); events do
+([0050](decisions/0050-drop-flights-and-booking-pace.md)). Weather was
+removed ([0081](decisions/0081-weather-removed.md)); events reach the model
 ([0055](decisions/0055-events-back-in-the-model.md)).
 
 ---
 
 ## 10. Open questions
 
-1. **Which inputs the model needs.** It reads the calendar and events (0055).
-   Weather stays out and its ingestion is to be removed.
-2. **Scheduling.** The routine refreshes (forecast, recent events) only run
+1. **Which inputs the model needs.** It reads the calendar, holidays, events
+   and days booked ahead (0055, 0056, 0067). Weather was removed (0081).
+2. **Scheduling.** The routine refreshes (recent events, the daily tune-up) only run
    when called. Recommendations are stored as they're requested.
 3. **Tests.** The suite covers recommendations, freshness
    and users, but not ingest or training. Nothing has been run against a real

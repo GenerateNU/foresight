@@ -46,7 +46,8 @@ class RecommendationSnapshot(Base):
     factors: Mapped[dict[str, Any]] = mapped_column(JSONB)  # baseline + factor list
     # What the model read for this night: its input row, the events on the
     # night and whether a backfill covered it. Returned with the recommendation.
-    # Snapshots from 0051 hold only features; older ones also hold weather.
+    # Snapshots from 0051 hold only features and events; older ones also
+    # hold weather, which nothing reads now (decision 0081).
     inputs: Mapped[dict[str, Any]] = mapped_column(JSONB)
     # SHA-256 of the model id and `inputs`. A request whose hash matches the
     # latest snapshot reuses it instead of running the model (decision 0038).

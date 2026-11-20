@@ -29,7 +29,6 @@ from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
 from foresight.repository import pricing_model as model_repo
-from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
 from foresight.services.domain import recommendation as recommendation_service
@@ -44,8 +43,7 @@ from foresight.services.errors import (
 )
 from foresight.services.ingest import event as event_ingest
 from foresight.services.ingest import files as file_ingest
-from foresight.services.ingest import weather as weather_ingest
-from foresight.services.ingest.window import InvalidWindowError, Window, resolve_window
+from foresight.services.ingest.window import Window, resolve_window
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -93,32 +91,6 @@ class Step:
 
 
 # --- starting and reading jobs ----------------------------------------------
-
-
-async def start_weather_job(
-    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
-) -> Job:
-    """No dates: the next 16 days of forecast. Dates: recorded weather for the
-    past part of the window and forecast for the next 16 days of it.
-
-    Raises:
-        NotFoundError: Unknown hotel.
-        InvalidWindowError: The window doesn't resolve, or lies wholly beyond
-            the forecast.
-        ConflictError: A weather job is already queued or running.
-    """
-    hotel = await get_hotel(session, hotel_id)
-    params: dict[str, Any] = {"mode": "forecast"}
-    if start is not None or end is not None:
-        today = local_today(hotel.city)
-        window = await resolve_window(session, hotel.id, start, end, today=today)
-        if window.start > _forecast_end(today):
-            raise InvalidWindowError(
-                f"the forecast reaches {_forecast_end(today)}; {window.start} is "
-                "beyond it"
-            )
-        params = {"mode": "window", **window.as_params()}
-    return await _queue(session, hotel, JobKind.WEATHER, params)
 
 
 async def start_events_job(
@@ -233,8 +205,7 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
     # (kind, how to start its scheduled run)
     routine: list[tuple[JobKind, Callable[[int], Awaitable[Job]]]]
     # Events first, so training learns from them and pricing reads them; then
-    # training, so pricing uses the new model. No weather: it's out of the
-    # model (0055).
+    # training, so pricing uses the new model. Weather was removed (0081).
     routine = [
         (
             JobKind.EVENTS,
@@ -347,7 +318,7 @@ async def _due(
 async def _queue(
     session: AsyncSession, hotel: Hotel, kind: JobKind, params: dict[str, Any]
 ) -> Job:
-    # Uploads stack up in the queue; a second weather, events, training or price
+    # Uploads stack up in the queue; a second events, training, price or tune-up
     # run would only repeat the first (and spend API credits or training time).
     if kind not in file_ingest.FILE_KINDS:
         running = await job_repo.find_unfinished_job(
@@ -445,55 +416,6 @@ async def fail_interrupted_jobs(session: AsyncSession) -> int:
 
 
 # --- handlers ---------------------------------------------------------------
-
-
-async def _weather(
-    session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
-) -> AsyncIterator[Step]:
-    city = hotel.city
-    if params["mode"] == "forecast":
-        outcomes = await weather_ingest.ingest_forecast(session, city)
-        yield Step({"outcomes": _counts(outcomes)}, None)
-        return
-
-    window = Window.from_params(params)
-    today = local_today(city)
-    past = window.clip(window.start, today - timedelta(days=1))
-    future = window.clip(today, _forecast_end(today))
-    pieces = [
-        ("recorded", first, last) for first, last in (past.years() if past else ())
-    ]
-    if future is not None:
-        forecast = ("forecast", future.start, future.end)
-        pieces = [forecast, *pieces] if window.backwards else [*pieces, forecast]
-
-    progress: dict[str, Any] = {"saved": [], "outcomes": {}}
-    if window.end > _forecast_end(today):
-        progress["beyond_forecast"] = [
-            max(window.start, _forecast_end(today) + timedelta(days=1)).isoformat(),
-            window.end.isoformat(),
-        ]
-    total: dict[str, int] = {}
-    for i, (source, first, last) in enumerate(pieces):
-        if source == "recorded":
-            outcomes = await weather_ingest.ingest_actuals(
-                session, city, start=first, end=last
-            )
-        else:
-            outcomes = await weather_ingest.ingest_forecast(
-                session, city, start=first, end=last
-            )
-        for name, n in _counts(outcomes).items():
-            total[name] = total.get(name, 0) + n
-        progress = {
-            **progress,
-            "saved": [
-                *progress["saved"],
-                [source, first.isoformat(), last.isoformat()],
-            ],
-            "outcomes": dict(total),
-        }
-        yield Step(progress, _next_resume(window, pieces, i))
 
 
 async def _events(
@@ -645,7 +567,6 @@ async def _tune(
 
 
 _HANDLERS: dict[JobKind, Handler] = {
-    JobKind.WEATHER: _weather,
     JobKind.EVENTS: _events,
     JobKind.RESERVATIONS: _file,
     JobKind.CANCELLATIONS: _file,
@@ -688,10 +609,6 @@ def _next_resume(
 
 def _date_or_none(value: str | None) -> date | None:
     return None if value is None else date_cls.fromisoformat(value)
-
-
-def _forecast_end(today: date) -> date:
-    return today + timedelta(days=FORECAST_DAYS - 1)
 
 
 def _counts(outcomes: Mapping[Outcome, int]) -> dict[str, int]:

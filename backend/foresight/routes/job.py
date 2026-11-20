@@ -74,7 +74,6 @@ class KindFreshnessResponse(ResponseSchema):
 
 class FreshnessResponse(ResponseSchema):
     events: KindFreshnessResponse = Field(description="Routine events refresh")
-    weather: KindFreshnessResponse = Field(description="Routine forecast refresh")
     hotel_data: KindFreshnessResponse = Field(
         description="Daily New Reservations upload (CSV)"
     )
@@ -122,6 +121,6 @@ async def list_jobs(
 @router.get("/hotels/{hotel_id}/freshness", response_model=FreshnessResponse)
 async def get_freshness(hotel_id: HotelId, session: SessionDep) -> FreshnessResponse:
     """When each kind of data last refreshed, and whether the latest attempt
-    failed. Events and weather count routine refreshes only, not backfills."""
+    failed. Events count routine refreshes only, not backfills."""
     result = await freshness_service.get_freshness(session, hotel_id)
     return FreshnessResponse.model_validate(result)
