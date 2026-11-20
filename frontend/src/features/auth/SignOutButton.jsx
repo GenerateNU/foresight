@@ -2,8 +2,11 @@ import { useState } from 'react'
 import { signOut } from '../../api/auth.js'
 import Button from '../../components/ui/Button.jsx'
 
-/** Ends the session, then loads the sign-in page fresh so nothing from it is left behind. */
-export default function SignOutButton({ className }) {
+/**
+ * Ends the session, then loads the sign-in page fresh so nothing from it is left behind.
+ * `variant` and `className` go to the Button.
+ */
+export default function SignOutButton({ variant, className }) {
   const [busy, setBusy] = useState(false)
 
   async function handleClick() {
@@ -16,7 +19,7 @@ export default function SignOutButton({ className }) {
   }
 
   return (
-    <Button onClick={handleClick} disabled={busy} className={className}>
+    <Button variant={variant} onClick={handleClick} disabled={busy} className={className}>
       Sign out
     </Button>
   )
