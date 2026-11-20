@@ -503,7 +503,8 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
         feedback_repo.one_off_nights            drop the rooms of nights tagged one-off (0070)
         domain/model_inputs.events_for          counted events, backfilled nights, first seen
         ml/features.build_features              calendar + holidays + events + lead_days from booked_on
-                                                (0055, 0056, 0067)
+                                                (0055, 0056, 0067); holidays from the
+                                                library alone (0083)
       feedback_repo.tuning_feedback             current version per night with a rate, before or after
       each manager rate is a row of its own, booked the day they saw the recommendation;
                     weight 25% of the night's rooms, at least 1 (0071, 0076)

@@ -96,3 +96,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0080](0080-actual-and-forecast-removed.md) | Actual & Forecast is no longer read; its table is kept for now | ingest / database |
 | [0081](0081-weather-removed.md) | Weather is removed; its table is kept for now | ingest / database |
 | [0082](0082-dead-code-removed.md) | Unused pieces are removed: uncertainty, rate basis, booking curves, feedback flags, total rooms | ML / API / database |
+| [0083](0083-holidays-from-the-library-only.md) | Every holiday input comes from the `holidays` library; school holidays are dropped | ML |
