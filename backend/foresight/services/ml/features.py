@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from foresight.database.enums import EventCategory
-from foresight.services.ml.holidays import night_before_holiday
+from foresight.services.ml.holidays import night_before_holiday, public_holiday
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -29,7 +29,6 @@ FEATURES = [
     "month",
     "night_before_holiday",
     "is_public_holiday",
-    "is_school_holiday",
     "event_count",
     "event_attendance",
     "event_rank_max",
@@ -40,17 +39,14 @@ FEATURES = [
 ]
 
 # FEATURES by kind, for choosing which inputs a backtest trains on. Every
-# input is in exactly one group. The holiday flags sit with events: they come
-# from the same PredictHQ data, and are unknown on the same nights. `holidays`
-# are worked out from the date alone (decision 0067), so unlike events they are
+# input is in exactly one group. `holidays` are worked out from the date alone
+# with the `holidays` library (decisions 0067, 0083), so unlike events they are
 # never unknown, and they stay out of `calendar` so that group, the baseline's
 # inputs, doesn't change.
 INPUT_GROUPS = {
     "calendar": ["day_of_week", "month"],
-    "holidays": ["night_before_holiday"],
+    "holidays": ["night_before_holiday", "is_public_holiday"],
     "events": [
-        "is_public_holiday",
-        "is_school_holiday",
         "event_count",
         "event_attendance",
         "event_rank_max",
@@ -61,8 +57,9 @@ INPUT_GROUPS = {
     LEAD: [LEAD],
 }
 
-# Events that bring people to the city. Holidays become their own flags, and
-# categories like disasters or airport delays aren't counted as demand.
+# Events that bring people to the city. Holidays come from the `holidays`
+# library instead (decision 0083), and categories like disasters or airport
+# delays aren't counted as demand.
 ATTENDED_CATEGORIES = [
     EventCategory.ACADEMIC.value,
     EventCategory.COMMUNITY.value,
@@ -89,8 +86,8 @@ def build_features(
     Used for training (past nights) and serving (the night being priced), so
     both see identical features. The event columns stay empty on nights no
     events backfill covered; the model learns a separate effect for unknown
-    values. `night_before_holiday` is never empty: it comes from the date
-    alone, not from events (decision 0067).
+    values. The holiday flags are never empty: they come from the date alone,
+    not from events (decisions 0067, 0083).
 
     An event counts on a night only if PredictHQ first saw it before that
     night (decision 0055), so training never learns from an event the market
@@ -135,6 +132,7 @@ def build_features(
     features["day_of_week"] = stay_date.dt.dayofweek.to_numpy()
     features["month"] = stay_date.dt.month.to_numpy()
     features["night_before_holiday"] = night_before_holiday(stay_date)
+    features["is_public_holiday"] = public_holiday(stay_date)
     features[LEAD] = _lead_days(stay_date, booked_on)
     return features.reindex(columns=FEATURES)
 
@@ -165,12 +163,10 @@ def _event_features(
         dates (pd.DatetimeIndex): The nights to summarize.
 
     Returns:
-        pd.DataFrame: Holiday flags and event totals, indexed by date.
+        pd.DataFrame: Event totals, indexed by date.
     """
     result = pd.DataFrame(
         {
-            "is_public_holiday": 0,
-            "is_school_holiday": 0,
             "event_count": 0,
             "event_attendance": 0.0,
             "event_rank_max": 0.0,
@@ -194,14 +190,6 @@ def _event_features(
     ).explode("date")
     expanded = expanded.loc[expanded["date"].isin(dates.to_list())]
     expanded = expanded.loc[_known_before(expanded, expanded["date"])]
-    by_date = expanded.groupby("date")
-
-    for column, category in [
-        ("is_public_holiday", EventCategory.PUBLIC_HOLIDAYS.value),
-        ("is_school_holiday", EventCategory.SCHOOL_HOLIDAYS.value),
-    ]:
-        flagged = by_date["category"].agg(lambda c, cat=category: int((c == cat).any()))
-        result.loc[flagged.index, column] = flagged
 
     attended = expanded.loc[expanded["category"].isin(ATTENDED_CATEGORIES)]
     if not attended.empty:

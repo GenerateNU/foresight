@@ -2,7 +2,9 @@
 
 For inputs known from the date alone: a night's value never depends on what has
 been ingested, so it is the same when training on the past and when pricing a
-night 90 days out (decision 0067).
+night 90 days out (decision 0067). Every holiday input comes from here; none
+from PredictHQ (decision 0083). School holidays aren't in the library, so the
+model doesn't read them.
 """
 
 from __future__ import annotations
@@ -45,6 +47,21 @@ def days_off(years: range) -> set[date]:
     return off
 
 
+def public_holiday(stay_date: pd.Series) -> np.ndarray:
+    """Flags the nights that are themselves a day off for a public holiday.
+
+    The same days as `night_before_holiday` looks ahead to, so the two flags
+    always agree on what a holiday is (decision 0083).
+
+    Args:
+        stay_date (pd.Series): Night dates, as datetimes.
+
+    Returns:
+        np.ndarray: 1 where the night is a day off, else 0, one per night.
+    """
+    return _is_day_off(stay_date)
+
+
 def night_before_holiday(stay_date: pd.Series) -> np.ndarray:
     """Flags the nights whose next day is a day off for a public holiday.
 
@@ -58,11 +75,15 @@ def night_before_holiday(stay_date: pd.Series) -> np.ndarray:
     Returns:
         np.ndarray: 1 where the next day is a day off, else 0, one per night.
     """
-    if stay_date.empty:
+    return _is_day_off(stay_date + pd.Timedelta(days=1))
+
+
+def _is_day_off(days: pd.Series) -> np.ndarray:
+    """1 where the day is a public holiday or its weekday off, else 0."""
+    if days.empty:
         return np.zeros(0, dtype=int)
-    tomorrow = stay_date + pd.Timedelta(days=1)
     # One year early too, so a holiday in late December can carry its weekday
     # off into January.
-    years = range(tomorrow.dt.year.min() - 1, tomorrow.dt.year.max() + 1)
+    years = range(days.dt.year.min() - 1, days.dt.year.max() + 1)
     off = pd.to_datetime(sorted(days_off(years)))
-    return tomorrow.isin(off).to_numpy().astype(int)
+    return days.isin(off).to_numpy().astype(int)

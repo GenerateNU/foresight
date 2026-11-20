@@ -1,6 +1,6 @@
 # 0067. The night before a public holiday is a model input, worked out from the date
 
-**Status:** Accepted · **Date:** 2026-11-19
+**Status:** Accepted, amended by [0083](0083-holidays-from-the-library-only.md) (both holiday flags from the library) · **Date:** 2026-11-19
 
 Adds an input to the list in [0055](0055-events-back-in-the-model.md) and to
 [0007](0007-shared-feature-builder.md).

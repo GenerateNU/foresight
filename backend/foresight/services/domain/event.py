@@ -34,15 +34,9 @@ _PRECEDENCE = {Source.PREDICTHQ: 1}
 # Withdrawn or called-off events don't count as demand.
 _WITHDRAWN = (EventStatus.DELETED, EventStatus.CANCELLED)
 _NEVER = datetime.min.replace(tzinfo=UTC)
-# The categories the model counts on a night: attended events, plus the two
-# holiday kinds it turns into flags (see `ml.features._event_features`).
-_COUNTED = frozenset(
-    {
-        *(EventCategory(c) for c in ATTENDED_CATEGORIES),
-        EventCategory.PUBLIC_HOLIDAYS,
-        EventCategory.SCHOOL_HOLIDAYS,
-    }
-)
+# The categories the model counts on a night: attended events. Holidays come
+# from the `holidays` library, not from events (decision 0083).
+_COUNTED = frozenset(EventCategory(c) for c in ATTENDED_CATEGORIES)
 
 
 @dataclass(frozen=True, slots=True)

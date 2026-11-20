@@ -388,6 +388,8 @@ def _value(feature: str, value: float | int | str | None) -> str:
         if int(value):
             return "the night before a public holiday"
         return "not the night before a public holiday"
+    if feature == "is_public_holiday":
+        return "a public holiday" if int(value) else "not a public holiday"
     if feature == "day_of_week":
         return _DAYS[int(value)]
     if feature == "month":
