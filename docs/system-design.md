@@ -40,7 +40,7 @@ Two kinds of work enter the system:
 
 - **Requests** (reads, creates, updates). One request is one database
   transaction, committed before the response is sent.
-- **Jobs** (ingesting weather, events and performance data). The request
+- **Jobs** (ingesting weather, events and bookings). The request
   validates the input, stores a job and returns `202` at once. The job runs in
   the background in the same process and commits after every chunk.
 
@@ -101,10 +101,10 @@ backend/foresight/
     domain/                booking, city, hotel, user, weather, weather_coverage, event,
                            pricing_model, recommendation, feedback, freshness
     ingest/                weather, event, window; files (report kinds, header
-                           recognition), actual_forecast, bookings
+                           recognition), bookings
     adapters/              open_meteo, predicthq, normalize
-      hotel/               one per CSV report: actual_forecast, reservations,
-                           cancellations; common (shared reading)
+      hotel/               one per CSV report: reservations, cancellations;
+                           common (shared reading)
     ml/                    base, ebm, features, holidays, weighting, baselines
   repository/
     upsert.py pagination.py
@@ -198,7 +198,6 @@ Every write from an outside source or a file is an upsert on a natural key
 | Table | Natural key |
 |---|---|
 | `weather` | city_id, weather_date, is_forecast, source |
-| `daily_performance` | room_type_id, stay_date |
 | `bookings` | hotel_id, book_ref |
 | `booking_cancellations` | hotel_id, cancel_ref |
 | `room_types` (CSV import) | hotel_id, name |
@@ -232,7 +231,7 @@ HTTP schemas live in the route module that uses them
 - Derived values (occupancy, ADR, RevPAR) are `@computed_field`s, never stored.
 
 Lists that grow without bound take `?limit=&offset=` (default 50, max 200) and
-return `{"items", "total", "limit", "offset"}`: performance, weather, events,
+return `{"items", "total", "limit", "offset"}`: weather, events,
 and jobs. Cities, hotels and room types return a plain list.
 
 ### 3.7 Outside HTTP
@@ -251,7 +250,7 @@ turns its source's quota responses into a named error:
 ## 4. Data model
 
 ```
-cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hotel's own history)
+cities ─┬─< hotels ─┬─< room_types                       (DOUBLE, the one the model prices; 0079)
         │           ├─< bookings                          (rooms booked, still live; 0047)
         │           ├─< booking_cancellations             (rooms cancelled; linked by book_ref)
         │           ├─< pricing_models ─< pricing_model_feedback >─ feedback
@@ -346,7 +345,7 @@ uploaded report, through one queue per hotel
 |---|---|---|---|---|
 | `weather` | `WEATHER` | next 16 days of forecast | recorded weather for past days, forecast for the next 16 | one year of recorded; the forecast |
 | `events` | `EVENTS` | events PredictHQ revised since the last refresh (7 days the first time) | every event active in the window | one month |
-| `files` (multipart) | one per file: `ACTUAL_FORECAST`, `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
+| `files` (multipart) | one per file: `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
 
 Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
 queue. `PRICE` saves recommendations for the next 90 nights; only the
@@ -465,30 +464,24 @@ routes/weather.list_weather
 ### 6.2 A hotel file upload
 
 ```
-POST /hotels/7/ingest/files  files=Actual & Forecast.csv, Cancellation.csv
+POST /hotels/7/ingest/files  files=DailyNewReservations.csv, Cancellation.csv
   → too many files, or one too big?                      → 413
   → job_service.start_file_jobs
       → ingest/files.parse_files, per file:
           recognise by header (no or several matches)    → 422
           the report's parse; any failure                → 422
-      → one job per file (ACTUAL_FORECAST, CANCELLATIONS), in upload order
+      → one job per file (RESERVATIONS, CANCELLATIONS), in upload order
   ← 202 [job, job]; each joins the hotel's queue with its parsed rows
   worker, per job, 5,000 rows at a time:
-      actual_forecast: get_or_create_room_type("Standard")
-                       upsert_daily_performance(rows)    → commit
       reservations / cancellations: upsert_bookings / upsert_cancellations
                                                          → commit
 ```
 
-The client's export has one room type, so every night is stored under
-"Standard". The rate is revenue divided by rooms sold, because the export has
-no listed price.
-Blocks, ROOS and Waitlist are saved too when the export has them; older
-exports leave new nights empty and never clear a stored value. Occupancy is
-rooms sold ÷ (rooms in stock − rooms out of service), capped at 100%, so a
-sold-out night is 100% even when Guestline's Occ% shows 99%
-([0037](decisions/0037-three-guestline-reports.md)). Blked and DFS aren't read
-until their meaning is known.
+Actual & Forecast is no longer read
+([0080](decisions/0080-actual-and-forecast-removed.md)): an upload of it is a
+422, as an unknown report. Its `daily_performance` table and rows are kept
+until the team decides to drop them; Alembic ignores the table
+(`RETIRED_TABLES` in `migrations/env.py`).
 
 
 ### 6.3 An events backfill
@@ -755,12 +748,10 @@ domain/booking.booking_curves(session, 7, start=…, end=…)
 
 domain/booking.rooms_on(curve, as_of)             reads one night at any date
 domain/booking.rooms_booked(session, 7, night=…, as_of=…)     one night
-domain/booking.check_final_counts(session, 7, start=…, end=…)
-  each night's curve the day after it, minus rooms sold from list_nights
 ```
 
-Pass `check_final_counts` nights the booking export fully covers; for the first
-hotel that's from 21 Dec 2024 ([guestline-data.md](guestline-data.md)).
+The check of the rebuild against Actual & Forecast's rooms sold went with that
+report ([0080](decisions/0080-actual-and-forecast-removed.md)).
 
 ---
 
@@ -781,7 +772,6 @@ hotel that's from 21 Dec 2024 ([guestline-data.md](guestline-data.md)).
 | POST | `/hotels/{id}/users` | `{email}`; links a colleague who has signed in; 204 |
 | POST, GET | `/hotels/{id}/room-types` | |
 | GET | `/room-types/{id}` | |
-| GET | `/hotels/{id}/performance` | paginated |
 | GET | `/hotels/{id}/weather` | paginated; forecast and recorded rows |
 | GET | `/hotels/{id}/coverage/weather` | recorded-weather gaps in a window |
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |

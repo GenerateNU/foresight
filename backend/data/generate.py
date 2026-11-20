@@ -33,14 +33,6 @@ CN_HEADER = [
     "Agent", "Ref", "ArrivalDate", "DepartureDate", "ProfileRef", "Operator",
     "EstimatedRevenue", "CancelReason", "BookingCreatedDate",
 ]  # fmt: skip
-AF_HEADER = [
-    "Date", "DayOfWeek", "Avail", "Total", "Indv", "Multi", "Blocks", "Occ",
-    "Ad", "Ch", "Inf", "Accomm", "FB", "Other", "NonRevenue", "TotalRevenue",
-    "GrandTotal", "CumulativeAccomm", "CumulativeFB", "CumulativeOther",
-    "CumulativeTotalRevenue", "CumulativeNonRevenue", "CumulativeGrandTotal",
-    "ARR", "APR", "Yield", "Blked", "ROOS", "DFS", "Waitlist", "InStock",
-    "RatePlanRevenue",
-]  # fmt: skip
 
 
 def money(x):
@@ -102,7 +94,7 @@ def main():
     rng = random.Random(0)
     bookings = make_bookings(rng)
     dnr, cn = [], []
-    total, multi, nett = Counter(), Counter(), Counter()
+    total = Counter()
     for i, b in enumerate(bookings, start=1):
         nights = stay(b["arrival"], b["departure"])
         arrival, departure = b["arrival"].strftime(DAY), b["departure"].strftime(DAY)
@@ -128,40 +120,12 @@ def main():
             ])  # fmt: skip
             for night in nights:
                 total[night] += 1
-                multi[night] += len(b["rooms"]) > 1
-                nett[night] += rate
     dnr.sort(key=lambda r: datetime.strptime(r[10], STAMP))
     cn.sort(key=lambda r: datetime.strptime(r[1], STAMP))
 
-    af, cum = [], 0.0
-    for night in NIGHTS:
-        sold, accomm = total[night], round(nett[night], 2)
-        roos = rng.choice([0, 0, 0, 1]) if sold < IN_STOCK else 0
-        adults = sold * 2
-        cum += accomm
-        af.append([
-            datetime.combine(night, time()).strftime(STAMP), night.strftime("%A"),
-            money(IN_STOCK - sold - roos), str(sold), str(sold - multi[night]),
-            str(multi[night]), "0", money(100 * sold / IN_STOCK), str(adults),
-            "0", "0", money(accomm), "0.00", "0.00", "0.00", money(accomm),
-            money(accomm), money(cum), "0.00", "0.00", money(cum), "0.00",
-            money(cum), money(accomm / sold if sold else 0),
-            money(accomm / adults if adults else 0), money(accomm / IN_STOCK),
-            "0", str(roos), "0", "0", str(IN_STOCK), money(accomm * VAT),
-        ])  # fmt: skip
-
     write("DailyNewReservations.csv", DNR_HEADER, dnr)
     write("Cancellation.csv", CN_HEADER, cn)
-    write("Actual & Forecast.csv", AF_HEADER, af)
 
-    rebuilt = Counter()
-    for r in read("DailyNewReservations.csv"):
-        a, d = (datetime.strptime(r[k], DAY).date() for k in ("Arrival", "Departure"))
-        rebuilt.update(stay(a, d))
-    for r in read("Actual & Forecast.csv"):
-        night = datetime.strptime(r["Date"], STAMP).date()
-        assert rebuilt[night] == int(r["Total"]), f"{night}: rebuild != Total"
-        assert float(r["Avail"]) >= 0, f"{night}: overbooked"
     for r in read("Cancellation.csv"):
         created, cancelled = (
             datetime.strptime(r[k], STAMP) for k in ("BookingCreatedDate", "CancelDate")

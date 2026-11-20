@@ -1,22 +1,19 @@
-"""Hotels, their room types, nightly performance, and recommendations."""
+"""Hotels, their room types, and recommendations."""
 
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, status
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, field_validator
 
 from foresight.database.enums import EventCategory
 from foresight.routes.access import CurrentUserDep, HotelId, RoomTypeId
 from foresight.routes.city import CityResponse
 from foresight.routes.helpers import (
-    PageDep,
-    PageResponse,
     RequestSchema,
     ResponseSchema,
     SessionDep,
-    paginate,
 )
 from foresight.services.domain import hotel as hotel_service
 from foresight.services.domain import recommendation as recommendation_service
@@ -114,66 +111,6 @@ class RoomTypeResponse(ResponseSchema):
     id: int = Field(description="The room type's id")
     hotel_id: int = Field(description="The hotel it belongs to")
     name: str = Field(description="The room type's name")
-
-
-class DailyPerformanceResponse(ResponseSchema):
-    """Adds the three standard hotel metrics, calculated rather than stored."""
-
-    id: int = Field(description="The night's row id")
-    room_type_id: int = Field(description="The room type sold")
-    stay_date: date = Field(description="The night, local to the hotel's city")
-    rate: Decimal | None = Field(
-        description="Average rate paid that night, in EUR; null if unsold"
-    )
-    rooms_available: int = Field(
-        description="Rooms of this type in stock, including any out of service"
-    )
-    rooms_sold: int = Field(description="Rooms of this type sold")
-    room_revenue: Decimal = Field(description="Revenue from these rooms, in EUR")
-    rooms_blocked: int | None = Field(
-        description="Rooms sold through group blocks; null if not imported"
-    )
-    rooms_out_of_service: int | None = Field(
-        description="Rooms that couldn't be sold that night; null if not imported"
-    )
-    waitlist: int | None = Field(
-        description="Guests on the waitlist; null if not imported"
-    )
-
-    @computed_field
-    @property
-    def sellable_rooms(self) -> int:
-        """Rooms that could be sold: in stock minus out of service."""
-        return self.rooms_available - (self.rooms_out_of_service or 0)
-
-    @computed_field
-    @property
-    def occupancy(self) -> float | None:
-        """Share of sellable rooms sold, 0-1; null if none could be sold.
-
-        Guestline's Occ% counts out-of-service rooms as unsold, so a sold-out
-        night can show 99% there and 100% here.
-        """
-        if self.sellable_rooms <= 0:
-            return None
-        # Exports can show more rooms sold than sellable (1 of 1,025 real nights).
-        return round(min(self.rooms_sold / self.sellable_rooms, 1), 4)
-
-    @computed_field
-    @property
-    def adr(self) -> Decimal | None:
-        """Average Daily Rate: revenue per room sold, in EUR; null if none sold."""
-        if not self.rooms_sold:
-            return None
-        return round(self.room_revenue / self.rooms_sold, 2)
-
-    @computed_field
-    @property
-    def revpar(self) -> Decimal | None:
-        """Revenue per room in stock, in EUR; null if none were in stock."""
-        if not self.rooms_available:
-            return None
-        return round(self.room_revenue / self.rooms_available, 2)
 
 
 class FactorResponse(ResponseSchema):
@@ -375,46 +312,6 @@ async def get_room_type(
     return RoomTypeResponse.model_validate(
         await hotel_service.get_room_type(session, room_type_id)
     )
-
-
-@router.get(
-    "/hotels/{hotel_id}/performance",
-    response_model=PageResponse[DailyPerformanceResponse],
-)
-async def list_performance(
-    hotel_id: HotelId,
-    session: SessionDep,
-    page: PageDep,
-    start: Annotated[
-        date | None,
-        Query(
-            description="First night, inclusive. YYYY-MM-DD",
-            examples=["2025-01-01"],
-        ),
-    ] = None,
-    end: Annotated[
-        date | None,
-        Query(
-            description="Last night, inclusive. YYYY-MM-DD",
-            examples=["2025-12-31"],
-        ),
-    ] = None,
-    room_type_id: Annotated[
-        int | None,
-        Query(description="Only this room type; omit for all", examples=[1]),
-    ] = None,
-) -> PageResponse[DailyPerformanceResponse]:
-    """Nightly performance across the hotel's room types; `start`/`end` inclusive."""
-    nights, total = await hotel_service.list_performance(
-        session,
-        hotel_id,
-        start=start,
-        end=end,
-        room_type_id=room_type_id,
-        limit=page.limit,
-        offset=page.offset,
-    )
-    return paginate(DailyPerformanceResponse, nights, total, page)
 
 
 @router.get(

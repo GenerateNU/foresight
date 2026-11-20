@@ -4,7 +4,7 @@ Giving any date makes the run a backfill over a window:
 
 - start and end: that window.
 - start only: start to today.
-- end only: backwards from end to the hotel's first loaded night, newest
+- end only: backwards from end to the hotel's first booked night, newest
   first, so a source that runs out of credits has saved the most recent part.
 
 Giving neither isn't a window; each signal has its own routine refresh.
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
-from foresight.repository import hotel as hotel_repo
+from foresight.repository import booking as booking_repo
 from foresight.services.errors import InvalidRequestError
 
 if TYPE_CHECKING:
@@ -97,15 +97,15 @@ async def resolve_window(
     if start is not None and end is None:
         end = today
     elif start is None and end is not None:
-        loaded = await hotel_repo.stay_date_range(session, hotel_id)
+        loaded = await booking_repo.booked_night_range(session, hotel_id)
         if loaded is None:
             raise InvalidWindowError(
-                "end alone walks back to the hotel's first loaded night, and "
-                "none are loaded; give a start too"
+                "end alone walks back to the hotel's first booked night, and "
+                "no bookings are loaded; give a start too"
             )
         if loaded[0] > end:
             raise InvalidWindowError(
-                f"end {end} is before the hotel's first loaded night {loaded[0]}"
+                f"end {end} is before the hotel's first booked night {loaded[0]}"
             )
         return Window(loaded[0], end, backwards=True)
     assert start is not None and end is not None

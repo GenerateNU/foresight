@@ -1,6 +1,6 @@
 # 0052. One upload route for every hotel CSV, and a job queue per hotel
 
-**Status:** Accepted · **Date:** 2026-11-07
+**Status:** Accepted, amended by [0080](0080-actual-and-forecast-removed.md) (no `ACTUAL_FORECAST` jobs) · **Date:** 2026-11-07
 
 Supersedes [0020](0020-jobs-in-the-api-process.md) and
 [0021](0021-one-ingest-job-per-signal.md).

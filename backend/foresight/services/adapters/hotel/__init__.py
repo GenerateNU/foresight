@@ -1,6 +1,5 @@
 """Hotel CSV exports from the PMS (Guestline Rezlynx), one adapter per report:
 
-- `actual_forecast`: Actual & Forecast, one row per night
 - `reservations`: Daily New Reservations, one row per room booked
 - `cancellations`: Cancellations, one row per room cancelled
 

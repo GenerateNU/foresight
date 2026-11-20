@@ -1,4 +1,4 @@
-"""Data access for `hotels`, `room_types` and `daily_performance`.
+"""Data access for `hotels` and `room_types`.
 
 `create_*` returns None on a duplicate (API writes); `upsert_*` is idempotent
 (loaders). Hotels are always returned with their `city` loaded.
@@ -8,34 +8,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
-from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
+from foresight.database.models.hotel import Hotel, RoomType
 from foresight.database.models.user import UserHotel
-from foresight.repository.pagination import fetch_page
-from foresight.repository.upsert import Outcome, upsert_rows
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
-    from datetime import date
+    from collections.abc import Mapping, Sequence
 
     from sqlalchemy.ext.asyncio import AsyncSession
-
-_PERF_KEY = ("room_type_id", "stay_date")
-_PERF_MEASURES = (
-    "rate",
-    "rooms_available",
-    "rooms_sold",
-    "room_revenue",
-    "rooms_blocked",
-    "rooms_out_of_service",
-    "waitlist",
-)
-# Older exports leave these out, and daily uploads overlap earlier nights.
-_PERF_OPTIONAL = ("rooms_blocked", "rooms_out_of_service", "waitlist")
 
 
 async def get_hotel(session: AsyncSession, hotel_id: int) -> Hotel | None:
@@ -76,21 +60,6 @@ async def get_or_create_room_type(
     )
     return await session.scalar(
         select(RoomType).where(RoomType.hotel_id == hotel_id, RoomType.name == name)
-    )
-
-
-async def upsert_daily_performance(
-    session: AsyncSession, rows: Iterable[Mapping[str, Any]]
-) -> dict[Outcome, int]:
-    """Write rows keyed on (room_type_id, stay_date)."""
-    return await upsert_rows(
-        session,
-        DailyPerformance,
-        constraint="uq_daily_performance_room_type_id_stay_date",
-        key=_PERF_KEY,
-        mutable=_PERF_MEASURES,
-        rows=rows,
-        keep_if_null=_PERF_OPTIONAL,
     )
 
 
@@ -170,75 +139,3 @@ async def get_room_type(session: AsyncSession, room_type_id: int) -> RoomType | 
 async def list_room_types(session: AsyncSession, hotel_id: int) -> Sequence[RoomType]:
     stmt = select(RoomType).where(RoomType.hotel_id == hotel_id).order_by(RoomType.id)
     return (await session.scalars(stmt)).all()
-
-
-async def list_performance(
-    session: AsyncSession,
-    hotel_id: int,
-    *,
-    start: date | None,
-    end: date | None,
-    room_type_id: int | None,
-    limit: int,
-    offset: int,
-) -> tuple[Sequence[DailyPerformance], int]:
-    """Nights for every room type of a hotel; `daily_performance` has no hotel_id."""
-    stmt = (
-        select(DailyPerformance)
-        .join(RoomType, DailyPerformance.room_type_id == RoomType.id)
-        .where(RoomType.hotel_id == hotel_id)
-    )
-    if room_type_id is not None:
-        stmt = stmt.where(DailyPerformance.room_type_id == room_type_id)
-    if start is not None:
-        stmt = stmt.where(DailyPerformance.stay_date >= start)
-    if end is not None:
-        stmt = stmt.where(DailyPerformance.stay_date <= end)
-    stmt = stmt.order_by(DailyPerformance.stay_date, DailyPerformance.room_type_id)
-    return await fetch_page(session, stmt, limit=limit, offset=offset)
-
-
-async def stay_date_range(
-    session: AsyncSession, hotel_id: int
-) -> tuple[date, date] | None:
-    """First and last stay_date loaded for a hotel, or None if it has no nights."""
-    first, last = (
-        await session.execute(
-            select(
-                func.min(DailyPerformance.stay_date),
-                func.max(DailyPerformance.stay_date),
-            )
-            .join(RoomType, DailyPerformance.room_type_id == RoomType.id)
-            .where(RoomType.hotel_id == hotel_id)
-        )
-    ).one()
-    return None if first is None else (first, last)
-
-
-async def list_nights(
-    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
-) -> Sequence[Mapping[str, Any]]:
-    """Every night of every room type, oldest first.
-
-    Rows carry stay_date, room_type (its name), rate, rooms_sold,
-    rooms_available and rooms_out_of_service. Nights with no or a zero rate are
-    included; the caller decides what to drop.
-    """
-    stmt = (
-        select(
-            DailyPerformance.stay_date,
-            RoomType.name.label("room_type"),
-            DailyPerformance.rate,
-            DailyPerformance.rooms_sold,
-            DailyPerformance.rooms_available,
-            DailyPerformance.rooms_out_of_service,
-        )
-        .join(RoomType, DailyPerformance.room_type_id == RoomType.id)
-        .where(RoomType.hotel_id == hotel_id)
-    )
-    if start is not None:
-        stmt = stmt.where(DailyPerformance.stay_date >= start)
-    if end is not None:
-        stmt = stmt.where(DailyPerformance.stay_date <= end)
-    stmt = stmt.order_by(DailyPerformance.stay_date, RoomType.id)
-    return (await session.execute(stmt)).mappings().all()

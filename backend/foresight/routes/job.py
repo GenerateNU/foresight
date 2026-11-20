@@ -75,7 +75,9 @@ class KindFreshnessResponse(ResponseSchema):
 class FreshnessResponse(ResponseSchema):
     events: KindFreshnessResponse = Field(description="Routine events refresh")
     weather: KindFreshnessResponse = Field(description="Routine forecast refresh")
-    hotel_data: KindFreshnessResponse = Field(description="Hotel data upload (CSV)")
+    hotel_data: KindFreshnessResponse = Field(
+        description="Daily New Reservations upload (CSV)"
+    )
     training: KindFreshnessResponse = Field(description="Pricing model training")
     recommendations: KindFreshnessResponse = Field(
         description="When a recommended rate last changed (its newest snapshot). "

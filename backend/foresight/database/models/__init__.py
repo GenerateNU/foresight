@@ -4,7 +4,7 @@ from foresight.database.base import Base
 from foresight.database.models.booking import Booking, BookingCancellation
 from foresight.database.models.city import City
 from foresight.database.models.feedback import Feedback
-from foresight.database.models.hotel import DailyPerformance, Hotel, RoomType
+from foresight.database.models.hotel import Hotel, RoomType
 from foresight.database.models.job import Job
 from foresight.database.models.pricing_model import PricingModel, PricingModelFeedback
 from foresight.database.models.recommendation import RecommendationSnapshot
@@ -17,7 +17,6 @@ __all__ = [
     "Booking",
     "BookingCancellation",
     "City",
-    "DailyPerformance",
     "Event",
     "EventObservation",
     "Feedback",

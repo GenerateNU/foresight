@@ -28,7 +28,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `alembic.ini` | Alembic config |
 | `.env.example` | Optional backend-only overrides |
 | `.python-version`, `.dockerignore` | Python version; Docker build excludes |
-| `data/*.csv` | Synthetic Guestline exports (performance, bookings, cancellations) used by tests |
+| `data/*.csv` | Synthetic Guestline exports (bookings, cancellations) used by tests |
 | `data/generate.py` | Writes those synthetic CSVs |
 
 ## backend/foresight/ (app entry points)
@@ -50,7 +50,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `auth.py` | Google sign-in, callback, logout, `/auth/me` |
 | `health.py` | `/health` |
 | `city.py` | Create, list, read, update cities |
-| `hotel.py` | Hotels, room types, performance, linking users, recommendations |
+| `hotel.py` | Hotels, room types, linking users, recommendations |
 | `weather.py` | List weather; recorded-weather coverage gaps |
 | `event.py` | List events in a hotel's city |
 | `ingest.py` | Start weather or events jobs; upload hotel CSVs (one job per file) |
@@ -72,7 +72,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `access.py` | Checks a user may reach a hotel, job, model, room type or city |
 | `user.py` | Sign-in, users, linking users to hotels |
 | `city.py` | City rules; "today" in a city's timezone |
-| `hotel.py` | Hotels, room types, nightly performance |
+| `hotel.py` | Hotels and room types |
 | `weather.py` | Read weather for a hotel's city |
 | `weather_coverage.py` | Which days lack recorded weather |
 | `event.py` | Merge event sightings into one row per event; list events |
@@ -91,7 +91,6 @@ One line per file: what it's for. For how the pieces fit together, see
 | `weather.py` | Fetch and save forecast and recorded weather |
 | `event.py` | Fetch and save PredictHQ events (recent or by window) |
 | `files.py` | The list of uploadable reports; recognises each file by its header, parses it, records it on its job |
-| `actual_forecast.py` | Parse and save the Actual & Forecast export (nightly performance) |
 | `bookings.py` | Parse and save the Daily New Reservations and Cancellations exports |
 
 ### services/adapters/ — outside APIs and files, no DB
@@ -101,7 +100,6 @@ One line per file: what it's for. For how the pieces fit together, see
 | `open_meteo.py` | Open-Meteo forecast and recorded weather |
 | `predicthq.py` | PredictHQ events → normalized events |
 | `normalize.py` | Shared event shape, title/city normalizing, dedupe key |
-| `hotel/actual_forecast.py` | Parses the Guestline Actual & Forecast export |
 | `hotel/reservations.py` | Parses the Guestline Daily New Reservations export |
 | `hotel/cancellations.py` | Parses the Guestline Cancellations export |
 | `hotel/common.py` | Shared row-by-row CSV reading and value checks for the Guestline exports |
@@ -139,7 +137,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `enums.py` | Enums stored in columns (job kinds, event categories, verdicts…) |
 | `session.py` | Engine and per-request session |
 | `models/city.py` | `cities` |
-| `models/hotel.py` | `hotels`, `room_types`, `daily_performance` |
+| `models/hotel.py` | `hotels`, `room_types` |
 | `models/user.py` | `users`, `user_hotels` |
 | `models/job.py` | `jobs` |
 | `models/booking.py` | `bookings`, `booking_cancellations` |
@@ -159,7 +157,6 @@ One line per file: what it's for. For how the pieces fit together, see
 | `test_auth.py` | Google sign-in and session cookie |
 | `test_user.py` | Users and hotel links |
 | `test_access.py` | Every route needs login; other hotels' data is 404 |
-| `test_performance.py` | Performance CSV import |
 | `test_bookings.py` | Bookings/cancellations import |
 | `test_rooms_booked.py` | Rooms-booked rebuild |
 | `test_freshness.py` | Freshness report |
