@@ -1,3 +1,11 @@
+/**
+ * A money amount from the API as a number. The API sends Decimals as strings ("279.00") so
+ * no cents are lost; this is the one place they become numbers. null stays null.
+ */
+export function parseAmount(value) {
+  return value == null ? null : Number(value)
+}
+
 /** Whole euros for display: `formatEuro(279.4)` is "€279". */
 export function formatEuro(amount) {
   return `€${Math.round(amount).toLocaleString('en-IE')}`
