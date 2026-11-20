@@ -101,13 +101,11 @@ class Recommendation:
     stay_date: date
     room_type: str
     room_type_id: int
-    lead_days: int | None  # days from today it was priced at; None if not read
-    rate_basis: str  # "nett" (booked rooms, before VAT) or "arr" (nightly rate)
+    lead_days: int | None  # days from today it was priced at; None on old snapshots
     recommended_rate: Decimal
     currency: str
     explanation: Explanation
     confidence_interval: ConfidenceInterval
-    uncertainty: Decimal  # sub-model disagreement; high = review (decision 0006)
     model_id: int
     model_version: str
     events: list[NightEvent]  # the events on the night, largest first
@@ -137,7 +135,6 @@ class _Scored:
 
     rate: Decimal
     interval: ConfidenceInterval
-    uncertainty: Decimal
     explanation: Explanation
 
 
@@ -323,7 +320,6 @@ async def _score(
 
     x = pd.concat([n.features for n in nights], ignore_index=True)
     pred, lower, upper = model.predict_interval(x)
-    uncertainty = model.predict_uncertainty(x)
     contributions = model.explain(x)
     level = round(1 - model.alpha, 2)
 
@@ -333,7 +329,6 @@ async def _score(
             interval=ConfidenceInterval(
                 _money(max(float(lower[i]), 0.0)), _money(float(upper[i])), level
             ),
-            uncertainty=_money(float(uncertainty[i])),
             explanation=_explanation(
                 model.intercept, contributions.iloc[i], x.iloc[i], float(pred[i])
             ),
@@ -369,7 +364,7 @@ def _explanation(
 
 
 def _describe(term: str, row: pd.Series) -> str:
-    """Name a term by the night's value, e.g. "Saturday" or "18.3°C max"."""
+    """Name a term by the night's value, e.g. "Saturday" or "booking 3 days ahead"."""
     # `row` is one night, so each column holds a single scalar; pandas' stubs
     # type indexing as possibly a Series, hence the cast.
     return " with ".join(
@@ -431,7 +426,6 @@ async def _save(
         interval_low=scored.interval.lower,
         interval_high=scored.interval.upper,
         interval_level=scored.interval.level,
-        uncertainty=scored.uncertainty,
         factors=_explanation_json(scored.explanation),
         inputs=night.inputs,
         inputs_hash=night.inputs_hash,
@@ -449,14 +443,12 @@ def _from_snapshot(
         room_type=room_type.name,
         room_type_id=room_type.id,
         lead_days=_lead_days(inputs),
-        rate_basis=_rate_basis(inputs),
         recommended_rate=snap.rate,
         currency=CURRENCY,
         explanation=_explanation_from_json(snap.factors),
         confidence_interval=ConfidenceInterval(
             snap.interval_low, snap.interval_high, snap.interval_level
         ),
-        uncertainty=snap.uncertainty,
         model_id=snap.model_id,
         model_version=snap.model_version,
         events=[_event_from_json(e) for e in inputs.get("events", [])],
@@ -480,12 +472,10 @@ def _unsaved(
         room_type=room_type.name,
         room_type_id=room_type.id,
         lead_days=_lead_days(night.inputs),
-        rate_basis=_rate_basis(night.inputs),
         recommended_rate=scored.rate,
         currency=CURRENCY,
         explanation=scored.explanation,
         confidence_interval=scored.interval,
-        uncertainty=scored.uncertainty,
         model_id=stored.id,
         model_version=_version(stored),
         events=night.events,
@@ -496,16 +486,10 @@ def _unsaved(
 
 
 def _lead_days(inputs: dict[str, Any]) -> int | None:
-    """The days ahead a night was priced at, from its stored inputs; None if
-    the version doesn't read them."""
+    """The days ahead a night was priced at, from its stored inputs; None on
+    snapshots from versions that didn't read them."""
     value = inputs.get("features", {}).get(LEAD)
     return None if value is None else int(value)
-
-
-def _rate_basis(inputs: dict[str, Any]) -> str:
-    """ "nett" for a version trained on booked rooms, which always reads days
-    ahead; "arr" for one trained on nights (decision 0056)."""
-    return "nett" if _lead_days(inputs) is not None else "arr"
 
 
 def _version(stored: PricingModel) -> str:

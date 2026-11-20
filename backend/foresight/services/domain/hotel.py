@@ -23,7 +23,6 @@ async def create_hotel(
     *,
     name: str,
     city_id: int,
-    total_rooms: int,
     latitude: float | None,
     longitude: float | None,
 ) -> Hotel:
@@ -34,7 +33,6 @@ async def create_hotel(
         session,
         name=name,
         city_id=city_id,
-        total_rooms=total_rooms,
         latitude=latitude,
         longitude=longitude,
     )
@@ -49,7 +47,6 @@ async def create_hotel_for_user(
     *,
     name: str,
     city_id: int,
-    total_rooms: int,
     latitude: float | None,
     longitude: float | None,
 ) -> Hotel:
@@ -59,7 +56,6 @@ async def create_hotel_for_user(
         session,
         name=name,
         city_id=city_id,
-        total_rooms=total_rooms,
         latitude=latitude,
         longitude=longitude,
     )

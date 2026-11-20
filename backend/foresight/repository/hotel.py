@@ -68,7 +68,6 @@ async def create_hotel(
     *,
     name: str,
     city_id: int,
-    total_rooms: int,
     latitude: float | None,
     longitude: float | None,
 ) -> Hotel | None:
@@ -81,7 +80,6 @@ async def create_hotel(
         .values(
             name=name,
             city_id=city_id,
-            total_rooms=total_rooms,
             latitude=latitude,
             longitude=longitude,
         )

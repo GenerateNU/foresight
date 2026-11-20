@@ -137,23 +137,6 @@ class EBMModel(Model):
         level = min(1.0, np.ceil((n + 1) * (1 - alpha)) / n)
         return float(np.quantile(residuals, level, method="higher"))
 
-    def predict_uncertainty(self, x):
-        """Measures how much the model's internal sub-models disagree per row.
-
-        High values flag nights unlike the training data. This is not a range
-        for the rate; use predict_interval for that.
-
-        Args:
-            x (pd.DataFrame): Features to predict on.
-
-        Returns:
-            np.ndarray: One standard deviation per row of x, in rate units.
-
-        Raises:
-            RuntimeError: If fit has not been called yet.
-        """
-        return self._fitted().predict_with_uncertainty(x)[:, 1]
-
     def explain(self, x):
         """Splits each prediction into the contribution of every term.
 
@@ -240,7 +223,7 @@ class TunedEBMModel(EBMModel):
     rates it's fit on (`init_score`), so a prediction is the base's plus the
     correction's (decision 0069). It has no pairwise terms, so its terms are a
     subset of the base's and `explain` can add them up by name. The interval
-    and uncertainty are the base's.
+    is the base's.
 
     Only the correction is serialized; the base is stored once, as its own
     version, and the tuned version points to it (decision 0078). After
@@ -353,11 +336,6 @@ class TunedEBMModel(EBMModel):
             RuntimeError: If fit has not been called yet.
         """
         return self._base().predict(x) + self.correction(x)
-
-    def predict_uncertainty(self, x):
-        """The base's uncertainty; the correction doesn't change it."""
-        self._fitted()
-        return self._base().predict_uncertainty(x)
 
     def explain(self, x):
         """The base's contributions with the correction's added, term by term.

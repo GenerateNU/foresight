@@ -172,8 +172,7 @@ async def _with_manager_rows(
     booked rooms, and at least 1.
     """
     if feedback.empty:
-        used = pd.DataFrame(columns=["feedback_id", "rate_replaced", "weight_factor",
-                                     "training_rate"])  # fmt: skip
+        used = pd.DataFrame(columns=["feedback_id", "training_rate"])
         return PreparedTraining(data, data.y, data.weights, used, began)
     rows = feedback.assign(
         booked_on=[local_date(hotel.city, t) for t in feedback["shown_at"]]
@@ -208,8 +207,6 @@ async def _with_manager_rows(
     used = pd.DataFrame(
         {
             "feedback_id": feedback["id"].astype(int).to_numpy(),
-            "rate_replaced": False,
-            "weight_factor": weights,
             "training_rate": rows["rate"].to_numpy(float),
         }
     )
@@ -232,7 +229,6 @@ async def fit(
     metrics["training_rows"] = len(data.nights)
     metrics["training_nights"] = int(data.nights["stay_date"].nunique())
     metrics["feedback_nights"] = len(prepared.used)
-    metrics["feedback_rates_replaced"] = int(prepared.used["rate_replaced"].sum())
     metrics["one_off_nights"] = data.one_off_dropped
     return metrics, artifact
 

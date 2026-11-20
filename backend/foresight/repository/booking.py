@@ -115,14 +115,6 @@ async def booked_night_range(
     return first, departure - timedelta(days=1)
 
 
-async def list_cancellations(
-    session: AsyncSession, hotel_id: int, *, start: date, end: date
-) -> Sequence[BookingCancellation]:
-    """Cancellations with a night from `start` to `end`."""
-    stmt = _stays_touching(BookingCancellation, hotel_id, start, end)
-    return (await session.scalars(stmt)).all()
-
-
 def _product[S: Select[Any]](
     stmt: S, room_type_code: str | None, rate_plan: str | None
 ) -> S:

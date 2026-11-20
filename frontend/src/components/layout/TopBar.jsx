@@ -19,7 +19,7 @@ export default function TopBar() {
         <span className="text-base font-medium">{hotel?.name ?? 'Foresight'}</span>
         {hotel && (
           <span className="text-xs text-stone-500">
-            {hotel.city.name}, {hotel.total_rooms} rooms
+            {hotel.city.name}
           </span>
         )}
       </div>
