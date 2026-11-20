@@ -3,7 +3,9 @@
 Entry point for AI coding agents working in **Foresight**. Read this first, then
 [`docs/system-design.md`](docs/system-design.md) for how the backend fits
 together, and the [decision records](docs/decisions/README.md) for the code
-you're touching.
+you're touching. Working in `frontend/`? Read
+[`frontend/AGENTS.md`](frontend/AGENTS.md) too: tokens, components and how to
+turn a Figma design into code.
 The goal: keep everyone's software practices aligned when they use AI.
 
 ## What Foresight is
@@ -79,5 +81,5 @@ API: http://localhost:8000 · docs: http://localhost:8000/docs
 - **Do** keep business logic in services and data access in the repository.
 - **Don't** skip layers, add dependencies without updating `pyproject.toml`, or
   change the schema without a migration.
-- **Don't** invent new conventions; this file, `docs/system-design.md` and
-  `docs/decisions/` are the source of truth.
+- **Don't** invent new conventions; this file, `frontend/AGENTS.md`,
+  `docs/system-design.md` and `docs/decisions/` are the source of truth.
