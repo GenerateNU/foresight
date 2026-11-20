@@ -14,9 +14,11 @@ export class ApiError extends Error {
 /**
  * GET `path` from the API with `params` as the query string, and return the JSON body.
  * The only code that talks HTTP: everything else calls the functions in src/api/*, so
- * auth, retries or error handling change here and nowhere else.
+ * auth, retries or error handling change here and nowhere else. A 401 sends the browser
+ * to sign in, unless `redirectOn401` is false (for /auth/me, which uses it to tell
+ * "signed out" apart); then it throws an ApiError like any other failure.
  */
-export async function apiGet(path, params = {}) {
+export async function apiGet(path, params = {}, { redirectOn401 = true } = {}) {
   if (USE_MOCKS) {
     // Loaded on demand, so a real build never downloads the mocks.
     const { mockGet } = await import('./mocks/index.js')
@@ -30,12 +32,22 @@ export async function apiGet(path, params = {}) {
 
   // `include` sends the session cookie to the API, which lives on another origin.
   const response = await fetch(url, { credentials: 'include' })
-  if (response.status === 401) redirectToSignIn()
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new ApiError(response.status, readableDetail(body.detail) ?? response.statusText)
-  }
+  if (response.status === 401 && redirectOn401) redirectToSignIn()
+  if (!response.ok) await throwApiError(response)
   return response.json()
+}
+
+/** POST to `path` with no body, for actions like signing out; returns nothing. */
+export async function apiPost(path) {
+  if (USE_MOCKS) return
+
+  const response = await fetch(new URL(path, API_URL), { method: 'POST', credentials: 'include' })
+  if (!response.ok) await throwApiError(response)
+}
+
+async function throwApiError(response) {
+  const body = await response.json().catch(() => ({}))
+  throw new ApiError(response.status, readableDetail(body.detail) ?? response.statusText)
 }
 
 /** FastAPI's `detail` is a string for most errors, but a list of field problems for a 422. */

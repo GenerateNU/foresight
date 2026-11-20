@@ -1,5 +1,5 @@
 import { ApiError } from '../client.js'
-import { mockHotel } from './hotels.js'
+import { mockHotel, mockMe } from './hotels.js'
 import { mockRecommendations } from './recommendations.js'
 
 /**
@@ -8,6 +8,7 @@ import { mockRecommendations } from './recommendations.js'
  * backend's *Response schemas (see http://localhost:8000/docs).
  */
 const ROUTES = [
+  [/^\/auth\/me$/, () => mockMe()],
   [/^\/hotels\/(\d+)$/, ([id]) => mockHotel(Number(id))],
   [/^\/hotels\/(\d+)\/recommendations$/, ([id], query) => mockRecommendations(Number(id), query)],
 ]
