@@ -75,13 +75,22 @@ async def booking_curves(
 
 
 async def booking_rows(
-    session: AsyncSession, hotel_id: int, *, start: date, end: date
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    start: date,
+    end: date,
+    room_type_code: str,
+    rate_plan: str,
 ) -> pd.DataFrame:
     """What each booked room paid for each night it stayed, for training.
 
     A booking covers one room for a whole stay. This splits it into one row per
     night, so the model sees each night a room was sold, when it was booked,
     and at what price (decision 0056).
+
+    Only bookings of one room code and rate plan, the product the model
+    prices (decision 0079).
 
     `start` and `end` are stay dates, inclusive: usually the training window.
     A stay crossing either edge contributes only its nights inside the window;
@@ -92,8 +101,7 @@ async def booking_rows(
         booked_on: the day the booking was made. One dated after its night
             (late entries, no-shows) is kept; build_features gives it 0 days
             ahead.
-        room_type_code: Guestline's code, e.g. DOUBLE. Not mapped to a room
-            type; the caller decides what to do with it.
+        room_type_code: Guestline's code, always `room_type_code`.
         rate: the booking's nett rate per night, before VAT. Every night of a
             stay gets the stay's average, so a weekend night in a longer stay
             is blurred with its weekdays.
@@ -102,7 +110,12 @@ async def booking_rows(
     by stay_date. Empty if the hotel has no bookings in the window.
     """
     bookings = await booking_repo.list_live_bookings(
-        session, hotel_id, start=start, end=end
+        session,
+        hotel_id,
+        start=start,
+        end=end,
+        room_type_code=room_type_code,
+        rate_plan=rate_plan,
     )
     rows = pd.DataFrame(
         [

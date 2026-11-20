@@ -44,6 +44,12 @@ if TYPE_CHECKING:
     from foresight.database.models.pricing_model import PricingModel
 
 ALGORITHM = "ebm"
+# The one product the model prices (decision 0079): Guestline's DOUBLE room,
+# room only. Half of Beresford's room-nights are DOUBLE, and breakfast adds
+# about €27 a night, so mixing room types and plans blurs the price. Training
+# reads only these bookings; the room type is named after the code.
+MAIN_ROOM_CODE = "DOUBLE"
+MAIN_RATE_PLAN = "BAR_RO"
 # EBM needs enough rows for its own validation split plus our calibration set.
 # Rows are booked rooms (decision 0076).
 MIN_TRAINING_ROWS = 120
@@ -87,17 +93,17 @@ async def check_trainable(
 
     Raises:
         NotFoundError: Unknown hotel.
-        InvalidRequestError: start is after end, the hotel doesn't have
-            exactly one room type, or no booked nights fall in the window.
+        InvalidRequestError: start is after end, or no booked nights of the
+            main product fall in the window.
     """
     hotel = await get_hotel(session, hotel_id)
     if start is not None and end is not None and start > end:
         raise InvalidRequestError(f"start {start} is after end {end}")
-    await _only_room_type(session, hotel)
-    loaded = await booking_repo.booked_night_range(session, hotel.id)
+    loaded = await _main_night_range(session, hotel)
     if loaded is None:
         raise InvalidRequestError(
-            "no bookings are loaded for this hotel; upload reservations first"
+            f"no {MAIN_ROOM_CODE} {MAIN_RATE_PLAN} bookings are loaded for this "
+            "hotel; upload reservations first"
         )
     first, last = loaded
     if (start is not None and start > last) or (end is not None and end < first):
@@ -137,9 +143,14 @@ async def prepare_training(
         )
 
     # Decision 0071: the manager's current rate is a target, before or after the
-    # night, the same rule the tune-up follows.
-    feedback_rows = await feedback_repo.tuning_feedback(
-        session, hotel.id, start=start, end=end
+    # night, the same rule the tune-up follows. No room type yet, no feedback.
+    room_type = await main_room_type(session, hotel)
+    feedback_rows = (
+        []
+        if room_type is None
+        else await feedback_repo.tuning_feedback(
+            session, room_type.id, start=start, end=end
+        )
     )
     feedback = pd.DataFrame(feedback_rows, columns=pd.Index(_FEEDBACK_COLUMNS))
     feedback["rate"] = pd.to_numeric(feedback["rate"], errors="coerce")
@@ -237,8 +248,12 @@ async def save_version(
     activate: bool,
 ) -> TrainingResult:
     """Save the fitted model as a new version, and activate it unless told not
-    to. Does not commit."""
+    to. Creates the main room type the first time (decision 0079). Does not
+    commit."""
     nights = prepared.data.nights
+    room_type = await hotel_repo.get_or_create_room_type(
+        session, hotel_id=hotel.id, name=MAIN_ROOM_CODE
+    )
     saved = await model_repo.create_pricing_model(
         session,
         hotel_id=hotel.id,
@@ -250,6 +265,7 @@ async def save_version(
         lib_versions={lib: version(lib) for lib in LIBS},
         data_start=nights["stay_date"].min(),
         data_end=nights["stay_date"].max(),
+        room_type_id=room_type.id,
     )
     await model_repo.link_feedback(
         session, saved.id, prepared.used.to_dict(orient="records")
@@ -277,16 +293,13 @@ async def training_data(
 ) -> TrainingData:
     """The hotel's booked rooms on nights in [start, end] and their inputs.
 
-    One row per booked room per night, from live bookings alone (decision
-    0076): a night's rows are its rooms sold, so how full it was is already in
-    how much it counts, and each room weighs 1. The one place training data is
-    prepared, so `train` and the backtest always see the same inputs.
-
-    Raises:
-        InvalidRequestError: The hotel doesn't have exactly one room type.
+    One row per booked room per night, from live bookings of the main product
+    alone (decisions 0076, 0079): a night's rows are its rooms sold, so how
+    full it was is already in how much it counts, and each room weighs 1. The
+    one place training data is prepared, so `train` and the backtest always
+    see the same inputs. Reads only; the room type may not exist yet.
     """
-    room_type = await _only_room_type(session, hotel)
-    loaded = await booking_repo.booked_night_range(session, hotel.id)
+    loaded = await _main_night_range(session, hotel)
     if loaded is None:
         booked = pd.DataFrame(columns=pd.Index(BOOKING_ROW_COLUMNS))
     else:
@@ -296,14 +309,21 @@ async def training_data(
             hotel.id,
             start=max(first, start) if start else first,
             end=min(last, end) if end else last,
+            room_type_code=MAIN_ROOM_CODE,
+            rate_plan=MAIN_RATE_PLAN,
         )
-    booked["room_type"] = room_type.name
+    booked["room_type"] = MAIN_ROOM_CODE
 
     # Decision 0070: a night the manager marked one-off teaches nothing.
-    one_off = await feedback_repo.one_off_nights(
-        session, hotel.id, start=start, end=end
+    room_type = await main_room_type(session, hotel)
+    one_off = (
+        []
+        if room_type is None
+        else await feedback_repo.one_off_nights(
+            session, room_type.id, start=start, end=end
+        )
     )
-    marked = {r["stay_date"] for r in one_off if r["room_type"] == room_type.name}
+    marked = {r["stay_date"] for r in one_off}
     keep = ~booked["stay_date"].isin(marked)
     one_off_dropped = int(booked.loc[~keep, "stay_date"].nunique())
     booked = booked.loc[keep].reset_index(drop=True)
@@ -328,22 +348,19 @@ async def training_data(
     )
 
 
-async def _only_room_type(session: AsyncSession, hotel: Hotel) -> RoomType:
-    """The hotel's one room type.
+async def main_room_type(session: AsyncSession, hotel: Hotel) -> RoomType | None:
+    """The room type the model prices (decision 0079), or None before the
+    hotel's first training run creates it."""
+    return await hotel_repo.find_room_type(session, hotel.id, MAIN_ROOM_CODE)
 
-    Bookings carry Guestline's room codes, which don't map to room types yet,
-    so every booking takes the hotel's single room type (decision 0056).
 
-    Raises:
-        InvalidRequestError: The hotel has none, or more than one.
-    """
-    room_types = await hotel_repo.list_room_types(session, hotel.id)
-    if len(room_types) != 1:
-        raise InvalidRequestError(
-            f"training needs exactly one room type; this hotel has "
-            f"{len(room_types)}, and bookings don't map to room types yet"
-        )
-    return room_types[0]
+async def _main_night_range(
+    session: AsyncSession, hotel: Hotel
+) -> tuple[date, date] | None:
+    """The first and last night the main product's bookings cover."""
+    return await booking_repo.booked_night_range(
+        session, hotel.id, room_type_code=MAIN_ROOM_CODE, rate_plan=MAIN_RATE_PLAN
+    )
 
 
 async def list_models(

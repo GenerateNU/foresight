@@ -1,6 +1,6 @@
 # 0076. Train on booked rooms only; manager feedback as booked-room rows; prices before VAT
 
-**Status:** Accepted · **Date:** 2026-11-19 · Supersedes [0003](0003-sample-weighting.md);
+**Status:** Accepted, amended by [0079](0079-one-main-room-type-double-room-only.md) (one product, DOUBLE room only) · **Date:** 2026-11-19 · Supersedes [0003](0003-sample-weighting.md);
 amends [0056](0056-lead-days-input.md), [0069](0069-daily-tune-up.md),
 [0070](0070-one-off-nights-teach-the-model-nothing.md),
 [0071](0071-manager-rate-is-the-target-everywhere.md),

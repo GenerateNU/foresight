@@ -155,9 +155,9 @@ async def get_recommendations(
     prices it and, from today on, saves a new snapshot.
 
     Raises:
-        NotFoundError: Unknown hotel or room type, or no active model.
+        NotFoundError: Unknown hotel, or no active model.
         InvalidRequestError: `end` before `start`, more than `MAX_NIGHTS`
-            nights, or the model wasn't trained on the room type.
+            nights, or a room type the model doesn't price.
     """
     if end < start:
         raise InvalidRequestError("end must not be before start")
@@ -168,13 +168,7 @@ async def get_recommendations(
     stored = await model_repo.get_active_pricing_model(session, hotel.id)
     if stored is None:
         raise NotFoundError("Active pricing model for hotel", hotel.id)
-    room_type = await _room_type(session, hotel, room_type_id)
-    trained_on = stored.training_summary.get("room_types", [])
-    if trained_on and room_type.name not in trained_on:
-        raise InvalidRequestError(
-            f"model v{stored.version} wasn't trained on room type "
-            f"{room_type.name!r}; train a new version"
-        )
+    room_type = await _room_type(session, stored, room_type_id)
 
     today = local_today(hotel.city)
     nights = await _load_nights(session, hotel, room_type, stored, today, start, end)
@@ -189,7 +183,7 @@ async def get_recommendations(
         if (snap := latest.get(n.stay_date)) is None
         or (n.stay_date >= today and snap.inputs_hash != n.inputs_hash)
     ]
-    scored = await _score(session, stored, to_score, trained_on)
+    scored = await _score(session, stored, to_score)
 
     out = []
     for night in nights:
@@ -211,16 +205,24 @@ async def get_recommendations(
 
 
 async def _room_type(
-    session: AsyncSession, hotel: Hotel, room_type_id: int | None
+    session: AsyncSession, stored: PricingModel, room_type_id: int | None
 ) -> RoomType:
-    """The given room type, or the hotel's first. NotFoundError if neither."""
-    room_types = await hotel_repo.list_room_types(session, hotel.id)
-    if room_type_id is None:
-        room_type = room_types[0] if room_types else None
-    else:
-        room_type = next((r for r in room_types if r.id == room_type_id), None)
-    if room_type is None:
-        raise NotFoundError("Room type", room_type_id or "for hotel")
+    """The room type the active version prices (decision 0079).
+
+    Raises:
+        InvalidRequestError: The version predates 0079 and prices no room
+            type, or `room_type_id` is another room type.
+    """
+    if stored.room_type_id is None:
+        raise InvalidRequestError(
+            f"model v{stored.version} predates the main room type; train a new version"
+        )
+    if room_type_id is not None and room_type_id != stored.room_type_id:
+        raise InvalidRequestError(
+            f"model v{stored.version} prices only room type {stored.room_type_id}"
+        )
+    room_type = await hotel_repo.get_room_type(session, stored.room_type_id)
+    assert room_type is not None  # the foreign key cascades
     return room_type
 
 
@@ -244,7 +246,7 @@ async def _load_nights(
         session, hotel.city_id, start=start, end=end
     )
     city_events = await events_for(session, hotel.city, days)
-    frame = pd.DataFrame({"stay_date": days, "room_type": room_type.name})
+    frame = pd.DataFrame({"stay_date": days})
     x = build_features(
         frame,
         city_events.frame,
@@ -312,7 +314,6 @@ async def _score(
     session: AsyncSession,
     stored: PricingModel,
     nights: list[_Night],
-    trained_on: list[str],
 ) -> dict[date, _Scored]:
     """Run the model once over every night given. Loads the model only if
     there is something to score."""
@@ -321,8 +322,6 @@ async def _score(
     model = await load_model(session, stored)
 
     x = pd.concat([n.features for n in nights], ignore_index=True)
-    # A partial batch can't infer the trained category set; give it the model's.
-    x["room_type"] = pd.Categorical(x["room_type"], categories=trained_on or None)
     pred, lower, upper = model.predict_interval(x)
     uncertainty = model.predict_uncertainty(x)
     contributions = model.explain(x)
@@ -398,8 +397,6 @@ def _value(feature: str, value: float | int | str | None) -> str:
         return _DAYS[int(value)]
     if feature == "month":
         return _MONTHS[int(value) - 1]
-    if feature == "room_type":
-        return f"{value} room"
     return f"{feature.replace('_', ' ')} {value}"
 
 

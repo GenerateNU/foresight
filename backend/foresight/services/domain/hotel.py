@@ -112,7 +112,6 @@ async def create_room_type(
     hotel_id: int,
     *,
     name: str,
-    room_count: int,
 ) -> RoomType:
     """Raises NotFoundError for an unknown hotel, ConflictError for a duplicate."""
     await get_hotel(session, hotel_id)
@@ -120,7 +119,6 @@ async def create_room_type(
         session,
         hotel_id=hotel_id,
         name=name,
-        room_count=room_count,
     )
     if room_type is None:
         raise ConflictError(f"Hotel {hotel_id} already has a room type named {name!r}")

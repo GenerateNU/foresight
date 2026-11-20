@@ -1,6 +1,6 @@
 # 0056. Days booked ahead is a model input, trained on booked rooms
 
-**Status:** Accepted · **Date:** 2026-11-19
+**Status:** Accepted, amended by [0079](0079-one-main-room-type-double-room-only.md) (one product, DOUBLE room only) · **Date:** 2026-11-19
 
 Revisits the booking-notice question left open by
 [0049](0049-booking-pace-measured-before-served.md) and

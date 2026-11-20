@@ -474,7 +474,7 @@ POST /hotels/7/ingest/files  files=Actual & Forecast.csv, Cancellation.csv
       → one job per file (ACTUAL_FORECAST, CANCELLATIONS), in upload order
   ← 202 [job, job]; each joins the hotel's queue with its parsed rows
   worker, per job, 5,000 rows at a time:
-      actual_forecast: upsert_room_type("Standard", room_count from the file)
+      actual_forecast: get_or_create_room_type("Standard")
                        upsert_daily_performance(rows)    → commit
       reservations / cancellations: upsert_bookings / upsert_cancellations
                                                          → commit
@@ -509,11 +509,12 @@ Both read only what's already ingested; neither fetches
 
 ```
 POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
-  job_service.start_train_job       one room type, bookings loaded in window → else 422
+  job_service.start_train_job       DOUBLE BAR_RO bookings loaded in window → else 422 (0079)
   → domain/pricing_model.prepare_training
       training_data                             shared with the backtest (6.7)
         domain/booking.booking_rows             one row per booked room per night, from
-                                                bookings alone: rate = adr_nett, weight 1 (0076)
+                                                DOUBLE BAR_RO bookings alone: rate = adr_nett,
+                                                weight 1 (0076, 0079)
         feedback_repo.one_off_nights            drop the rooms of nights tagged one-off (0070)
         domain/model_inputs.events_for          counted events, backfilled nights, first seen
         ml/features.build_features              calendar + holidays + events + lead_days from booked_on
@@ -527,8 +528,9 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0045)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
   → domain/pricing_model.save_version
-      model_repo.create_pricing_model           new version, inactive, with its own `features`
-                                                and `target` (adr_nett) (0008, 0009, 0056)
+      model_repo.create_pricing_model           new version, inactive, with its own `features`,
+                                                `target` (adr_nett) and room type, DOUBLE,
+                                                created the first time (0008, 0009, 0056, 0079)
       model_repo.link_feedback                  records which feedback this version used
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}

@@ -36,6 +36,11 @@ class PricingModel(Base):
     hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
     version: Mapped[int]  # increments per hotel
     algorithm: Mapped[str] = mapped_column(String(60))  # e.g. "ebm"
+    # The room type this version prices (decision 0079); a tune-up has its
+    # base's. None for versions trained before it, which can't serve.
+    room_type_id: Mapped[int | None] = mapped_column(
+        ForeignKey("room_types.id", ondelete="CASCADE"), index=True
+    )
     # A tune-up's base version (decision 0078): its artifact holds only the
     # correction, so it serves by loading this version's too. None for a base.
     # RESTRICT: a base can't be deleted while a tune-up points to it.
@@ -51,11 +56,6 @@ class PricingModel(Base):
     features: Mapped[list[str]] = mapped_column(JSONB)  # input columns, in order
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)  # mae, rmse, r2, ...
     lib_versions: Mapped[dict[str, str]] = mapped_column(JSONB)  # pickle compat
-    # No longer written; new versions get {}. Older rows may still hold a
-    # summary. Kept until what a version was trained on gets its own columns.
-    training_summary: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, server_default=text("'{}'::jsonb")
-    )
 
     # Training window (stay dates).
     data_start: Mapped[date] = mapped_column(Date)

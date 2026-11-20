@@ -23,8 +23,8 @@ LEAD = "lead_days"
 
 # Every model input, in order. Training and serving both build all of them;
 # each version stores the ones it trained on, and serving selects those.
+# Every version prices one room type (decision 0079), so it isn't an input.
 FEATURES = [
-    "room_type",
     "day_of_week",
     "month",
     "night_before_holiday",
@@ -46,7 +46,7 @@ FEATURES = [
 # date alone (decision 0067), so unlike events they are never unknown, and they
 # stay out of `calendar` so that group, the baseline's inputs, doesn't change.
 INPUT_GROUPS = {
-    "calendar": ["room_type", "day_of_week", "month"],
+    "calendar": ["day_of_week", "month"],
     "holidays": ["night_before_holiday"],
     "events": [
         "is_public_holiday",
@@ -97,8 +97,8 @@ def build_features(
     couldn't have known about. Rows without `first_seen` always count.
 
     Args:
-        nights (pd.DataFrame): One row per room type per night, with columns
-            stay_date and room_type.
+        nights (pd.DataFrame): One row per night or booked room, with a
+            stay_date column.
         events (pd.DataFrame): Active events in the hotel's city, with columns
             start_local_date, end_local_date, category, expected_attendance,
             local_rank, and optionally first_seen.
@@ -132,7 +132,6 @@ def build_features(
         daily = daily.where(pd.Series(known, index=dates), axis=0)
 
     features = daily.reindex(stay_date).set_index(nights.index)
-    features["room_type"] = nights["room_type"].astype("category")
     features["day_of_week"] = stay_date.dt.dayofweek.to_numpy()
     features["month"] = stay_date.dt.month.to_numpy()
     features["night_before_holiday"] = night_before_holiday(stay_date)

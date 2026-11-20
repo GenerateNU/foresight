@@ -35,7 +35,7 @@ from foresight.services.domain import pricing_model as pricing_model_service
 from foresight.services.domain import recommendation as recommendation_service
 from foresight.services.domain import tuning as tuning_service
 from foresight.services.domain.city import local_today
-from foresight.services.domain.hotel import get_hotel, list_hotels, list_room_types
+from foresight.services.domain.hotel import get_hotel, list_hotels
 from foresight.services.errors import (
     ConflictError,
     DomainError,
@@ -605,29 +605,22 @@ async def _price(
     model = await model_repo.get_active_pricing_model(session, hotel.id)
     if model is None:
         raise NotFoundError("Active pricing model for hotel", hotel.id)
-    # Older versions list the room types they were trained on; newer ones all.
-    trained_on = model.training_summary.get("room_types", [])
-    room_types = [
-        r
-        for r in await list_room_types(session, hotel.id)
-        if not trained_on or r.name in trained_on
-    ]
+    # A version prices one room type (decision 0079); the recommendations
+    # default to it.
     start = local_today(hotel.city)
     end = start + timedelta(days=PRICE_NIGHTS - 1)
-    for done, room_type in enumerate(room_types, 1):
-        await recommendation_service.get_recommendations(
-            session, hotel.id, start=start, end=end, room_type_id=room_type.id
-        )
-        yield Step(
-            {
-                "start": start.isoformat(),
-                "end": end.isoformat(),
-                "model_version": model.version,
-                "room_types_done": done,
-                "room_types_total": len(room_types),
-            },
-            None,
-        )
+    await recommendation_service.get_recommendations(
+        session, hotel.id, start=start, end=end
+    )
+    yield Step(
+        {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "model_version": model.version,
+            "room_type_id": model.room_type_id,
+        },
+        None,
+    )
 
 
 async def _tune(

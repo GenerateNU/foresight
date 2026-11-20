@@ -105,7 +105,7 @@ async def list_feedback(
 
 async def tuning_feedback(
     session: AsyncSession,
-    hotel_id: int,
+    room_type_id: int,
     *,
     start: date | None = None,
     end: date | None = None,
@@ -118,10 +118,10 @@ async def tuning_feedback(
     tagged ONE_OFF (decision 0070). Rows carry id, stay_date, room_type_id,
     room_type (its name), rate (nett where the version was, decision 0076) and
     shown_at: when the manager saw the recommendation they changed, or when they
-    gave the feedback if its snapshot is gone. Oldest night first. `start` and
-    `end` limit the nights.
+    gave the feedback if its snapshot is gone. Oldest night first. Only the
+    one room type; `start` and `end` limit the nights.
     """
-    current = select(Feedback).where(Feedback.hotel_id == hotel_id)
+    current = select(Feedback).where(Feedback.room_type_id == room_type_id)
     if start is not None:
         current = current.where(Feedback.stay_date >= start)
     if end is not None:
@@ -157,15 +157,20 @@ async def tuning_feedback(
 
 
 async def one_off_nights(
-    session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
+    session: AsyncSession,
+    room_type_id: int,
+    *,
+    start: date | None,
+    end: date | None,
 ) -> Sequence[Mapping[str, Any]]:
     """The nights the manager marked as one-off, which training leaves out.
 
     A room type's night is one-off when its current (highest) version of
     feedback carries the ONE_OFF tag, given before or after the night
-    (decision 0070). Rows carry stay_date and room_type (its name).
+    (decision 0070). Only the one room type. Rows carry stay_date and
+    room_type (its name).
     """
-    current = select(Feedback).where(Feedback.hotel_id == hotel_id)
+    current = select(Feedback).where(Feedback.room_type_id == room_type_id)
     if start is not None:
         current = current.where(Feedback.stay_date >= start)
     if end is not None:

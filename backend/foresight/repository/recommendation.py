@@ -78,9 +78,9 @@ async def latest_snapshots(
 
 
 async def snapshotted_nights(
-    session: AsyncSession, hotel_id: int, *, start: date, end: date
+    session: AsyncSession, room_type_id: int, *, start: date, end: date
 ) -> Sequence[Mapping[str, Any]]:
-    """Each room type and night in [start, end] the hotel has a snapshot for.
+    """Each night in [start, end] the room type has a snapshot for.
 
     One row per room type and night, however many snapshots it has, from its
     latest snapshot. Rows carry stay_date, room_type_id, room_type (its name),
@@ -96,7 +96,7 @@ async def snapshotted_nights(
         )
         .distinct(RecommendationSnapshot.stay_date, RecommendationSnapshot.room_type_id)
         .where(
-            RecommendationSnapshot.hotel_id == hotel_id,
+            RecommendationSnapshot.room_type_id == room_type_id,
             RecommendationSnapshot.stay_date.between(start, end),
         )
         # The id breaks ties: rows saved in one transaction share `created_at`.
