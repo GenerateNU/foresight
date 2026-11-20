@@ -10,7 +10,7 @@ const EVENTS = [
 
 /**
  * Made-up rates in the shape of RecommendationResponse (backend/foresight/routes/hotel.py),
- * one row per night for one room type. Stable: the same night always gets the same price.
+ * one row per night for one room type, before VAT (`rate_basis` "nett", decision 0076). Stable: the same night always gets the same price.
  */
 export function mockRecommendations(hotelId, { start, end }) {
   return [...eachNight(start, end)].map((date) => night(hotelId, ROOM_TYPE, date))
@@ -28,12 +28,17 @@ function night(hotelId, room, date) {
   const day = new Date(`${date}T00:00:00`)
   const event = (day.getDate() - 1) % 9 < 3 ? EVENTS[day.getMonth() % EVENTS.length] : null
 
+  // Days from today to the night, 0 for today and past nights: the rate is what the night
+  // would sell for if booked today (docs/decisions/0056).
+  const leadDays = Math.max(0, Math.round((day - startOfToday()) / 86_400_000))
+
   // Shaped like backend/foresight/services/domain/recommendation.py: one factor per model
   // input, named by the night's value, largest first, with the rest summed as "Smaller
   // effects combined". Events are only a count, and add about €0 for now (issue #128).
   const factors = [
     { detail: DAYS[day.getDay()], amount: DAY_AMOUNTS[day.getDay()] },
     { detail: MONTHS[day.getMonth()], amount: 6.63 },
+    { detail: `lead days ${leadDays}`, amount: Math.round((4 - leadDays * 0.15) * 100) / 100 },
     event && { detail: 'event count 1', amount: 1.12 },
   ]
     .filter(Boolean)
@@ -48,6 +53,8 @@ function night(hotelId, room, date) {
     stay_date: date,
     room_type: room.name,
     room_type_id: room.id,
+    lead_days: leadDays,
+    rate_basis: 'nett',
     recommended_rate: money(rate),
     explanation: {
       summary: `€${rate.toFixed(0)} from a typical €${room.base}; biggest factor: ${top.detail}: ${top.amount >= 0 ? '+' : '-'}€${Math.abs(top.amount).toFixed(2)}.`,
@@ -57,6 +64,8 @@ function night(hotelId, room, date) {
     model_id: 1,
     events: event ? [{ ...event, day_number: ((day.getDate() - 1) % 9) + 1, day_count: 3 }] : [],
     events_source: 'fetched',
+    // The manager has set their own rate on about one night in seven.
+    manager_rate: hash(date) % 7 === 0 ? money(Math.round(rate / 5) * 5 + 10) : null,
     snapshot_id: null,
     priced_at: new Date().toISOString(),
   }
@@ -74,6 +83,11 @@ function* eachNight(start, end) {
     yield `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
     day.setDate(day.getDate() + 1)
   }
+}
+
+function startOfToday() {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate())
 }
 
 function hash(text) {
