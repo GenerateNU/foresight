@@ -1,21 +1,15 @@
 import { NavLink } from 'react-router-dom'
+import SignOutButton from '../../features/auth/SignOutButton.jsx'
 import { cx } from '../../lib/cx.js'
 
-const NAV = [
-  { to: '/today', label: 'Today' },
-  { to: '/calendar', label: 'Calendar' },
-  { to: '/inbox', label: 'Inbox' },
-  { to: '/signals', label: 'Signals' },
-  { to: '/reports', label: 'Reports' },
-  { to: '/upload', label: 'Upload data' },
-  { to: '/pricing-rules', label: 'Pricing rules' },
-  { to: '/settings', label: 'Settings' },
-]
+// Only built screens. The rest (Today, Inbox, Signals, Reports, Upload data, Pricing rules,
+// Settings) keep their placeholder routes in App.jsx and come back here as they're built.
+const NAV = [{ to: '/calendar', label: 'Calendar' }]
 
-/** The main navigation down the left of every signed-in page. Hidden on small screens. */
+/** The main navigation down the left of every signed-in page, with sign out at the bottom. Hidden on small screens. */
 export default function Sidebar() {
   return (
-    <aside className="hidden w-58 shrink-0 flex-col border-r border-stone-100 bg-white p-4 md:flex">
+    <aside className="sticky top-0 hidden h-screen w-58 shrink-0 flex-col border-r border-stone-100 bg-white p-4 md:flex">
       {/* Text wordmark until the real logo SVG is exported from Figma. */}
       <div className="mb-6 flex items-center gap-2 px-2 font-display text-2xl font-medium tracking-tight">
         <span className="size-3 rounded-full bg-dark" />
@@ -37,6 +31,7 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <SignOutButton variant="ghost" className="mt-auto justify-start" />
     </aside>
   )
 }
