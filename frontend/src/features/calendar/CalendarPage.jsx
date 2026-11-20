@@ -9,11 +9,15 @@ import { useAsync } from '../../hooks/useAsync.js'
 import { useAuth } from '../auth/useAuth.js'
 import ColorByChips from './ColorByChips.jsx'
 import MonthGrid from './MonthGrid.jsx'
-import { buildMonthGrid, monthLabel, ratesByNight } from './calendarUtils.js'
+import { buildMonthGrid, monthLabel, ratesByNight, toISODate } from './calendarUtils.js'
+
+/** How many nights ahead the calendar prices, from tonight. The API allows up to 90. */
+const NIGHTS = 30
 
 /**
- * The Calendar screen: owns "which month" and "color by", fetches that month's prices,
- * and passes everything down. The pieces below it only draw what they are given.
+ * The Calendar screen: fetches the next NIGHTS nights once, owns "which month" and
+ * "color by", and passes everything down. The pieces below it only draw what they are
+ * given. Month navigation stays within the months those nights fall in.
  */
 export default function CalendarPage() {
   const today = new Date()
@@ -22,8 +26,11 @@ export default function CalendarPage() {
   const { hotel } = useAuth()
 
   const weeks = useMemo(() => buildMonthGrid(year, month), [year, month])
-  const start = weeks[0][0].date
-  const end = weeks.at(-1).at(-1).date
+  const start = toISODate(today)
+  const last = new Date(today.getFullYear(), today.getMonth(), today.getDate() + NIGHTS - 1)
+  const end = toISODate(last)
+  const isFirstMonth = year === today.getFullYear() && month === today.getMonth()
+  const isLastMonth = year === last.getFullYear() && month === last.getMonth()
 
   const { data, error, loading, reload } = useAsync(`${hotel.id}:${start}:${end}`, () =>
     getRecommendations(hotel.id, { start, end }),
@@ -43,13 +50,13 @@ export default function CalendarPage() {
         title={monthLabel(year, month)}
         actions={
           <>
-            <Button size="icon" aria-label="Previous month" onClick={() => shiftMonth(-1)}>
+            <Button size="icon" aria-label="Previous month" disabled={isFirstMonth} onClick={() => shiftMonth(-1)}>
               ‹
             </Button>
             <Button size="sm" onClick={() => setMonth({ year: today.getFullYear(), month: today.getMonth() })}>
               This month
             </Button>
-            <Button size="icon" aria-label="Next month" onClick={() => shiftMonth(1)}>
+            <Button size="icon" aria-label="Next month" disabled={isLastMonth} onClick={() => shiftMonth(1)}>
               ›
             </Button>
           </>
@@ -63,7 +70,7 @@ export default function CalendarPage() {
       ) : loading ? (
         <LoadingState label="Loading prices…" />
       ) : byDate.size === 0 ? (
-        <EmptyState title="No prices for this month" message="Rates appear once the model has priced these nights." />
+        <EmptyState title={`No rates for the next ${NIGHTS} nights`} message="Rates appear once the model has priced these nights." />
       ) : (
         <MonthGrid weeks={weeks} byDate={byDate} mode={mode} />
       )}
