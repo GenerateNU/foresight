@@ -82,28 +82,42 @@ async def snapshotted_nights(
 ) -> Sequence[Mapping[str, Any]]:
     """Each room type and night in [start, end] the hotel has a snapshot for.
 
-    One row per room type and night, however many snapshots it has. Rows carry
-    stay_date, room_type_id, room_type (its name) and shown_at, when its latest
-    snapshot was made, oldest night first.
+    One row per room type and night, however many snapshots it has, from its
+    latest snapshot. Rows carry stay_date, room_type_id, room_type (its name),
+    shown_at (when the snapshot was made) and rate (the rate it showed),
+    oldest night first.
     """
-    stmt = (
+    latest = (
         select(
             RecommendationSnapshot.stay_date,
             RecommendationSnapshot.room_type_id,
-            RoomType.name.label("room_type"),
-            func.max(RecommendationSnapshot.created_at).label("shown_at"),
+            RecommendationSnapshot.created_at.label("shown_at"),
+            RecommendationSnapshot.rate,
         )
-        .join(RoomType, RecommendationSnapshot.room_type_id == RoomType.id)
+        .distinct(RecommendationSnapshot.stay_date, RecommendationSnapshot.room_type_id)
         .where(
             RecommendationSnapshot.hotel_id == hotel_id,
             RecommendationSnapshot.stay_date.between(start, end),
         )
-        .group_by(
+        # The id breaks ties: rows saved in one transaction share `created_at`.
+        .order_by(
             RecommendationSnapshot.stay_date,
             RecommendationSnapshot.room_type_id,
-            RoomType.name,
+            RecommendationSnapshot.created_at.desc(),
+            RecommendationSnapshot.id.desc(),
         )
-        .order_by(RecommendationSnapshot.stay_date, RoomType.name)
+        .subquery()
+    )
+    stmt = (
+        select(
+            latest.c.stay_date,
+            latest.c.room_type_id,
+            RoomType.name.label("room_type"),
+            latest.c.shown_at,
+            latest.c.rate,
+        )
+        .join(RoomType, latest.c.room_type_id == RoomType.id)
+        .order_by(latest.c.stay_date, RoomType.name)
     )
     return (await session.execute(stmt)).mappings().all()
 

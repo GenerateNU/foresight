@@ -36,6 +36,12 @@ class PricingModel(Base):
     hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
     version: Mapped[int]  # increments per hotel
     algorithm: Mapped[str] = mapped_column(String(60))  # e.g. "ebm"
+    # A tune-up's base version (decision 0078): its artifact holds only the
+    # correction, so it serves by loading this version's too. None for a base.
+    # RESTRICT: a base can't be deleted while a tune-up points to it.
+    base_model_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pricing_models.id", ondelete="RESTRICT"), index=True
+    )
     # What this version tried, written by whoever trained it.
     description: Mapped[str | None] = mapped_column(Text)
 

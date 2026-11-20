@@ -1,9 +1,10 @@
 """Daily tune-up: correct the active model with the manager's rates, no full retrain.
 
 The active model is left as it is; a small EBM learns the gap between its
-predictions and the rates the manager chose, and the two are saved together
-as a new version (decision 0069). A tune-up always starts from the active
-model's base, so corrections are rebuilt each time, never stacked.
+predictions and the rates the manager chose (decision 0069). The correction is
+saved as a new version that points to its base (decision 0078). A tune-up
+always starts from the active model's base, so corrections are rebuilt each
+time, never stacked.
 """
 
 from __future__ import annotations
@@ -36,8 +37,9 @@ if TYPE_CHECKING:
 ALGORITHM = "ebm-tuned"
 # Fewer manager rates than this and the tune-up is skipped.
 MIN_TUNE_NIGHTS = 5
-# Nights the manager left alone teach the correction "no change here": every
-# past night with a snapshot this many days back (decisions 0072, 0074).
+# Nights the manager left alone teach the correction to keep the rate they were
+# shown: every past night with a snapshot this many days back (decisions 0072,
+# 0074, 0078).
 UNTOUCHED_DAYS = 30
 
 
@@ -86,48 +88,48 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     feedback = pd.DataFrame(rows)
     untouched = await _untouched(session, hotel, active, feedback)
 
-    # Tuning a tuned version starts again from its base (TunedEBMModel).
-    base_id = active.metrics.get("base_model_id", active.id)
-    base_row = active if base_id == active.id else await _model(session, base_id)
-    artifact = await model_repo.get_artifact(session, active.id)
+    # A tune-up always corrects a plain base, so corrections never stack: the
+    # active version's own base if it is a tune-up (decision 0078).
+    base_row = (
+        active
+        if active.base_model_id is None
+        else await _model(session, active.base_model_id)
+    )
+    artifact = await model_repo.get_artifact(session, base_row.id)
     if artifact is None:
-        raise NotFoundError("Pricing model", active.id)
-    loaded = EBMModel.from_bytes(artifact)
-    # The active version may itself be tuned: unwrap it, so the untouched
-    # nights' "no change" target is the base's price, not base plus the old
-    # correction. Otherwise each tune-up carries the last one forward (0069).
-    base = loaded.base if isinstance(loaded, TunedEBMModel) else loaded
+        raise NotFoundError("Pricing model", base_row.id)
+    base = EBMModel.from_bytes(artifact)
 
-    # The manager's nights first, then the nights they left alone, whose
-    # target is the base's own prediction (a gap of 0). Each is booked the day
-    # its price was shown, as serving priced it (decision 0076).
+    # The manager's nights first, then the nights they left alone. Each is
+    # booked the day its price was shown, as serving priced it (decision 0076).
     both = pd.concat(
-        [feedback[["stay_date", "room_type", "shown_at"]], untouched],
+        [
+            feedback[["stay_date", "room_type", "shown_at"]],
+            untouched[["stay_date", "room_type", "shown_at"]],
+        ],
         ignore_index=True,
     )
     x = await _features(session, hotel, both, base_row.features)
-    x_manager = x.iloc[: len(feedback)]
 
     # CPU-bound; a thread keeps the API answering meanwhile.
     model = await asyncio.to_thread(
         fit_correction,
         base,
-        x_manager,
+        x.iloc[: len(feedback)],
         feedback["rate"].astype(float),
         x.iloc[len(feedback) :],
+        untouched["rate"].astype(float),
     )
-    correction = model.correction(x_manager)
+    correction = model.correction(x.iloc[: len(feedback)])
 
     saved = await model_repo.create_pricing_model(
         session,
         hotel_id=hotel.id,
         algorithm=ALGORITHM,
         description=f"Tune-up of v{base_row.version} on {len(feedback)} manager rates",
-        artifact=model.to_bytes(),
+        artifact=model.to_bytes(),  # the correction only (decision 0078)
         features=list(base_row.features),
         metrics={
-            "base_model_id": base_row.id,
-            "base_version": base_row.version,
             "tune_nights": len(feedback),
             "untouched_nights": len(untouched),
             "mean_correction": round(float(correction.mean()), 2),
@@ -138,6 +140,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         lib_versions={lib: version(lib) for lib in LIBS},
         data_start=min(base_row.data_start, feedback["stay_date"].min()),
         data_end=max(base_row.data_end, feedback["stay_date"].max()),
+        base_model_id=base_row.id,
     )
     await model_repo.link_feedback(
         session,
@@ -164,26 +167,25 @@ def fit_correction(
     x_manager: pd.DataFrame,
     y_manager: pd.Series,
     x_untouched: pd.DataFrame | None = None,
+    y_untouched: pd.Series | None = None,
 ) -> TunedEBMModel:
     """Fits the correction on the manager's rates and the untouched nights.
 
-    The untouched nights' target is the base's own prediction, a gap of 0
-    (decision 0072). Pure and CPU-bound: `tune` and the tuning backtest both
-    call it, so the backtest scores the tune-up that ships.
+    An untouched night's target is the rate the manager was shown and left
+    alone (decision 0078), so a correction they accepted is kept. Pure and
+    CPU-bound: `tune` and the tuning backtest both call it, so the backtest
+    scores the tune-up that ships.
     """
-    if isinstance(base, TunedEBMModel):
-        base = base.base
+    y = pd.Series(y_manager, dtype=float).reset_index(drop=True)
     if x_untouched is None or x_untouched.empty:
-        x, y = x_manager, pd.Series(y_manager, dtype=float).reset_index(drop=True)
-    else:
-        x = pd.concat([x_manager, x_untouched], ignore_index=True)
-        y = pd.concat(
-            [
-                pd.Series(y_manager, dtype=float).reset_index(drop=True),
-                pd.Series(base.predict(x_untouched), dtype=float),
-            ],
-            ignore_index=True,
-        )
+        return TunedEBMModel(base).fit(x_manager, y)
+    if y_untouched is None or len(y_untouched) != len(x_untouched):
+        raise ValueError("every untouched night needs the rate it was shown")
+    x = pd.concat([x_manager, x_untouched], ignore_index=True)
+    y = pd.concat(
+        [y, pd.Series(y_untouched, dtype=float).reset_index(drop=True)],
+        ignore_index=True,
+    )
     return TunedEBMModel(base).fit(x, y)
 
 
@@ -193,7 +195,8 @@ async def _untouched(
     active: PricingModel,
     feedback: pd.DataFrame,
 ) -> pd.DataFrame:
-    """The nights the manager left alone: stay_date and room_type, one row each.
+    """The nights the manager left alone, one row each: stay_date, room_type,
+    shown_at and rate, the rate their latest snapshot showed (decision 0078).
 
     Every room type and night in the UNTOUCHED_DAYS before today with a
     snapshot, no manager rate, no one-off tag (decision 0070), and a room type
@@ -220,12 +223,13 @@ async def _untouched(
                 "stay_date": n["stay_date"],
                 "room_type": n["room_type"],
                 "shown_at": n["shown_at"],
+                "rate": float(n["rate"]),
             }
             for n in nights
             if (n["stay_date"], n["room_type"]) not in touched
             and (not trained_on or n["room_type"] in trained_on)
         ],
-        columns=pd.Index(["stay_date", "room_type", "shown_at"]),
+        columns=pd.Index(["stay_date", "room_type", "shown_at", "rate"]),
     )
 
 

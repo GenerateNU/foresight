@@ -29,10 +29,12 @@ async def create_pricing_model(
     lib_versions: dict[str, str],
     data_start: date,
     data_end: date,
+    base_model_id: int | None = None,
 ) -> PricingModel:
     """Save a new, inactive model as the hotel's next version.
 
-    Call `activate_pricing_model` afterwards to start serving it.
+    Call `activate_pricing_model` afterwards to start serving it. A tune-up
+    passes `base_model_id`, the version it corrects (decision 0078).
     """
     model = PricingModel(
         hotel_id=hotel_id,
@@ -45,6 +47,7 @@ async def create_pricing_model(
         lib_versions=lib_versions,
         data_start=data_start,
         data_end=data_end,
+        base_model_id=base_model_id,
         is_active=False,
     )
     session.add(model)

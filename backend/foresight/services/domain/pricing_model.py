@@ -28,7 +28,7 @@ from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.base import score
-from foresight.services.ml.ebm import EBMModel
+from foresight.services.ml.ebm import EBMModel, TunedEBMModel
 from foresight.services.ml.features import FEATURES, build_features
 from foresight.services.ml.feedback import manager_row_weights
 from foresight.services.ml.resources import measure
@@ -361,6 +361,31 @@ async def get_model(session: AsyncSession, model_id: int) -> PricingModel:
     if model is None:
         raise NotFoundError("Pricing model", model_id)
     return model
+
+
+async def load_model(session: AsyncSession, stored: PricingModel) -> EBMModel:
+    """The version's trained model, ready to predict.
+
+    A tune-up's artifact holds only its correction, so its base version's
+    artifact is loaded too and joined to it (decision 0078).
+
+    Raises:
+        NotFoundError: The version or its base has no artifact.
+    """
+    model = EBMModel.from_bytes(await _artifact(session, stored.id))
+    if stored.base_model_id is None:
+        return model
+    if not isinstance(model, TunedEBMModel):
+        raise TypeError(f"pricing model {stored.id} has a base but isn't a tune-up")
+    base = EBMModel.from_bytes(await _artifact(session, stored.base_model_id))
+    return model.attach_base(base)
+
+
+async def _artifact(session: AsyncSession, model_id: int) -> bytes:
+    artifact = await model_repo.get_artifact(session, model_id)
+    if artifact is None:
+        raise NotFoundError("Pricing model", model_id)
+    return artifact
 
 
 async def activate_model(session: AsyncSession, model_id: int) -> PricingModel:

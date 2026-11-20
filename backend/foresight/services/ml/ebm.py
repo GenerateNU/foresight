@@ -241,6 +241,10 @@ class TunedEBMModel(EBMModel):
     correction's (decision 0069). It has no pairwise terms, so its terms are a
     subset of the base's and `explain` can add them up by name. The interval
     and uncertainty are the base's.
+
+    Only the correction is serialized; the base is stored once, as its own
+    version, and the tuned version points to it (decision 0078). After
+    `from_bytes`, call `attach_base` with the base before predicting.
     """
 
     name = "ebm-tuned"
@@ -265,7 +269,7 @@ class TunedEBMModel(EBMModel):
             RuntimeError: If the base has not been fit.
         """
         if isinstance(base, TunedEBMModel):
-            base = base.base
+            base = base._base()
         base._fitted()
         super().__init__(
             alpha=base.alpha,
@@ -273,8 +277,32 @@ class TunedEBMModel(EBMModel):
             seed=base.seed,
             **params,
         )
+        self.base: EBMModel | None = None
+        self.attach_base(base)
+
+    def attach_base(self, base: EBMModel) -> "TunedEBMModel":
+        """Joins the correction to its base, e.g. after `from_bytes`.
+
+        Args:
+            base (EBMModel): The base version's trained model.
+
+        Returns:
+            TunedEBMModel: This model, ready to predict.
+        """
+        if isinstance(base, TunedEBMModel):
+            raise TypeError("a tune-up's base must be a plain EBM, not a tune-up")
         self.base = base
         self._residuals = base._residuals
+        return self
+
+    def __getstate__(self):
+        """Pickles the correction only; the base is stored as its own version."""
+        return {**self.__dict__, "base": None}
+
+    def _base(self) -> EBMModel:
+        if self.base is None:
+            raise RuntimeError(f"{self.name} needs attach_base before predicting")
+        return self.base
 
     def fit(self, x, y, sample_weight=None):
         """Trains the correction on the gap between `y` and the base.
@@ -291,7 +319,9 @@ class TunedEBMModel(EBMModel):
         inputs = x.drop(columns=list(self.CORRECTION_EXCLUDED_INPUTS), errors="ignore")
         self._model = ExplainableBoostingRegressor(
             random_state=self.seed, **{**self.CORRECTION_DEFAULTS, **self.params}
-        ).fit(inputs, y, sample_weight=sample_weight, init_score=self.base.predict(x))
+        ).fit(
+            inputs, y, sample_weight=sample_weight, init_score=self._base().predict(x)
+        )
         return self
 
     def _inputs(self, x):
@@ -322,12 +352,12 @@ class TunedEBMModel(EBMModel):
         Raises:
             RuntimeError: If fit has not been called yet.
         """
-        return self.base.predict(x) + self.correction(x)
+        return self._base().predict(x) + self.correction(x)
 
     def predict_uncertainty(self, x):
         """The base's uncertainty; the correction doesn't change it."""
         self._fitted()
-        return self.base.predict_uncertainty(x)
+        return self._base().predict_uncertainty(x)
 
     def explain(self, x):
         """The base's contributions with the correction's added, term by term.
@@ -336,7 +366,7 @@ class TunedEBMModel(EBMModel):
             RuntimeError: If fit has not been called yet.
         """
         correction = self._fitted()
-        base = self.base.explain(x)
+        base = self._base().explain(x)
         extra = pd.DataFrame(
             correction.eval_terms(self._inputs(x)),
             columns=correction.term_names_,
@@ -351,4 +381,4 @@ class TunedEBMModel(EBMModel):
         Raises:
             RuntimeError: If fit has not been called yet.
         """
-        return self.base.intercept + float(self._fitted().intercept_)
+        return self._base().intercept + float(self._fitted().intercept_)
