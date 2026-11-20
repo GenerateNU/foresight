@@ -51,9 +51,8 @@ One line per file: what it's for. For how the pieces fit together, see
 | `health.py` | `/health` |
 | `city.py` | Create, list, read, update cities |
 | `hotel.py` | Hotels, room types, linking users, recommendations |
-| `weather.py` | List weather; recorded-weather coverage gaps |
 | `event.py` | List events in a hotel's city |
-| `ingest.py` | Start weather or events jobs; upload hotel CSVs (one job per file) |
+| `ingest.py` | Start events jobs; upload hotel CSVs (one job per file) |
 | `job.py` | Read and cancel jobs; data freshness |
 | `pricing_model.py` | Train, list, read and activate model versions |
 | `feedback.py` | Add and list manager feedback on rates |
@@ -73,8 +72,6 @@ One line per file: what it's for. For how the pieces fit together, see
 | `user.py` | Sign-in, users, linking users to hotels |
 | `city.py` | City rules; "today" in a city's timezone |
 | `hotel.py` | Hotels and room types |
-| `weather.py` | Read weather for a hotel's city |
-| `weather_coverage.py` | Which days lack recorded weather |
 | `event.py` | Merge event sightings into one row per event; list events |
 | `booking.py` | Rebuild how many rooms were booked for a night on any past date |
 | `pricing_model.py` | Training data, train a version, list/activate versions |
@@ -88,7 +85,6 @@ One line per file: what it's for. For how the pieces fit together, see
 | File | What it does |
 |---|---|
 | `window.py` | Works out the date window from optional start/end |
-| `weather.py` | Fetch and save forecast and recorded weather |
 | `event.py` | Fetch and save PredictHQ events (recent or by window) |
 | `files.py` | The list of uploadable reports; recognises each file by its header, parses it, records it on its job |
 | `bookings.py` | Parse and save the Daily New Reservations and Cancellations exports |
@@ -97,7 +93,6 @@ One line per file: what it's for. For how the pieces fit together, see
 
 | File | What it does |
 |---|---|
-| `open_meteo.py` | Open-Meteo forecast and recorded weather |
 | `predicthq.py` | PredictHQ events → normalized events |
 | `normalize.py` | Shared event shape, title/city normalizing, dedupe key |
 | `hotel/reservations.py` | Parses the Guestline Daily New Reservations export |
@@ -127,7 +122,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `pricing_model.py` | Model versions, artifacts, activation, feedback links |
 | `recommendation.py` | Recommendation snapshots |
 | `feedback.py` | Feedback rows, incl. what training uses |
-| `signals/weather.py`, `signals/event.py` | Weather; events and their sightings |
+| `signals/event.py` | Events and their sightings |
 
 ## database/
 
@@ -144,7 +139,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `models/pricing_model.py` | `pricing_models`, `pricing_model_feedback` |
 | `models/recommendation.py` | `recommendation_snapshots` |
 | `models/feedback.py` | `feedback` |
-| `models/signals/weather.py`, `models/signals/event.py` | `weather`; `events`, `event_observations` |
+| `models/signals/event.py` | `events`, `event_observations` |
 | `migrations/env.py`, `script.py.mako` | Alembic runner and new-migration template |
 | `migrations/versions/*.py` | Schema history, one change per file |
 

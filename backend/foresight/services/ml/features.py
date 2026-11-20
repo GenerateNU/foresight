@@ -41,10 +41,10 @@ FEATURES = [
 
 # FEATURES by kind, for choosing which inputs a backtest trains on. Every
 # input is in exactly one group. The holiday flags sit with events: they come
-# from the same PredictHQ data, and are unknown on the same nights. Weather
-# stays out of the model (decision 0055). `holidays` are worked out from the
-# date alone (decision 0067), so unlike events they are never unknown, and they
-# stay out of `calendar` so that group, the baseline's inputs, doesn't change.
+# from the same PredictHQ data, and are unknown on the same nights. `holidays`
+# are worked out from the date alone (decision 0067), so unlike events they are
+# never unknown, and they stay out of `calendar` so that group, the baseline's
+# inputs, doesn't change.
 INPUT_GROUPS = {
     "calendar": ["day_of_week", "month"],
     "holidays": ["night_before_holiday"],

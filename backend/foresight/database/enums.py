@@ -62,10 +62,10 @@ class EventCategory(StrEnum):
 class JobKind(StrEnum):
     """What a background job does. Each has one handler in `services/job.py`."""
 
-    WEATHER = "weather"  # Open-Meteo forecast and recorded weather
+    # No longer queued (decisions 0080, 0081); kept so old job rows still load.
+    WEATHER = "weather"
     EVENTS = "events"  # PredictHQ events
     # One per uploaded Guestline report (`services/ingest/files.py`)
-    # No longer queued (decision 0080); kept so its old job rows still load.
     ACTUAL_FORECAST = "actual_forecast"
     RESERVATIONS = "reservations"  # Daily New Reservations
     CANCELLATIONS = "cancellations"  # Cancellations

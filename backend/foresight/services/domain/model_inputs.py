@@ -5,8 +5,7 @@ Only reads what's already ingested; nothing here fetches from a source.
 Events follow decisions 0041 and 0055: the counted events
 (`event.counted_events`, the same rule as the events shown on a night), which
 nights an events backfill covered, and when PredictHQ first saw each event. On
-a night no backfill covered, the event features stay empty, not zero. Weather
-isn't read (decision 0055).
+a night no backfill covered, the event features stay empty, not zero.
 """
 
 from __future__ import annotations

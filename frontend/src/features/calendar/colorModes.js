@@ -43,7 +43,6 @@ export const COLOR_MODES = [
   // Designed but waiting on data the backend doesn't have yet (see the README's "Not built yet").
   { id: 'occupancy', label: 'Occupancy', disabled: 'Needs booking data' },
   { id: 'comp-set', label: 'Comp set gap', disabled: 'Needs competitor rates' },
-  { id: 'weather', label: 'Weather', disabled: 'Coming soon' },
 ]
 
 /** The `{ bg, dot }` classes for one night under `modeId`; neutral for a disabled mode. */

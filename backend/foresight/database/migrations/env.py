@@ -25,8 +25,8 @@ config.set_main_option(
 target_metadata = Base.metadata
 
 # Tables whose code is gone but whose data is kept until the team decides to
-# drop it (decision 0080). Autogenerate and `alembic check` leave them alone.
-RETIRED_TABLES = {"daily_performance"}
+# drop it (decisions 0080, 0081). Autogenerate and `alembic check` leave them alone.
+RETIRED_TABLES = {"daily_performance", "weather"}
 
 
 def include_object(object, name, type_, reflected, compare_to):

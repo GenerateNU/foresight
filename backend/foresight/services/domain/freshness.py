@@ -1,7 +1,7 @@
 """When each kind of data last refreshed for a hotel (decision 0039).
 
 Read from `jobs` and `recommendation_snapshots`; nothing is stored. Only
-routine refreshes count for events and weather: a backfill of last year doesn't
+routine refreshes count for events: a backfill of last year doesn't
 make upcoming rates fresh. Whether a date is too old is for the reader to judge.
 """
 
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 # name: (job kind, params a run must have)
 KINDS = {
     "events": (JobKind.EVENTS, {"mode": "recent"}),
-    "weather": (JobKind.WEATHER, {"mode": "forecast"}),
     # The bookings training reads (decision 0080).
     "hotel_data": (JobKind.RESERVATIONS, {}),
     "training": (JobKind.TRAIN, {}),
@@ -42,7 +41,6 @@ class HotelFreshness:
     """One hotel: every kind of data in `KINDS`, plus its recommendations."""
 
     events: Freshness
-    weather: Freshness
     hotel_data: Freshness
     training: Freshness
     # When a rate last changed. Recommendations aren't a job, so this never

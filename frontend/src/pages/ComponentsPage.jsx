@@ -60,7 +60,7 @@ export default function ComponentsPage() {
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
-          {['demand', 'events', 'weather'].map((id) => (
+          {['demand', 'events', 'occupancy'].map((id) => (
             <Chip key={id} selected={chip === id} onClick={() => setChip(id)}>
               {id}
             </Chip>

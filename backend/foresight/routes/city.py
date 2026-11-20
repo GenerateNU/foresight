@@ -1,4 +1,4 @@
-"""Cities: the markets hotels sit in. Weather and events are kept per
+"""Cities: the markets hotels sit in. Events are kept per
 city and shared by its hotels."""
 
 from typing import Annotated, Any

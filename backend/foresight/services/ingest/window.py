@@ -56,15 +56,6 @@ class Window:
             lambda d: (d.replace(day=1) + timedelta(days=32)).replace(day=1)
         )
 
-    def years(self) -> Iterator[tuple[date, date]]:
-        """Calendar-year pieces, inclusive, in walking order."""
-        return self._pieces(lambda d: date(d.year + 1, 1, 1))
-
-    def clip(self, start: date, end: date) -> Window | None:
-        """The part of this window inside `start`..`end`, if any."""
-        first, last = max(self.start, start), min(self.end, end)
-        return Window(first, last, self.backwards) if first <= last else None
-
     def _pieces(
         self, next_boundary: Callable[[date], date]
     ) -> Iterator[tuple[date, date]]:

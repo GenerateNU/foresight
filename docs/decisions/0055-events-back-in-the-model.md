@@ -1,6 +1,6 @@
 # 0055. Events are back in the model, counted from when PredictHQ first saw them
 
-**Status:** Accepted · **Date:** 2026-11-07
+**Status:** Accepted, amended by [0081](0081-weather-removed.md) (weather ingestion removed) · **Date:** 2026-11-07
 
 Partly supersedes [0051](0051-calendar-only-model.md): events come back,
 weather stays out. Restores [0041](0041-events-in-the-model.md) and
