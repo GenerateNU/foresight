@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.pricing_model import HOLDOUT_FRAC, training_data
 from foresight.services.domain.tuning import (
@@ -109,7 +110,8 @@ async def load_backtest(
     there are no nights on one side of the cutoff.
     """
     hotel = await get_hotel(session, hotel_id)
-    yesterday = date.today() - timedelta(days=1)
+    # Yesterday in the hotel's timezone, like every other "today".
+    yesterday = local_today(hotel.city) - timedelta(days=1)
     data = await training_data(session, hotel, start=start, end=yesterday)
     if data.nights.empty:
         raise InvalidRequestError("no priced nights to backtest")
@@ -371,7 +373,8 @@ async def load_tuning_backtest(
     there are too few priced days.
     """
     hotel = await get_hotel(session, hotel_id)
-    yesterday = date.today() - timedelta(days=1)
+    # Yesterday in the hotel's timezone, like every other "today".
+    yesterday = local_today(hotel.city) - timedelta(days=1)
     data = await training_data(session, hotel, start=start, end=yesterday)
     days = sorted(set(data.nights["stay_date"]))
     if len(days) <= test_days:
