@@ -33,6 +33,7 @@ from foresight.services.adapters.open_meteo import FORECAST_DAYS
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
 from foresight.services.domain import recommendation as recommendation_service
+from foresight.services.domain import tuning as tuning_service
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel, list_hotels, list_room_types
 from foresight.services.errors import (
@@ -274,6 +275,20 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             except DomainError as exc:
                 log.info("hotel %s: %s not started: %s", hotel.id, kind.value, exc)
     return queued
+
+
+async def start_tune_job(
+    session: AsyncSession, hotel_id: int, *, activate: bool
+) -> Job:
+    """Correct the active model with the manager's rates (decision 0069).
+
+    Raises:
+        NotFoundError: Unknown hotel.
+        InvalidRequestError: The hotel has no active model.
+        ConflictError: A tune-up is already queued or running.
+    """
+    hotel = await tuning_service.check_tunable(session, hotel_id)
+    return await _queue(session, hotel, JobKind.TUNE, {"activate": activate})
 
 
 async def get_job(session: AsyncSession, job_id: int) -> Job:
@@ -531,14 +546,31 @@ async def _file(
 async def _train(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
-    result = await pricing_model_service.train(
+    prepared = await pricing_model_service.prepare_training(
         session,
         hotel,
-        description=params["description"],
         start=_date_or_none(params["start"]),
         end=_date_or_none(params["end"]),
+    )
+    # The worker commits at each step, which hands the database connection
+    # back while the model fits: a long fit would otherwise outlast it.
+    yield Step(
+        {
+            "stage": "fitting",
+            "training_rows": len(prepared.data.nights),
+            "target": pricing_model_service.TARGET,
+        },
+        None,
+    )
+    metrics, artifact = await pricing_model_service.fit(prepared, params["ebm_params"])
+    result = await pricing_model_service.save_version(
+        session,
+        hotel,
+        prepared,
+        metrics,
+        artifact,
+        description=params["description"],
         activate=params["activate"],
-        params=params["ebm_params"],
     )
     model = result.model
     yield Step(
@@ -547,7 +579,9 @@ async def _train(
             "version": model.version,
             "activated": result.activated,
             "seconds": result.seconds,
-            "nights_used": result.nights_used,
+            "training_rows": result.training_rows,
+            "training_nights": result.training_nights,
+            "target": model.metrics.get("target"),
             "feedback_used": result.feedback_used,
             "metrics": {
                 k: model.metrics[k]
@@ -596,6 +630,27 @@ async def _price(
         )
 
 
+async def _tune(
+    session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
+) -> AsyncIterator[Step]:
+    result = await tuning_service.tune(session, hotel, activate=params["activate"])
+    model = result.model
+    yield Step(
+        {
+            "model_id": None if model is None else model.id,
+            "version": None if model is None else model.version,
+            "activated": result.activated,
+            "nights_used": result.nights_used,
+            "untouched_used": result.untouched_used,
+            "skipped": result.skipped,
+            "mean_correction": None
+            if model is None
+            else model.metrics["mean_correction"],
+        },
+        None,
+    )
+
+
 _HANDLERS: dict[JobKind, Handler] = {
     JobKind.WEATHER: _weather,
     JobKind.EVENTS: _events,
@@ -604,6 +659,7 @@ _HANDLERS: dict[JobKind, Handler] = {
     JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,
     JobKind.PRICE: _price,
+    JobKind.TUNE: _tune,
 }
 
 

@@ -231,7 +231,21 @@ class RecommendationResponse(ResponseSchema):
     stay_date: date = Field(description="The night priced, local to the city")
     room_type: str = Field(description="The room type priced")
     room_type_id: int = Field(description="The room type's id")
-    recommended_rate: Decimal = Field(description="The rate to list, in `currency`")
+    lead_days: int | None = Field(
+        description="Days from today to the night (0 for today and past "
+        "nights). The rate is what the night would sell for if booked today. "
+        "Null if the model wasn't trained on bookings"
+    )
+    rate_basis: str = Field(
+        description="What the rate is: `nett`, a booked room's rate before VAT, "
+        "from every version trained now; `arr`, the night's average rate, only "
+        "from versions trained on nights before decision 0076",
+        examples=["nett"],
+    )
+    recommended_rate: Decimal = Field(
+        description="The rate to list, in `currency`, before VAT when "
+        "`rate_basis` is `nett`"
+    )
     currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
     explanation: ExplanationResponse = Field(description="Why the rate is what it is")
     confidence_interval: ConfidenceIntervalResponse = Field(
@@ -252,6 +266,13 @@ class RecommendationResponse(ResponseSchema):
         "missing, meaning its event features are unknown rather than quiet; "
         "null on snapshots older than this field",
         examples=["fetched"],
+    )
+    manager_rate: Decimal | None = Field(
+        default=None,
+        description="The rate the manager set for the night, in `currency`, "
+        "before VAT like `recommended_rate`; null if they haven't. Shown "
+        "alongside it so a calendar needs one call",
+        examples=["210.00"],
     )
     snapshot_id: int | None = Field(
         description="The snapshot this rate is stored as; null for a past night "
@@ -434,9 +455,11 @@ async def get_recommendations(
     explanation and events. At most 90 nights.
 
     Each night from today on is stored as a snapshot. A night whose inputs
-    (model, events) haven't changed since its latest snapshot returns
-    that snapshot without running the model; one whose inputs changed is priced
-    again and stored. Past nights are never stored after the fact: one with a
+    (model, events, and days booked ahead if the model reads them) haven't
+    changed since its latest snapshot returns that snapshot without running
+    the model; one whose inputs changed is priced again and stored. A model
+    trained on bookings prices each night as if booked today, so it re-prices
+    every night each day. Past nights are never stored after the fact: one with a
     snapshot returns it as it was, one without is priced and returned unsaved.
     404 if the hotel has no active model.
     """

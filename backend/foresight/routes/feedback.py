@@ -14,6 +14,7 @@ from foresight.database.enums import (
 )
 from foresight.routes.access import CurrentUserDep, HotelId
 from foresight.routes.helpers import RequestSchema, ResponseSchema, SessionDep
+from foresight.services.domain import alignment as alignment_service
 from foresight.services.domain import feedback as feedback_service
 
 router = APIRouter(tags=["Feedback"])
@@ -36,17 +37,13 @@ class FeedbackRequest(RequestSchema):
         description="The night, local to the hotel's city, past or future. YYYY-MM-DD",
         examples=["2025-01-01"],
     )
-    verdict: FeedbackVerdict = Field(
-        description="Whether the recommended rate is too high, too low or about right",
-        examples=[FeedbackVerdict.TOO_LOW],
-    )
-    rate: Decimal | None = Field(
-        default=None,
+    rate: Decimal = Field(
         gt=0,
         max_digits=10,
         decimal_places=2,
-        description="The nightly rate the manager would charge, in EUR; null if "
-        "none given",
+        description="The nightly rate the manager chose, in EUR, before VAT like "
+        "the recommendation. Compared with it to set the verdict",
+        examples=["210.00"],
     )
     reason_tags: list[FeedbackReasonTag] = Field(
         default_factory=list,
@@ -58,10 +55,10 @@ class FeedbackRequest(RequestSchema):
         max_length=2000,
         description="Why, in the manager's words; null if none",
     )
-    snapshot_id: int | None = Field(
-        default=None,
+    snapshot_id: int = Field(
         description="The `snapshot_id` that /hotels/{id}/recommendations returned "
-        "for this night, i.e. the rate the manager saw; null if it had none",
+        "for this night, i.e. the rate the manager saw",
+        examples=[1],
     )
 
 
@@ -75,14 +72,19 @@ class FeedbackResponse(ResponseSchema):
         "one more for each change; the highest is the current one"
     )
     snapshot_id: int | None = Field(
-        description="The recommendation the manager saw; null if it had none"
+        description="The recommendation the manager saw; null on feedback saved "
+        "before one was required, or if the snapshot was deleted"
     )
     user_id: int | None = Field(
         description="Who gave it; null for feedback saved before sign-in was required"
     )
-    verdict: FeedbackVerdict = Field(description="Too high, too low or about right")
+    verdict: FeedbackVerdict = Field(
+        description="Whether our recommendation was too high, too low or about "
+        "right; set by the server by comparing `rate` with it"
+    )
     rate: Decimal | None = Field(
-        description="The rate the manager would charge, in EUR; null if none given"
+        description="The rate the manager chose, in EUR, before VAT; null only "
+        "on feedback saved before a rate was required"
     )
     reason_tags: list[FeedbackReasonTag] = Field(description="Why, from a fixed list")
     reason_text: str | None = Field(description="Why, in their words; null if none")
@@ -91,6 +93,19 @@ class FeedbackResponse(ResponseSchema):
         "the server from the night's date"
     )
     created_at: datetime = Field(description="When this version was given, UTC")
+
+
+class AlignmentResponse(ResponseSchema):
+    week: date = Field(description="Monday of the week the feedback was given")
+    nights: int = Field(description="Pieces of feedback with a rate that week")
+    mean_gap: Decimal = Field(
+        description="Average of the manager's rate minus the recommended rate they "
+        "saw, in EUR; positive means the model priced low"
+    )
+    mean_abs_gap: Decimal = Field(
+        description="Average size of that gap, in EUR. Falling over the weeks "
+        "means the model is getting closer to the manager"
+    )
 
 
 #          ╭──────────────────────────────────────────────────────────╮
@@ -109,12 +124,13 @@ async def add_feedback(
     session: SessionDep,
     user: CurrentUserDep,
 ) -> FeedbackResponse:
-    """Give feedback on a night's rate, or change what was said before.
+    """Record the rate the manager chose for a night, or change it.
 
-    Nothing is overwritten: a change is a new version, and the highest version
-    is the current one. 404 for an unknown hotel, or a room type or snapshot
-    that isn't the hotel's; 422 for a missing verdict, a rate of 0 or less, or a
-    snapshot from another night.
+    Send it only when the manager changes our rate: a night with no feedback
+    keeps the recommendation. Nothing is overwritten: a change is a new
+    version, and the highest version is the current one. 404 for an unknown
+    hotel, or a room type or snapshot that isn't the hotel's; 422 for a missing
+    rate or snapshot, a rate of 0 or less, or a snapshot from another night.
     """
     feedback = await feedback_service.add_feedback(
         session, hotel_id, user_id=user.id, **data.model_dump()
@@ -162,3 +178,16 @@ async def list_feedback(
         include_history=include_history,
     )
     return [FeedbackResponse.model_validate(f) for f in feedback]
+
+
+@router.get(
+    "/hotels/{hotel_id}/feedback/alignment", response_model=list[AlignmentResponse]
+)
+async def feedback_alignment(
+    hotel_id: HotelId, session: SessionDep
+) -> list[AlignmentResponse]:
+    """How far the manager's rates were from the recommendations they saw, by
+    week, oldest first. A shrinking `mean_abs_gap` means the model is learning
+    how the manager prices. Weeks with no feedback are left out."""
+    weeks = await alignment_service.get_alignment(session, hotel_id)
+    return [AlignmentResponse.model_validate(w) for w in weeks]

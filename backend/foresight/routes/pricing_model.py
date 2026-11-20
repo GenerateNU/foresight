@@ -8,7 +8,7 @@ Every run makes a new version, so earlier ones stay for comparison. Poll
 from datetime import date, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, status
+from fastapi import APIRouter, BackgroundTasks, Body, Query, status
 from pydantic import Field
 
 from foresight import worker
@@ -137,11 +137,15 @@ class PricingModelResponse(ResponseSchema):
         description="What this version tries, as given; null if none"
     )
     is_active: bool = Field(description="True for the one version serving the hotel")
-    features: list[str] = Field(description="Model inputs, in order")
+    features: list[str] = Field(
+        description="Model inputs, in order; includes lead_days if trained on bookings"
+    )
     metrics: dict[str, Any] = Field(
-        description="Scored on the most recent nights, held out from training; "
+        description="Scored on the most recent rows, held out from training; "
         "mae and rmse in EUR. Versions trained since decision 0046 also hold "
-        "train_seconds, peak_memory_mb and added_memory_mb for the fit"
+        "train_seconds, peak_memory_mb and added_memory_mb for the fit; since "
+        "0056, target (`adr_nett` for booked rooms, `arr` for nights), "
+        "training_rows, training_nights, holdout_rows and holdout_nights"
     )
     lib_versions: dict[str, str] = Field(
         description="Library versions it was trained with"
@@ -167,7 +171,10 @@ async def train_model(
     tasks: BackgroundTasks,
     data: Annotated[TrainRequest | None, Body(openapi_examples=_TRAIN_EXAMPLES)] = None,
 ) -> JobResponse:
-    """Train a new version on the hotel's ingested performance and weather.
+    """Train a new version on the hotel's ingested data: its bookings (one row
+    per booked room per night, with days booked ahead) if it has bookings and a
+    single room type; otherwise its nightly performance. Events count either
+    way.
 
     Ingest first; this never fetches. Fails fast (422) if no nights are
     loaded in the window.
@@ -182,6 +189,32 @@ async def train_model(
         activate=data.activate,
         ebm_params=data.settings.model_dump(exclude_none=True),
     )
+    tasks.add_task(worker.enqueue, job.id, job.hotel_id)
+    return JobResponse.model_validate(job)
+
+
+@router.post(
+    "/hotels/{hotel_id}/tune",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=JobResponse,
+)
+async def tune_model(
+    hotel_id: HotelId,
+    session: SessionDep,
+    tasks: BackgroundTasks,
+    activate: Annotated[
+        bool,
+        Query(description="Serve the tuned version once it's saved"),
+    ] = True,
+) -> JobResponse:
+    """Correct the active model with the manager's rates, without retraining it.
+
+    Meant to run daily. A small model learns the gap between the active
+    model's rates and the manager's, and the two are saved as a new version.
+    Skipped, saving nothing, with too few manager rates; the job's progress
+    says why. 422 if the hotel has no active model.
+    """
+    job = await job_service.start_tune_job(session, hotel_id, activate=activate)
     tasks.add_task(worker.enqueue, job.id, job.hotel_id)
     return JobResponse.model_validate(job)
 

@@ -25,6 +25,17 @@ default:
 install:
     cd backend && uv sync
 
+# --- Frontend ---
+
+# Install frontend dependencies
+frontend-install:
+    cd frontend && npx -y npm@10 ci
+
+# Run the frontend dev server on http://localhost:5173 (`just frontend --mocks` for fake data, no backend)
+frontend *flags:
+    @{{ if flags =~ '^(--mocks)?$' { "true" } else { error("unknown flag '" + flags + "' (only --mocks is supported)") } }}
+    cd frontend && {{ if flags == "--mocks" { "VITE_USE_MOCKS=true " } else { "" } }}npm run dev
+
 # --- Docker ---
 
 # Build/rebuild the backend image (run after changing dependencies or the Dockerfile)
@@ -94,6 +105,17 @@ backtest hotel_id *flags:
     @echo "Database: {{ if flags =~ '(^|\s)--neon(\s|$)' { "neon" } else { "local" } }}"
     cd backend && {{ if flags =~ '(^|\s)--neon(\s|$)' { "" } else { _env_local } }} uv run python -m foresight.cli backtest {{hotel_id}} {{ trim(replace(flags, "--neon", "")) }}
 
+# Score the daily tune-up against the base model, by days of manager feedback
+# e.g. `just tuning-backtest 7 --test-days 90 --sizes 5,10,20,30 --manager-rule weekend+15%`
+tuning-backtest hotel_id *flags:
+    @echo "Database: {{ if flags =~ '(^|\s)--neon(\s|$)' { "neon" } else { "local" } }}"
+    cd backend && {{ if flags =~ '(^|\s)--neon(\s|$)' { "" } else { _env_local } }} uv run python -m foresight.cli tuning-backtest {{hotel_id}} {{ trim(replace(flags, "--neon", "")) }}
+
+# Show how far the model's recommendations are from the manager's rates, by week
+alignment hotel_id *flags:
+    @echo "Database: {{ if flags == "--neon" { "neon" } else { "local" } }}"
+    cd backend && {{ if flags == "--neon" { "" } else { _env_local } }} uv run python -m foresight.cli alignment {{hotel_id}}
+
 # --- Testing ---
 
 # Run the test suite
@@ -102,18 +124,20 @@ test *flags: (_flags flags)
 
 # --- Quality ---
 
-# Run ruff linter
+# Run ruff and the frontend's ESLint
 lint:
     cd backend && uv run ruff check foresight/
+    cd frontend && npm run lint
 
 # Run ruff formatter
 format:
     cd backend && uv run ruff format foresight/
 
-# Run ruff checks and fix
+# Run ruff and ESLint, fixing what they can, then format
 fix:
     cd backend && uv run ruff check --fix foresight/
     cd backend && uv run ruff format foresight/
+    cd frontend && npm run lint -- --fix
 
 # --- Pre-commit ---
 

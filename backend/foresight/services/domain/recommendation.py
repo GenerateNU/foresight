@@ -8,7 +8,10 @@ Every night priced from today on is saved as a snapshot, and reused while its
 inputs don't change (decision 0038):
 
 1. Load each night's inputs: the model's input row, the events on the night
-   and whether an events backfill covered it. Database reads only.
+   and whether an events backfill covered it. Database reads only. A version
+   trained on booked rooms also reads days booked ahead: the rate is what the
+   night would sell for if booked today, so its nights re-price daily
+   (decision 0056).
 2. Fingerprint them with the active model's id.
 3. A night whose fingerprint matches its latest snapshot returns that snapshot;
    the model doesn't run. The rest are scored together, in one batch, and each
@@ -25,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -33,6 +36,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pandas as pd
 
 from foresight.database.enums import EventCategory
+from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import recommendation as snapshot_repo
@@ -43,7 +47,7 @@ from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel
-from foresight.services.ml.features import build_features
+from foresight.services.ml.features import LEAD, build_features
 
 if TYPE_CHECKING:
     from datetime import date
@@ -97,6 +101,8 @@ class Recommendation:
     stay_date: date
     room_type: str
     room_type_id: int
+    lead_days: int | None  # days from today it was priced at; None if not read
+    rate_basis: str  # "nett" (booked rooms, before VAT) or "arr" (nightly rate)
     recommended_rate: Decimal
     currency: str
     explanation: Explanation
@@ -108,6 +114,9 @@ class Recommendation:
     events_source: str | None  # "fetched" or "missing"; None on older snapshots
     snapshot_id: int | None  # None for a past night priced but not saved
     priced_at: datetime  # when the model produced this rate
+    # The rate the manager set for the night; None if they haven't. Read live,
+    # never stored in a snapshot, so it never triggers a new one (decision 0071).
+    manager_rate: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,11 +176,11 @@ async def get_recommendations(
             f"{room_type.name!r}; train a new version"
         )
 
-    nights = await _load_nights(session, hotel, room_type, stored, start, end)
+    today = local_today(hotel.city)
+    nights = await _load_nights(session, hotel, room_type, stored, today, start, end)
     latest = await snapshot_repo.latest_snapshots(
         session, room_type.id, start=start, end=end
     )
-    today = local_today(hotel.city)
 
     # A past night keeps the snapshot it has, whatever changed since.
     to_score = [
@@ -192,7 +201,10 @@ async def get_recommendations(
             out.append(_from_snapshot(snap, hotel, room_type))
         else:
             out.append(_unsaved(hotel, room_type, stored, night, result))
-    return out
+    rates = await feedback_repo.manager_rates(
+        session, room_type.id, start=start, end=end
+    )
+    return [replace(r, manager_rate=rates.get(r.stay_date)) for r in out]
 
 
 # --- inputs -----------------------------------------------------------------
@@ -217,10 +229,16 @@ async def _load_nights(
     hotel: Hotel,
     room_type: RoomType,
     stored: PricingModel,
+    today: date,
     start: date,
     end: date,
 ) -> list[_Night]:
-    """Every night's inputs and their fingerprint, from the database only."""
+    """Every night's inputs and their fingerprint, from the database only.
+
+    Builds every input, then keeps the ones this version trained on, so an
+    older version gets exactly its own columns and keeps its fingerprints.
+    Days booked ahead are counted from today; a past night gets 0.
+    """
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     events = await event_service.events_by_night(
         session, hotel.city_id, start=start, end=end
@@ -233,7 +251,8 @@ async def _load_nights(
         events_fetched=city_events.fetched,
         events_impacts=city_events.impacts,
         hotel_location=hotel_location(hotel),
-    )
+        booked_on=today,
+    )[stored.features]
 
     nights = []
     for i, day in enumerate(days):
@@ -365,9 +384,19 @@ def _describe(term: str, row: pd.Series) -> str:
 
 def _value(feature: str, value: float | int | str | None) -> str:
     """One feature's value for this night, in words. Values are scalars:
-    numbers for the calendar and events, a name for the room type."""
+    numbers for the calendar, events and days ahead, a name for the room
+    type."""
     if value is None or pd.isna(value):
         return f"{feature.replace('_', ' ')} unknown"
+    if feature == LEAD:
+        days = int(value)
+        if days == 0:
+            return "booking today"
+        return f"booking {days} day{'' if days == 1 else 's'} ahead"
+    if feature == "night_before_holiday":
+        if int(value):
+            return "the night before a public holiday"
+        return "not the night before a public holiday"
     if feature == "day_of_week":
         return _DAYS[int(value)]
     if feature == "month":
@@ -425,6 +454,8 @@ def _from_snapshot(
         stay_date=snap.stay_date,
         room_type=room_type.name,
         room_type_id=room_type.id,
+        lead_days=_lead_days(inputs),
+        rate_basis=_rate_basis(inputs),
         recommended_rate=snap.rate,
         currency=CURRENCY,
         explanation=_explanation_from_json(snap.factors),
@@ -454,6 +485,8 @@ def _unsaved(
         stay_date=night.stay_date,
         room_type=room_type.name,
         room_type_id=room_type.id,
+        lead_days=_lead_days(night.inputs),
+        rate_basis=_rate_basis(night.inputs),
         recommended_rate=scored.rate,
         currency=CURRENCY,
         explanation=scored.explanation,
@@ -466,6 +499,19 @@ def _unsaved(
         snapshot_id=None,
         priced_at=datetime.now(UTC),
     )
+
+
+def _lead_days(inputs: dict[str, Any]) -> int | None:
+    """The days ahead a night was priced at, from its stored inputs; None if
+    the version doesn't read them."""
+    value = inputs.get("features", {}).get(LEAD)
+    return None if value is None else int(value)
+
+
+def _rate_basis(inputs: dict[str, Any]) -> str:
+    """ "nett" for a version trained on booked rooms, which always reads days
+    ahead; "arr" for one trained on nights (decision 0056)."""
+    return "nett" if _lead_days(inputs) is not None else "arr"
 
 
 def _version(stored: PricingModel) -> str:

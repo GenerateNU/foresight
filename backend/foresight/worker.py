@@ -18,7 +18,7 @@ The queues live in the API process, so production runs a single uvicorn
 worker. A restart, deploy or sleep loses them; on startup
 `fail_interrupted_jobs` marks jobs left queued or running failed so they can
 be started again. That's safe on Render's free plan, where the old process has
-stopped before the new one starts; a paid plan overlaps them (decision 0056).
+stopped before the new one starts; a paid plan overlaps them (decision 0077).
 """
 
 from __future__ import annotations

@@ -6,9 +6,10 @@ the same file twice changes nothing.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 
 from foresight.database.models.booking import Booking, BookingCancellation
 from foresight.repository.upsert import Outcome, upsert_rows
@@ -78,6 +79,25 @@ async def list_live_bookings(
     )
     stmt = _stays_touching(Booking, hotel_id, start, end).where(~cancelled)
     return (await session.scalars(stmt)).all()
+
+
+async def booked_night_range(
+    session: AsyncSession, hotel_id: int
+) -> tuple[date, date] | None:
+    """The first and last night any booking covers, or None if there are none.
+
+    The last night is the day before the latest departure.
+    """
+    first, departure = (
+        await session.execute(
+            select(func.min(Booking.arrival), func.max(Booking.departure)).where(
+                Booking.hotel_id == hotel_id
+            )
+        )
+    ).one()
+    if first is None:
+        return None
+    return first, departure - timedelta(days=1)
 
 
 async def list_cancellations(

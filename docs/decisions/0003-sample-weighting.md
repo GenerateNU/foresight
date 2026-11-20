@@ -1,6 +1,6 @@
 # 0003. Weight training nights by occupancy
 
-**Status:** Accepted · **Date:** 2026-10-13
+**Status:** Superseded by [0076](0076-booked-rooms-only-and-manager-rows.md) · **Date:** 2026-10-13
 
 ## Context
 Past prices weren't all good prices. A night's price was close to right when
