@@ -31,14 +31,15 @@ from foresight.routes.errors import register_error_handlers
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    interrupted = asyncio.create_task(worker.fail_interrupted_jobs())
+    # Background jobs die with the process; anything left running is stale.
+    # Done before the scheduler starts, so it doesn't skip a job kind as busy.
+    await worker.fail_interrupted_jobs()
     scheduler = (
         asyncio.create_task(worker.schedule_forever())
         if settings.scheduler_enabled
         else None
     )
     yield
-    interrupted.cancel()
     if scheduler is not None:
         scheduler.cancel()
 

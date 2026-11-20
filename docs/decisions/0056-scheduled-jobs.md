@@ -60,16 +60,42 @@ process.
 ## Consequences
 - On the free plan the loop only runs while the service is awake. The day's
   jobs run at the hour if something keeps it awake, otherwise when the first
-  request after the hour wakes it. Training stays off there: 512 MB may not fit it, and running out
-  of memory kills the server.
+  request after the hour wakes it. Training stays off there: 512 MB may not
+  fit it, and running out of memory kills the server.
 - Events belong to a city, but jobs are per hotel, so two hotels in one city
   fetch the same events twice.
 - On a hotel's first day, price waits one check (15 minutes) for the first
   model when `SCHEDULED_TRAINING` is on. With it off, price waits until a
   model is trained by hand.
-- On a paid plan, a deploy starts the new instance before stopping the old. So
-  the new one waits 6 minutes, longer than Render's longest shutdown delay,
-  then fails only the unfinished jobs it doesn't hold. Until then a job the old
-  instance left looks unfinished, and the scheduler skips that kind for a check.
+- On startup, every job left queued or running is marked failed, as before
+  this decision. That's right on the free plan, where a deploy, restart or
+  sleep stops the old process before the new one starts.
 - A failed run is visible in `jobs`, but nothing alerts on it yet.
 - New events reach the model's learning once a day, at the scheduled training.
+
+## Moving to a paid plan
+The code is written for Render's free plan. A paid plan changes these:
+
+- **Turn on training:** set `SCHEDULED_TRAINING` to `true` in `render.yaml`,
+  once training's memory use on real data is known to fit the plan.
+- **Overlapping deploys.** A paid plan starts the new instance before stopping
+  the old, which keeps running its jobs for up to `maxShutdownDelaySeconds`
+  (at most 5 minutes). Failing every unfinished job on startup would then fail
+  jobs the old instance is still running. Before upgrading, change startup to
+  wait longer than that delay (6 minutes) and then fail only the unfinished
+  jobs this process isn't running or holding in its queue, skipping any
+  created in the last minute (a job is committed a moment before it joins a
+  queue). This was written and checked on a local Postgres in PR #141
+  (commit `d3ca3e8`), then taken out because on free it only blocks
+  each job kind for 6 minutes after every wake-up.
+- **Duplicate jobs during the overlap.** Both instances run the scheduler, and
+  the one-unfinished-job-per-kind check reads, then inserts, so two checks at
+  the same moment can both queue the same job. Add a partial unique index on
+  `jobs (hotel_id, kind)` where status is `QUEUED` or `RUNNING`, for every kind
+  but the file kinds, so the database refuses the second.
+- **Finish running jobs on deploy:** set `maxShutdownDelaySeconds` to 300 in
+  `render.yaml`, so a job running when a deploy stops the old instance has up
+  to 5 minutes to finish instead of being cut off and retried.
+- **The routine runs on time.** The server no longer sleeps, so the day's jobs
+  run at `SCHEDULE_HOUR` instead of when the first request wakes it, and
+  saving prices ahead does its job: the calendar opens already priced.

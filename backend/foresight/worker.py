@@ -15,10 +15,10 @@ With SCHEDULER_ENABLED, `schedule_forever` also queues each hotel's routine
 jobs once they're due.
 
 The queues live in the API process, so production runs a single uvicorn
-worker. A restart or deploy loses them. A few minutes after startup,
-`fail_interrupted_jobs` marks the queued or running jobs this process doesn't
-hold failed, so they can be started again. It waits because a paid-plan deploy
-starts the new process before stopping the old, whose jobs are still running.
+worker. A restart, deploy or sleep loses them; on startup
+`fail_interrupted_jobs` marks jobs left queued or running failed so they can
+be started again. That's safe on Render's free plan, where the old process has
+stopped before the new one starts; a paid plan overlaps them (decision 0056).
 """
 
 from __future__ import annotations
@@ -37,14 +37,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 SCHEDULE_CHECK_SECONDS = 15 * 60
-# Longer than Render's longest shutdown delay (5 minutes), so an old instance
-# has stopped by then.
-INTERRUPTED_AFTER_SECONDS = 6 * 60
 
 # hotel id → job ids waiting, oldest first
 _queues: dict[int, deque[int]] = {}
-# job ids being run now
-_running: set[int] = set()
 # hotel id → the task working through its queue, while there is one
 _runners: dict[int, asyncio.Task[None]] = {}
 # job id → in-memory input a request handed over (a parsed file)
@@ -72,15 +67,12 @@ async def _drain(hotel_id: int) -> None:
     try:
         while queue:
             job_id = queue.popleft()
-            _running.add(job_id)
             try:
                 await run_job(job_id, _payloads.pop(job_id, None))
             except Exception:
                 # run_job records its own failures; this is the bookkeeping
                 # around it failing (the database down). Keep the queue moving.
                 log.exception("job %s could not be run", job_id)
-            finally:
-                _running.discard(job_id)
     finally:
         # No await between the empty check and here, so an enqueue can't slip
         # in unseen: it either lands before the check or starts a new runner.
@@ -119,15 +111,9 @@ async def run_job(job_id: int, payload: Any = None) -> None:
 
 
 async def fail_interrupted_jobs() -> None:
-    await asyncio.sleep(INTERRUPTED_AFTER_SECONDS)
-    held = _running.union(*_queues.values())
-    try:
-        async with async_session_factory() as session:
-            count = await job_service.fail_interrupted_jobs(session, keep=held)
-            await session.commit()
-    except Exception:
-        log.exception("interrupted jobs could not be marked failed")
-        return
+    async with async_session_factory() as session:
+        count = await job_service.fail_interrupted_jobs(session)
+        await session.commit()
     if count:
         log.warning("marked %d interrupted job(s) failed", count)
 
