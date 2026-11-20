@@ -108,16 +108,12 @@ class RoomTypeRequest(RequestSchema):
         description="The room type's name; unique within the hotel",
         examples=["Example Room"],
     )
-    room_count: int = Field(
-        gt=0, description="Physical rooms of this type", examples=[50]
-    )
 
 
 class RoomTypeResponse(ResponseSchema):
     id: int = Field(description="The room type's id")
     hotel_id: int = Field(description="The hotel it belongs to")
     name: str = Field(description="The room type's name")
-    room_count: int = Field(description="Physical rooms of this type")
 
 
 class DailyPerformanceResponse(ResponseSchema):
@@ -287,7 +283,8 @@ class RecommendationResponse(ResponseSchema):
 RecommendRoomType = Annotated[
     int | None,
     Query(
-        description="The room type to price; omit for the hotel's first",
+        description="The room type to price; omit for the one the active "
+        "model prices. Any other is a 422 (decision 0079)",
         examples=[1],
     ),
 ]

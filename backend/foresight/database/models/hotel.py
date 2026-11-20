@@ -47,7 +47,6 @@ class RoomType(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(120))
-    room_count: Mapped[int]  # how many physical rooms of this type
 
     hotel: Mapped["Hotel"] = relationship(back_populates="room_types", lazy="raise")
     nights: Mapped[list["DailyPerformance"]] = relationship(

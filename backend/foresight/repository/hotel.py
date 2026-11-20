@@ -65,19 +65,18 @@ async def update_hotel(
     return await get_hotel(session, hotel_id)
 
 
-async def upsert_room_type(
-    session: AsyncSession,
-    *,
-    hotel_id: int,
-    name: str,
-    room_count: int,
-) -> int:
-    stmt = insert(RoomType).values(hotel_id=hotel_id, name=name, room_count=room_count)
-    stmt = stmt.on_conflict_do_update(
-        constraint="uq_room_types_hotel_id_name",
-        set_={"room_count": stmt.excluded.room_count},
-    ).returning(RoomType.id)
-    return (await session.execute(stmt)).scalar_one()
+async def get_or_create_room_type(
+    session: AsyncSession, *, hotel_id: int, name: str
+) -> RoomType:
+    """The hotel's room type with this name, created if it doesn't exist."""
+    await session.execute(
+        insert(RoomType)
+        .values(hotel_id=hotel_id, name=name)
+        .on_conflict_do_nothing(constraint="uq_room_types_hotel_id_name")
+    )
+    return await session.scalar(
+        select(RoomType).where(RoomType.hotel_id == hotel_id, RoomType.name == name)
+    )
 
 
 async def upsert_daily_performance(
@@ -128,12 +127,11 @@ async def create_room_type(
     *,
     hotel_id: int,
     name: str,
-    room_count: int,
 ) -> RoomType | None:
     """Insert a room type; None if the hotel already has one with this name."""
     return await session.scalar(
         insert(RoomType)
-        .values(hotel_id=hotel_id, name=name, room_count=room_count)
+        .values(hotel_id=hotel_id, name=name)
         .on_conflict_do_nothing(constraint="uq_room_types_hotel_id_name")
         .returning(RoomType)
     )
@@ -154,6 +152,15 @@ async def list_hotels_for_user(session: AsyncSession, user_id: int) -> Sequence[
         .order_by(Hotel.id)
     )
     return (await session.scalars(stmt)).all()
+
+
+async def find_room_type(
+    session: AsyncSession, hotel_id: int, name: str
+) -> RoomType | None:
+    """The hotel's room type with this name, or None."""
+    return await session.scalar(
+        select(RoomType).where(RoomType.hotel_id == hotel_id, RoomType.name == name)
+    )
 
 
 async def get_room_type(session: AsyncSession, room_type_id: int) -> RoomType | None:

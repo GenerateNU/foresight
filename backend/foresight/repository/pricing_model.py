@@ -29,6 +29,7 @@ async def create_pricing_model(
     lib_versions: dict[str, str],
     data_start: date,
     data_end: date,
+    room_type_id: int,
     base_model_id: int | None = None,
 ) -> PricingModel:
     """Save a new, inactive model as the hotel's next version.
@@ -47,6 +48,7 @@ async def create_pricing_model(
         lib_versions=lib_versions,
         data_start=data_start,
         data_end=data_end,
+        room_type_id=room_type_id,
         base_model_id=base_model_id,
         is_active=False,
     )

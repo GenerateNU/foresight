@@ -77,7 +77,13 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     if active is None:
         raise InvalidRequestError("the hotel has no active model; train one first")
 
-    rows = await feedback_repo.tuning_feedback(session, hotel.id)
+    # Tune-ups price the same room type as their base (decision 0079).
+    room_type_id = active.room_type_id
+    if room_type_id is None:
+        raise InvalidRequestError(
+            "the active model predates the main room type; train a new version"
+        )
+    rows = await feedback_repo.tuning_feedback(session, room_type_id)
     if len(rows) < MIN_TUNE_NIGHTS:
         return TuneResult(
             None,
@@ -86,7 +92,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
             skipped=f"{len(rows)} manager rates; need at least {MIN_TUNE_NIGHTS}",
         )
     feedback = pd.DataFrame(rows)
-    untouched = await _untouched(session, hotel, active, feedback)
+    untouched = await _untouched(session, hotel, room_type_id, feedback)
 
     # A tune-up always corrects a plain base, so corrections never stack: the
     # active version's own base if it is a tune-up (decision 0078).
@@ -103,10 +109,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     # The manager's nights first, then the nights they left alone. Each is
     # booked the day its price was shown, as serving priced it (decision 0076).
     both = pd.concat(
-        [
-            feedback[["stay_date", "room_type", "shown_at"]],
-            untouched[["stay_date", "room_type", "shown_at"]],
-        ],
+        [feedback[["stay_date", "shown_at"]], untouched[["stay_date", "shown_at"]]],
         ignore_index=True,
     )
     x = await _features(session, hotel, both, base_row.features)
@@ -140,6 +143,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         lib_versions={lib: version(lib) for lib in LIBS},
         data_start=min(base_row.data_start, feedback["stay_date"].min()),
         data_end=max(base_row.data_end, feedback["stay_date"].max()),
+        room_type_id=room_type_id,
         base_model_id=base_row.id,
     )
     await model_repo.link_feedback(
@@ -190,46 +194,40 @@ def fit_correction(
 
 
 async def _untouched(
-    session: AsyncSession,
-    hotel: Hotel,
-    active: PricingModel,
-    feedback: pd.DataFrame,
+    session: AsyncSession, hotel: Hotel, room_type_id: int, feedback: pd.DataFrame
 ) -> pd.DataFrame:
-    """The nights the manager left alone, one row each: stay_date, room_type,
+    """The room type's nights the manager left alone, one row each: stay_date,
     shown_at and rate, the rate their latest snapshot showed (decision 0078).
 
-    Every room type and night in the UNTOUCHED_DAYS before today with a
-    snapshot, no manager rate, no one-off tag (decision 0070), and a room type
-    the model was trained on. Only past nights: the manager could still change
-    a future one, so leaving it alone doesn't mean "no change" yet (0074).
+    Every night in the UNTOUCHED_DAYS before today with a snapshot, no manager
+    rate and no one-off tag (decision 0070). Only past
+    nights: the manager could still change a future one, so leaving it alone
+    doesn't mean "no change" yet (0074).
     """
     today = local_today(hotel.city)
     start = today - timedelta(days=UNTOUCHED_DAYS)
     end = today - timedelta(days=1)
     nights = await snapshot_repo.snapshotted_nights(
-        session, hotel.id, start=start, end=end
+        session, room_type_id, start=start, end=end
     )
-    trained_on = active.training_summary.get("room_types", [])
-    touched = set(zip(feedback["stay_date"], feedback["room_type"], strict=True))
+    touched = set(feedback["stay_date"])
     # A one-off night isn't in `feedback`, but it isn't "no change" either:
     # it teaches nothing.
     one_off = await feedback_repo.one_off_nights(
-        session, hotel.id, start=start, end=end
+        session, room_type_id, start=start, end=end
     )
-    touched |= {(row["stay_date"], row["room_type"]) for row in one_off}
+    touched |= {row["stay_date"] for row in one_off}
     return pd.DataFrame(
         [
             {
                 "stay_date": n["stay_date"],
-                "room_type": n["room_type"],
                 "shown_at": n["shown_at"],
                 "rate": float(n["rate"]),
             }
             for n in nights
-            if (n["stay_date"], n["room_type"]) not in touched
-            and (not trained_on or n["room_type"] in trained_on)
+            if n["stay_date"] not in touched
         ],
-        columns=pd.Index(["stay_date", "room_type", "shown_at", "rate"]),
+        columns=pd.Index(["stay_date", "shown_at", "rate"]),
     )
 
 
@@ -255,7 +253,7 @@ async def _features(
         [local_date(hotel.city, t) for t in rows["shown_at"]], index=rows.index
     )
     x = build_features(
-        rows[["stay_date", "room_type"]],
+        rows[["stay_date"]],
         events.frame,
         events_fetched=events.fetched,
         events_impacts=events.impacts,

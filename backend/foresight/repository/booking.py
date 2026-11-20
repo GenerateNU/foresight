@@ -69,31 +69,46 @@ async def upsert_cancellations(
 
 
 async def list_live_bookings(
-    session: AsyncSession, hotel_id: int, *, start: date, end: date
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    start: date,
+    end: date,
+    room_type_code: str | None = None,
+    rate_plan: str | None = None,
 ) -> Sequence[Booking]:
-    """Bookings with a night from `start` to `end` and no cancellation."""
+    """Bookings with a night from `start` to `end` and no cancellation; only
+    the given room code and rate plan when they're given."""
     # Matched on the ref alone: a cancellation can carry amended stay dates.
     cancelled = exists().where(
         BookingCancellation.hotel_id == Booking.hotel_id,
         BookingCancellation.book_ref == Booking.book_ref,
     )
-    stmt = _stays_touching(Booking, hotel_id, start, end).where(~cancelled)
+    stmt = _product(
+        _stays_touching(Booking, hotel_id, start, end).where(~cancelled),
+        room_type_code,
+        rate_plan,
+    )
     return (await session.scalars(stmt)).all()
 
 
 async def booked_night_range(
-    session: AsyncSession, hotel_id: int
+    session: AsyncSession,
+    hotel_id: int,
+    *,
+    room_type_code: str | None = None,
+    rate_plan: str | None = None,
 ) -> tuple[date, date] | None:
-    """The first and last night any booking covers, or None if there are none.
+    """The first and last night any booking covers, or None if there are none;
+    only the given room code and rate plan when they're given.
 
     The last night is the day before the latest departure.
     """
+    stmt = select(func.min(Booking.arrival), func.max(Booking.departure)).where(
+        Booking.hotel_id == hotel_id
+    )
     first, departure = (
-        await session.execute(
-            select(func.min(Booking.arrival), func.max(Booking.departure)).where(
-                Booking.hotel_id == hotel_id
-            )
-        )
+        await session.execute(_product(stmt, room_type_code, rate_plan))
     ).one()
     if first is None:
         return None
@@ -106,6 +121,17 @@ async def list_cancellations(
     """Cancellations with a night from `start` to `end`."""
     stmt = _stays_touching(BookingCancellation, hotel_id, start, end)
     return (await session.scalars(stmt)).all()
+
+
+def _product[S: Select[Any]](
+    stmt: S, room_type_code: str | None, rate_plan: str | None
+) -> S:
+    """Only bookings of this room code and rate plan, when given."""
+    if room_type_code is not None:
+        stmt = stmt.where(Booking.room_type_code == room_type_code)
+    if rate_plan is not None:
+        stmt = stmt.where(Booking.rate_plan == rate_plan)
+    return stmt
 
 
 def _stays_touching[T: (Booking, BookingCancellation)](

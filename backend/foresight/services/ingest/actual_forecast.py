@@ -48,12 +48,12 @@ async def save(
 ) -> dict[Outcome, int]:
     """Upsert nights onto the hotel's standard room type.
 
-    The room type is created on first import; its room count follows the
-    file. Re-importing the same file changes nothing. Does not commit.
+    The room type is created on first import. Re-importing the same file
+    changes nothing. Does not commit.
     """
-    room_type_id = await hotel_repo.upsert_room_type(
-        session, hotel_id=hotel.id, name=ROOM_TYPE, room_count=extra["total_rooms"]
+    room_type = await hotel_repo.get_or_create_room_type(
+        session, hotel_id=hotel.id, name=ROOM_TYPE
     )
     return await hotel_repo.upsert_daily_performance(
-        session, [{**night, "room_type_id": room_type_id} for night in rows]
+        session, [{**night, "room_type_id": room_type.id} for night in rows]
     )
