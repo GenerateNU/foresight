@@ -45,8 +45,8 @@ from foresight.services.domain.city import local_today
 from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
+from foresight.services.domain.pricing_model import load_model
 from foresight.services.errors import InvalidRequestError, NotFoundError
-from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import LEAD, build_features
 
 if TYPE_CHECKING:
@@ -318,10 +318,7 @@ async def _score(
     there is something to score."""
     if not nights:
         return {}
-    artifact = await model_repo.get_artifact(session, stored.id)
-    if artifact is None:
-        raise NotFoundError("Pricing model", stored.id)
-    model = EBMModel.from_bytes(artifact)
+    model = await load_model(session, stored)
 
     x = pd.concat([n.features for n in nights], ignore_index=True)
     # A partial batch can't infer the trained category set; give it the model's.

@@ -489,8 +489,15 @@ async def run_tuning_backtest(
             continue
         y_manager = pd.Series(y[manager])
         only = await asyncio.to_thread(fit_correction, base, x[manager], y_manager)
+        # The manager was shown the base here, so that is the untouched
+        # nights' shown rate (decision 0078).
         both = await asyncio.to_thread(
-            fit_correction, base, x[manager], y_manager, x[untouched]
+            fit_correction,
+            base,
+            x[manager],
+            y_manager,
+            x[untouched],
+            pd.Series(base_all[untouched]),
         )
         only_pred, both_pred = only.predict(x_eval), both.predict(x_eval)
         only_metrics = score(y[scored], only_pred)

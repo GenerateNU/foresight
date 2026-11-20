@@ -256,7 +256,8 @@ cities ─┬─< hotels ─┬─< room_types ─< daily_performance   (the hot
         │           ├─< booking_cancellations             (rooms cancelled; linked by book_ref)
         │           ├─< pricing_models ─< pricing_model_feedback >─ feedback
         │           │                                     (trained models; one active; the
-        │           │                                      feedback each one used; 0044)
+        │           │                                      feedback each one used; 0044;
+        │           │                                      a tune-up points to its base, 0078)
         │           ├─< recommendation_snapshots          (every rate recommended; 0038)
         │           ├─< feedback (also > room_types)      (the manager's view of a night; 0043)
         │           └─< jobs                              (ingest runs)
@@ -586,14 +587,19 @@ fits a small EBM on the gap between its predictions and the manager's current
 rates, before or after the night. Each row is built as serving built it: booked
 the day its price was shown, with the base version's stored inputs
 ([0076](decisions/0076-booked-rooms-only-and-manager-rows.md)). Past nights with a snapshot in the 30 days
-before today that the manager left alone join with a gap of 0
+before today that the manager left alone join with the rate their latest
+snapshot showed
 ([0072](decisions/0072-tune-up-learns-untouched-nights-as-unchanged.md),
-[0074](decisions/0074-only-past-nights-are-no-change.md)), so the correction
-doesn't shift every night; future nights don't count, as the manager may still
-change them. `ml/ebm.TunedEBMModel` adds the two, and is
-saved as a new `ebm-tuned` version that serves by default. Each tune-up starts
-again from the base, so corrections never stack; with fewer than 5 rates it
-saves nothing. The correction sees every input the base does
+[0074](decisions/0074-only-past-nights-are-no-change.md),
+[0078](decisions/0078-tune-up-keeps-what-was-shown-and-points-to-its-base.md)),
+so the correction keeps what the manager accepted and doesn't shift every
+night; future nights don't count, as the manager may still change them.
+`ml/ebm.TunedEBMModel` adds the two. It is saved as a new `ebm-tuned` version
+that serves by default, whose artifact holds only the correction and whose
+`base_model_id` points to the base; `pricing_model.load_model` joins them to
+serve, and a base with a tune-up pointing to it can't be deleted (0078). Each
+tune-up starts again from the base, so corrections never stack; with fewer than
+5 rates it saves nothing. The correction sees every input the base does
 ([0076](decisions/0076-booked-rooms-only-and-manager-rows.md)); whether to keep
 `month` out, as [0075](decisions/0075-correction-ignores-month.md) found
 safer, is open. The tune job goes through the hotel's queue like every other

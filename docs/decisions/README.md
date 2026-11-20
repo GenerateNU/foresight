@@ -91,3 +91,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0075](0075-correction-ignores-month.md) | The tune-up's correction never sees `month` (reversed for now by 0076; open) | ML |
 | [0076](0076-booked-rooms-only-and-manager-rows.md) | Train on booked rooms only; manager feedback as booked-room rows; prices before VAT | ML / API |
 | [0077](0077-scheduled-jobs.md) | Routine jobs are scheduled inside the API process | jobs / operations |
+| [0078](0078-tune-up-keeps-what-was-shown-and-points-to-its-base.md) | Untouched nights keep the rate the manager was shown; a tune-up points to its base | ML / database |

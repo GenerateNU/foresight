@@ -132,7 +132,14 @@ class PricingModelResponse(ResponseSchema):
     id: int = Field(description="The model's id")
     hotel_id: int = Field(description="The hotel it prices")
     version: int = Field(description="Counts up per hotel, from 1")
-    algorithm: str = Field(description="The model type", examples=["ebm"])
+    algorithm: str = Field(
+        description="The model type: `ebm`, or `ebm-tuned` for a tune-up",
+        examples=["ebm"],
+    )
+    base_model_id: int | None = Field(
+        description="For a tune-up, the version it corrects; null for a full "
+        "training run (decision 0078)"
+    )
     description: str | None = Field(
         description="What this version tries, as given; null if none"
     )
