@@ -1,4 +1,5 @@
 import { API_URL } from '../lib/config.js'
+import { apiGet, apiPost } from './client.js'
 
 // Sign-in is a page visit to the API, not a fetch: the API sends the browser to Google, and
 // Google sends it back to the API, which always redirects to the app's root (FRONTEND_URL).
@@ -7,8 +8,21 @@ import { API_URL } from '../lib/config.js'
 
 const RETURN_PATH_KEY = 'foresight.returnPath'
 
-/** Where the "Sign in with Google" button goes. */
+/** Where the "Continue with Google" button goes. */
 export const GOOGLE_SIGN_IN_URL = new URL('/auth/google/login', API_URL).href
+
+/**
+ * GET /auth/me: `{ id, email, name, hotels: [HotelResponse] }`. Throws an ApiError with
+ * status 401 when nobody is signed in, instead of redirecting.
+ */
+export function getMe() {
+  return apiGet('/auth/me', {}, { redirectOn401: false })
+}
+
+/** POST /auth/logout: ends the session. Not being signed in isn't an error. */
+export function signOut() {
+  return apiPost('/auth/logout')
+}
 
 /** Remember `path` (pathname + search) so the app can go back there after sign-in. */
 export function saveReturnPath(path) {
