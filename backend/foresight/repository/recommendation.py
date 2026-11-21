@@ -31,7 +31,6 @@ async def create_recommendation_snapshot(
     interval_level: float,
     factors: dict[str, Any],
     inputs: dict[str, Any],
-    inputs_hash: str,
 ) -> RecommendationSnapshot:
     """Add a snapshot: one night's rate, as priced now. Never updates a row."""
     snapshot = RecommendationSnapshot(
@@ -46,7 +45,6 @@ async def create_recommendation_snapshot(
         interval_level=interval_level,
         factors=factors,
         inputs=inputs,
-        inputs_hash=inputs_hash,
     )
     session.add(snapshot)
     await session.flush()

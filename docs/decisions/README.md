@@ -97,3 +97,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0081](0081-weather-removed.md) | Weather is removed; its table is kept for now | ingest / database |
 | [0082](0082-dead-code-removed.md) | Unused pieces are removed: uncertainty, rate basis, booking curves, feedback flags, total rooms | ML / API / database |
 | [0083](0083-holidays-from-the-library-only.md) | Every holiday input comes from the `holidays` library; school holidays are dropped | ML |
+| [0084](0084-no-fingerprint-no-price-job.md) | Snapshots are matched on their stored inputs; prices aren't saved ahead | ML / jobs |

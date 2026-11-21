@@ -117,9 +117,8 @@ async def tuning_feedback(
     (decisions 0069 and 0071) and isn't
     tagged ONE_OFF (decision 0070). Rows carry id, stay_date, room_type_id,
     room_type (its name), rate (nett where the version was, decision 0076) and
-    shown_at: when the manager saw the recommendation they changed, or when they
-    gave the feedback if its snapshot is gone. Oldest night first. Only the
-    one room type; `start` and `end` limit the nights.
+    given_at: when the manager set the rate (decision 0084). Oldest night first.
+    Only the one room type; `start` and `end` limit the nights.
     """
     current = select(Feedback).where(Feedback.room_type_id == room_type_id)
     if start is not None:
@@ -138,15 +137,9 @@ async def tuning_feedback(
             current.c.room_type_id,
             RoomType.name.label("room_type"),
             current.c.rate,
-            func.coalesce(
-                RecommendationSnapshot.created_at, current.c.created_at
-            ).label("shown_at"),
+            current.c.created_at.label("given_at"),
         )
         .join(RoomType, current.c.room_type_id == RoomType.id)
-        .outerjoin(
-            RecommendationSnapshot,
-            current.c.snapshot_id == RecommendationSnapshot.id,
-        )
         .where(
             current.c.rate.is_not(None),
             ~current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]),

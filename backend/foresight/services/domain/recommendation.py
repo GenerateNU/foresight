@@ -4,18 +4,15 @@ Reads only what's already ingested; it never fetches. If data is missing for
 a night, the model gets an empty value (it learned an effect for that) rather
 than this call pulling the data in.
 
-Every night priced from today on is saved as a snapshot, and reused while its
-inputs don't change (decision 0038):
+Every price shown from today on is saved as a snapshot (decisions 0038, 0084):
 
 1. Load each night's inputs: the model's input row, the events on the night
-   and whether an events backfill covered it. Database reads only. A version
-   trained on booked rooms also reads days booked ahead: the rate is what the
-   night would sell for if booked today, so its nights re-price daily
-   (decision 0056).
-2. Fingerprint them with the active model's id.
-3. A night whose fingerprint matches its latest snapshot returns that snapshot;
-   the model doesn't run. The rest are scored together, in one batch, and each
-   is saved as a new snapshot.
+   and whether an events backfill covered it. Database reads only. Days booked
+   ahead are among them: the rate is what the night would sell for if booked
+   today, so a future night's inputs change daily (decision 0056).
+2. A night whose latest snapshot has the same model and inputs returns that
+   snapshot: the same model on the same inputs gives the same price. The rest
+   are scored together, in one batch, and each is saved as a new snapshot.
 
 Past nights are never saved after the fact: one with a snapshot returns its
 latest, as it was; one without is priced and returned unsaved.
@@ -25,8 +22,6 @@ Returns domain dataclasses; the route maps them to its response schemas.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -126,7 +121,6 @@ class _Night:
     events: list[NightEvent]
     events_source: str  # "fetched" or "missing"
     inputs: dict[str, Any]  # what's stored with the snapshot
-    inputs_hash: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,12 +167,17 @@ async def get_recommendations(
         session, room_type.id, start=start, end=end
     )
 
-    # A past night keeps the snapshot it has, whatever changed since.
+    # A past night keeps the snapshot it has, whatever changed since. A future
+    # night is priced again unless its latest snapshot is the same model on the
+    # same inputs, which would give the same price.
     to_score = [
         n
         for n in nights
         if (snap := latest.get(n.stay_date)) is None
-        or (n.stay_date >= today and snap.inputs_hash != n.inputs_hash)
+        or (
+            n.stay_date >= today
+            and (snap.model_id != stored.id or snap.inputs != n.inputs)
+        )
     ]
     scored = await _score(session, stored, to_score)
 
@@ -232,11 +231,11 @@ async def _load_nights(
     start: date,
     end: date,
 ) -> list[_Night]:
-    """Every night's inputs and their fingerprint, from the database only.
+    """Every night's inputs, from the database only.
 
     Builds every input, then keeps the ones this version trained on, so an
-    older version gets exactly its own columns and keeps its fingerprints.
-    Days booked ahead are counted from today; a past night gets 0.
+    older version gets exactly its own columns. Days booked ahead are counted
+    from today; a past night gets 0.
     """
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     events = await event_service.events_by_night(
@@ -269,20 +268,9 @@ async def _load_nights(
                 events=events[day],
                 events_source=events_source,
                 inputs=inputs,
-                inputs_hash=_fingerprint(stored.id, inputs),
             )
         )
     return nights
-
-
-def _fingerprint(model_id: int, inputs: dict[str, Any]) -> str:
-    """SHA-256 of the model and everything it reads or shows for the night."""
-    payload = json.dumps(
-        {"model_id": model_id, "inputs": inputs},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def _plain(value: Any) -> Any:
@@ -430,7 +418,6 @@ async def _save(
         interval_level=scored.interval.level,
         factors=_explanation_json(scored.explanation),
         inputs=night.inputs,
-        inputs_hash=night.inputs_hash,
     )
 
 

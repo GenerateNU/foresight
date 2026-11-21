@@ -1,6 +1,6 @@
 # 0077. Routine jobs are scheduled inside the API process
 
-**Status:** Accepted · **Date:** 2026-11-15
+**Status:** Accepted, amended by [0084](0084-no-fingerprint-no-price-job.md) (no `PRICE` job) · **Date:** 2026-11-15
 
 ## Context
 Nothing ran unless someone called the API
@@ -27,19 +27,21 @@ process.
   it; the next check catches it up, and the day after it's back on the hour.
   A routine events refresh starts from the last successful one, manual or
   scheduled, so a gap shorter than PredictHQ's window is filled.
-- **The routine, in queue order:** events refresh, training (only with
+- ~~**The routine, in queue order:** events refresh, training (only with
   `SCHEDULED_TRAINING`), then a `PRICE` job that saves recommendations for
   today and the next 89 nights for the room type the active model prices
   (one since [0079](0079-one-main-room-type-double-room-only.md))
   ([0038](0038-recommendations-reused-while-inputs-hold.md)). They're queued in
   the same check, so training learns from the day's events and manager
   feedback ([0044](0044-train-on-feedback-given-after-the-night.md)), and
-  pricing reads both the new events and the new model.
-- **A manual events run is followed by a `PRICE` job** once it succeeds. New
+  pricing reads both the new events and the new model.~~ Since
+  [0084](0084-no-fingerprint-no-price-job.md): events refresh, then training;
+  no `PRICE` job.
+- ~~**A manual events run is followed by a `PRICE` job** once it succeeds. New
   events change a night's price without retraining (0055), and a price is
   recalculated when viewed anyway; this saves it ahead so the calendar opens
   without waiting. It doesn't retrain: training is the heaviest job, and a
-  day's new events change little of what it learns.
+  day's new events change little of what it learns.~~ Removed by 0084.
 - **A job that can't start is skipped until the next check:** one already
   queued or running, no PredictHQ token, nothing to train on, no active model.
 - **A scheduled model goes live**, as a manual one does by default.

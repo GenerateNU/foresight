@@ -28,10 +28,8 @@ from zoneinfo import ZoneInfo
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
-from foresight.repository import pricing_model as model_repo
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import pricing_model as pricing_model_service
-from foresight.services.domain import recommendation as recommendation_service
 from foresight.services.domain import tuning as tuning_service
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel, list_hotels
@@ -73,8 +71,6 @@ RETRY_AFTER = timedelta(hours=1)
 # Marks a job the scheduler started. Only these set the next scheduled run, so
 # a manual run doesn't move it.
 SCHEDULED = {"scheduled": True}
-# Nights a price job saves recommendations for, from today.
-PRICE_NIGHTS = 90
 # How far back the first routine events refresh looks for revisions.
 FIRST_REFRESH_DAYS = 7
 # A source's quota or rate limit: the job stops rather than fails.
@@ -178,23 +174,6 @@ async def start_train_job(
     return await _queue(session, hotel, JobKind.TRAIN, params)
 
 
-async def start_price_job(
-    session: AsyncSession, hotel_id: int, *, scheduled: bool = False
-) -> Job:
-    """Save recommendations for the next PRICE_NIGHTS nights, so the calendar
-    opens without pricing them first. `scheduled` is for the scheduler's own
-    runs.
-
-    Raises:
-        NotFoundError: Unknown hotel, or no active model.
-        ConflictError: A price job is already queued or running.
-    """
-    hotel = await get_hotel(session, hotel_id)
-    if await model_repo.get_active_pricing_model(session, hotel.id) is None:
-        raise NotFoundError("Active pricing model for hotel", hotel.id)
-    return await _queue(session, hotel, JobKind.PRICE, {"scheduled": scheduled})
-
-
 async def start_due_jobs(session: AsyncSession) -> list[Job]:
     """Queue every hotel's routine jobs that are due, in the order they run.
 
@@ -204,8 +183,8 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
     """
     # (kind, how to start its scheduled run)
     routine: list[tuple[JobKind, Callable[[int], Awaitable[Job]]]]
-    # Events first, so training learns from them and pricing reads them; then
-    # training, so pricing uses the new model. Weather was removed (0081).
+    # Events first, so training learns from them. Weather was removed (0081),
+    # and prices aren't saved ahead: the calendar prices on request (0084).
     routine = [
         (
             JobKind.EVENTS,
@@ -232,7 +211,6 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             if settings.scheduled_training
             else []
         ),
-        (JobKind.PRICE, lambda h: start_price_job(session, h, scheduled=True)),
     ]
 
     queued: list[Job] = []
@@ -318,7 +296,7 @@ async def _due(
 async def _queue(
     session: AsyncSession, hotel: Hotel, kind: JobKind, params: dict[str, Any]
 ) -> Job:
-    # Uploads stack up in the queue; a second events, training, price or tune-up
+    # Uploads stack up in the queue; a second events, training or tune-up
     # run would only repeat the first (and spend API credits or training time).
     if kind not in file_ingest.FILE_KINDS:
         running = await job_repo.find_unfinished_job(
@@ -375,21 +353,6 @@ async def mark_succeeded(session: AsyncSession, job_id: int) -> None:
         resume_from=None,
         finished_at=_now(),
     )
-
-
-async def start_follow_up_jobs(session: AsyncSession, job_id: int) -> list[Job]:
-    """Jobs a succeeded job starts. A manual events run re-saves prices with
-    its new events, so the calendar opens without pricing them first; a
-    scheduled one doesn't, since the routine prices after it. One that can't
-    start (no model, a price job already queued) is skipped."""
-    job = await get_job(session, job_id)
-    if job.kind != JobKind.EVENTS or job.params.get("scheduled"):
-        return []
-    try:
-        return [await start_price_job(session, job.hotel_id)]
-    except DomainError as exc:
-        log.info("hotel %s: price after events not started: %s", job.hotel_id, exc)
-        return []
 
 
 async def mark_ended_early(
@@ -521,30 +484,6 @@ async def _train(
     )
 
 
-async def _price(
-    session: AsyncSession, hotel: Hotel, _params: Mapping[str, Any], _: Any
-) -> AsyncIterator[Step]:
-    model = await model_repo.get_active_pricing_model(session, hotel.id)
-    if model is None:
-        raise NotFoundError("Active pricing model for hotel", hotel.id)
-    # A version prices one room type (decision 0079); the recommendations
-    # default to it.
-    start = local_today(hotel.city)
-    end = start + timedelta(days=PRICE_NIGHTS - 1)
-    await recommendation_service.get_recommendations(
-        session, hotel.id, start=start, end=end
-    )
-    yield Step(
-        {
-            "start": start.isoformat(),
-            "end": end.isoformat(),
-            "model_version": model.version,
-            "room_type_id": model.room_type_id,
-        },
-        None,
-    )
-
-
 async def _tune(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
@@ -571,7 +510,6 @@ _HANDLERS: dict[JobKind, Handler] = {
     JobKind.RESERVATIONS: _file,
     JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,
-    JobKind.PRICE: _price,
     JobKind.TUNE: _tune,
 }
 

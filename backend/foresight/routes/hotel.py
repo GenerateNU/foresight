@@ -194,7 +194,7 @@ class RecommendationResponse(ResponseSchema):
     )
     priced_at: datetime = Field(
         description="When the model produced this rate, UTC. Older than the "
-        "request when the night's inputs haven't changed since"
+        "request when the night's model and inputs haven't changed since"
     )
 
 
@@ -329,12 +329,11 @@ async def get_recommendations(
     """The active model's rate for each night, oldest first, with its
     explanation and events. At most 90 nights.
 
-    Each night from today on is stored as a snapshot. A night whose inputs
-    (model, events, and days booked ahead if the model reads them) haven't
-    changed since its latest snapshot returns that snapshot without running
-    the model; one whose inputs changed is priced again and stored. A model
-    trained on bookings prices each night as if booked today, so it re-prices
-    every night each day. Past nights are never stored after the fact: one with a
+    Each price shown from today on is stored as a snapshot. A night whose model
+    and inputs (events, days booked ahead) match its latest snapshot returns
+    that snapshot; otherwise it's priced and a new snapshot is stored. Days
+    booked ahead change daily, so a future night gets a new snapshot each day
+    it's shown. Past nights are never stored after the fact: one with a
     snapshot returns it as it was, one without is priced and returned unsaved.
     404 if the hotel has no active model.
     """
