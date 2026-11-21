@@ -344,8 +344,8 @@ uploaded report, through one queue per hotel
 | `files` (multipart) | one per file: `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
 
 Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
-queue. `PRICE` saves recommendations for the next 90 nights; only the
-scheduler starts it (section 5.3).
+queue. Prices aren't saved ahead: the calendar prices on request
+([0084](decisions/0084-no-fingerprint-no-price-job.md)).
 
 **Window rules** (`services/ingest/window.py`):
 
@@ -407,7 +407,7 @@ safe.
 - A hotel's jobs run one at a time, first in, first out; different hotels
   run side by side. A long backfill holds up the hotel's queue behind it.
 - A failed job doesn't stop the jobs queued after it.
-- One unfinished events, training, price or tune-up job per hotel; a second
+- One unfinished events, training or tune-up job per hotel; a second
   gets a 409. File jobs stack up in the queue instead.
 - A restart, deploy or sleep loses the queues and the parsed files waiting in
   them. On startup every queued or running job is marked failed. That's safe on
@@ -428,15 +428,14 @@ With `SCHEDULER_ENABLED`, `worker.schedule_forever` runs from startup
 ```
 every 15 minutes
   job_service.start_due_jobs(session)
-    for each hotel, in order: events, train (SCHEDULED_TRAINING), price
+    for each hotel, in order: events, train (SCHEDULED_TRAINING)
       no scheduled run of that kind since SCHEDULE_HOUR (hotel time) last
       passed, or the last one failed 1h ago? Manual runs don't count.
         → the same start_* the routes call; skipped if it can't start
   commit; worker.enqueue each job      same per-hotel queue as uploads
-
-after a manual events job succeeds
-  job_service.start_follow_up_jobs → a PRICE job, same queue
 ```
+
+Prices aren't saved ahead; the calendar prices on request (0084).
 
 ---
 
@@ -526,9 +525,8 @@ GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
       per night: build_features row (booked_on = today), keep the version's
                  `features`; the night's events, events_source
-      fingerprint = sha256(model id + those inputs)
       snapshot_repo.latest_snapshots            one query for the range
-      fingerprint matches → reuse the snapshot; the model doesn't run
+      same model and same inputs as the latest snapshot → return it (0084)
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
       feedback_repo.manager_rates               the manager's rate per night, read live (0071)
@@ -540,10 +538,13 @@ A version trained on booked rooms also reads days booked ahead
 today, so each night re-prices daily and the response carries `lead_days`.
 Serving keeps each version's own `features`, so older versions are unchanged.
 
-A recommendation is stored when it's made and reused while its inputs hold
-([0038](decisions/0038-recommendations-reused-while-inputs-hold.md)). Asking
-for a night again returns its stored snapshot while nothing it reads has
-changed, so there's no separate route for a night's factors.
+A recommendation is stored when it's made and reused while its model and
+inputs hold, compared directly
+([0038](decisions/0038-recommendations-reused-while-inputs-hold.md),
+[0084](decisions/0084-no-fingerprint-no-price-job.md)). Days booked ahead
+change daily, so a future night gets a new snapshot on each day it's shown;
+asking again the same day returns the same snapshot. There's no separate route
+for a night's factors.
 
 Training learns from the manager's rates
 ([0071](decisions/0071-manager-rate-is-the-target-everywhere.md)): for each
@@ -572,8 +573,9 @@ A daily tune-up (`POST /hotels/{id}/tune`, a `tune` job;
 [0069](decisions/0069-daily-tune-up.md)) corrects the active model without
 retraining it. `domain/tuning.tune` keeps the active model's base as it is and
 fits a small EBM on the gap between its predictions and the manager's current
-rates, before or after the night. Each row is built as serving built it: booked
-the day its price was shown, with the base version's stored inputs
+rates, before or after the night. Each row is built as serving built it, with
+the base version's stored inputs: a manager row booked the day they set the
+rate, an untouched night the day its price was shown (0084)
 ([0076](decisions/0076-booked-rooms-only-and-manager-rows.md)). Past nights with a snapshot in the 30 days
 before today that the manager left alone join with the rate their latest
 snapshot showed

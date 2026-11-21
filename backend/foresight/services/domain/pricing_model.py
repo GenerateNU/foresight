@@ -59,7 +59,7 @@ TARGET = "adr_nett"
 # Share of the most recent rows scored after training; also the conformal
 # calibration share (decision 0005), so metrics describe unseen nights.
 HOLDOUT_FRAC = 0.15
-_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "rate", "shown_at"]
+_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "rate", "given_at"]
 LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
@@ -166,8 +166,8 @@ async def _with_manager_rows(
 ) -> PreparedTraining:
     """Booked rooms plus one row per manager rate (decision 0076).
 
-    A manager rate is the price for booking that night on the day they saw the
-    recommendation, so it's a row booked that day, next to the night's real
+    A manager rate is the price for booking that night on the day they set it,
+    so it's a row booked that day (decision 0084), next to the night's real
     sales, which stay as they are. It weighs `manager_share` of the night's
     booked rooms, and at least 1.
     """
@@ -175,7 +175,7 @@ async def _with_manager_rows(
         used = pd.DataFrame(columns=["feedback_id", "training_rate"])
         return PreparedTraining(data, data.y, data.weights, used, began)
     rows = feedback.assign(
-        booked_on=[local_date(hotel.city, t) for t in feedback["shown_at"]]
+        booked_on=[local_date(hotel.city, t) for t in feedback["given_at"]]
     )[["stay_date", "room_type", "booked_on", "rate"]]
     events = await events_for(session, hotel.city, sorted(set(rows["stay_date"])))
     x_manager = build_features(

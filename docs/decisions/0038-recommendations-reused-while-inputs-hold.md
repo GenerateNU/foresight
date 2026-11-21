@@ -1,6 +1,6 @@
 # 0038. A recommendation is stored when made, and reused while its inputs hold
 
-**Status:** Accepted · **Date:** 2026-10-27
+**Status:** Accepted, amended by [0084](0084-no-fingerprint-no-price-job.md) (matched on stored inputs, no hash) · **Date:** 2026-10-27
 
 Supersedes [0034](0034-snapshot-only-when-changed.md). Replaces the range
 endpoint in [0032](0032-events-on-a-night-follow-the-model.md).

@@ -26,13 +26,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from foresight.database.session import async_session_factory
 from foresight.services import job as job_service
-
-if TYPE_CHECKING:
-    from foresight.database.models.job import Job
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +89,6 @@ async def run_job(job_id: int, payload: Any = None) -> None:
         job = await job_service.get_job(session, job_id)
 
         resume_from = job_service.initial_resume_from(job)
-        follow_ups: list[Job] = []
         try:
             async for step in job_service.run(session, job, payload):
                 await job_service.record_progress(session, job_id, step.progress)
@@ -104,10 +100,7 @@ async def run_job(job_id: int, payload: Any = None) -> None:
             await job_service.mark_ended_early(session, job_id, exc, resume_from)
         else:
             await job_service.mark_succeeded(session, job_id)
-            follow_ups = await job_service.start_follow_up_jobs(session, job_id)
         await session.commit()
-    for follow_up in follow_ups:
-        await enqueue(follow_up.id, follow_up.hotel_id)
 
 
 async def fail_interrupted_jobs() -> None:

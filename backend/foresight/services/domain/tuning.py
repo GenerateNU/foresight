@@ -106,10 +106,16 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         raise NotFoundError("Pricing model", base_row.id)
     base = EBMModel.from_bytes(artifact)
 
-    # The manager's nights first, then the nights they left alone. Each is
-    # booked the day its price was shown, as serving priced it (decision 0076).
+    # The manager's nights first, then the nights they left alone. A manager
+    # row is booked the day they set the rate; an untouched night the day its
+    # latest snapshot was shown (decisions 0076, 0084).
     both = pd.concat(
-        [feedback[["stay_date", "shown_at"]], untouched[["stay_date", "shown_at"]]],
+        [
+            feedback[["stay_date", "given_at"]].rename(columns={"given_at": "seen_at"}),
+            untouched[["stay_date", "shown_at"]].rename(
+                columns={"shown_at": "seen_at"}
+            ),
+        ],
         ignore_index=True,
     )
     x = await _features(session, hotel, both, base_row.features)
@@ -241,14 +247,14 @@ async def _features(
 ) -> pd.DataFrame:
     """The base version's inputs for each row, built as serving builds them.
 
-    Each row is booked on the day its price was shown (`shown_at`, in the
+    Each row is booked on the day its price was seen (`seen_at`, in the
     hotel's timezone), so days ahead is what the manager saw; a version that
     doesn't read it simply doesn't select it (decision 0076).
     """
     days = sorted(set(rows["stay_date"]))
     events = await events_for(session, hotel.city, days)
     booked_on = pd.Series(
-        [local_date(hotel.city, t) for t in rows["shown_at"]], index=rows.index
+        [local_date(hotel.city, t) for t in rows["seen_at"]], index=rows.index
     )
     x = build_features(
         rows[["stay_date"]],
