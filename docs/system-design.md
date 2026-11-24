@@ -351,7 +351,10 @@ queue. Prices aren't saved ahead: the calendar prices on request
 |---|---|
 | start and end | that window |
 | start only | start to today |
-| end only | the hotel's first booked night to end, walked newest first |
+| end only | the hotel's first booked night to end |
+
+Every backfill walks newest month first, so a run that stops part-way has saved
+the most recent events ([0087](decisions/0087-backfills-newest-first-no-alignment.md)).
 
 Events use a 10km radius around the city centre and need `PREDICTHQ_TOKEN`
 (a 503 if it isn't set).
@@ -396,9 +399,8 @@ POST /jobs/{id}/cancel   → queued → cancelled; 409 if running or finished
 A job's `progress` is committed together with the chunk it describes, so it
 always matches what is saved.
 
-**Resuming** is by hand: start the same job again with `start = resume_from`
-(or `end = resume_from` for a run walking backwards). Upserts make overlap
-safe.
+**Resuming** is by hand: start the same job again with `end = resume_from`
+and the same `start`. Upserts make overlap safe.
 
 **Limits:**
 
@@ -477,11 +479,11 @@ until the team decides to drop them; Alembic ignores the table
 
 ```
 job EVENTS, mode=window, 2025-01-01 … 2025-12-31
-  for each month:
+  for each month, newest first:
       predicthq.fetch(window_params(city centre, month))
           pages through `next`; each record → NormalizedEvent, or rejected with a reason
       for each event: domain/event.save_event(session, city_id, event)
-      yield Step(progress, resume_from = next month's start)   → commit
+      yield Step(progress, resume_from = the next, older month's end)   → commit
 ```
 
 ### 6.4 Training and recommendations
@@ -561,10 +563,6 @@ Every price is before VAT, in and out
 ([0076](decisions/0076-booked-rooms-only-and-manager-rows.md)): the model learns
 `adr_nett`, and the manager sees and types rates on the same basis, so nothing
 is converted.
-
-`GET /hotels/{id}/feedback/alignment` and `just alignment` show whether the
-model is getting closer to the manager: by week, how far the manager's rates
-were from the recommendations they saw.
 
 A daily tune-up (`POST /hotels/{id}/tune`, a `tune` job;
 [0069](decisions/0069-daily-tune-up.md)) corrects the active model without
@@ -745,7 +743,6 @@ cli.tuning_backtest
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
 | POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)) |
-| GET | `/hotels/{id}/feedback/alignment` | by week, the mean gap between the manager's rates and the recommendations they saw ([0071](decisions/0071-manager-rate-is-the-target-everywhere.md)) |
 | GET | `/hotels/{id}/feedback?start=&end=` | current feedback per night (≤ 366); `include_history=true` adds earlier versions |
 | GET | `/hotels/{id}/freshness` | when each kind of data last succeeded (recommendations: last rate change), and the latest failure ([0039](decisions/0039-freshness-reports-dates-only.md)) |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |

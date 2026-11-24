@@ -3,8 +3,8 @@
 For jobs that can't wait for the app to offer them. Like `worker.run_job`, a
 command opens its own session and commits, once, when it succeeds; everything it
 does goes through `services/`. A `DomainError` is printed and exits 1, with
-nothing committed. `alignment`, `backtest` and `tuning-backtest` only read, so
-they never commit.
+nothing committed. `backtest` and `tuning-backtest` only read, so they never
+commit.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from foresight.database.session import async_session_factory, engine
-from foresight.services.domain import alignment as alignment_service
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
 from foresight.services.errors import DomainError, InvalidRequestError
@@ -40,17 +39,6 @@ async def link_user(email: str, hotel_id: int) -> None:
         print(f"Linked {user.email} to hotel {hotel_id}")
     else:
         print(f"{user.email} is already linked to hotel {hotel_id}")
-
-
-async def alignment(hotel_id: int) -> None:
-    async with async_session_factory() as session:
-        weeks = await alignment_service.get_alignment(session, hotel_id)
-    if not weeks:
-        print("No manager rates with a recommendation to compare yet")
-        return
-    print(f"{'week':<12}{'rates':>6}{'mean gap':>10}{'mean |gap|':>12}")
-    for w in weeks:
-        print(f"{w.week!s:<12}{w.nights:>6}{w.mean_gap:>10}{w.mean_abs_gap:>12}")
 
 
 async def backtest(
@@ -526,8 +514,6 @@ async def _run(args: argparse.Namespace) -> None:
     try:
         if args.command == "link-user":
             await link_user(args.email, args.hotel_id)
-        elif args.command == "alignment":
-            await alignment(args.hotel_id)
         elif args.command == "backtest":
             await backtest(
                 args.hotel_id,
@@ -559,11 +545,6 @@ def main(argv: list[str] | None = None) -> int:
     link = commands.add_parser("link-user", help="Link a user to a hotel by email")
     link.add_argument("email", help="The user's email, as Google reports it")
     link.add_argument("hotel_id", type=int, help="The hotel's id")
-
-    al = commands.add_parser(
-        "alignment", help="Show how far the model is from the manager's rates, by week"
-    )
-    al.add_argument("hotel_id", type=int, help="The hotel's id")
 
     bt = commands.add_parser("backtest", help="Score the model on its newest nights")
     bt.add_argument("hotel_id", type=int, help="The hotel's id")

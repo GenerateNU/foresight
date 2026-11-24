@@ -1,6 +1,6 @@
 # 0022. No automatic retries; jobs commit per chunk and record where to resume
 
-**Status:** Accepted · **Date:** 2026-10-15
+**Status:** Accepted, amended by [0087](0087-backfills-newest-first-no-alignment.md) (resume from `end`; backfills walk newest first) · **Date:** 2026-10-15
 
 ## Context
 A shared retry helper hid failures, slowed runs down, and spent quota on

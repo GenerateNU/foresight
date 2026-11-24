@@ -86,3 +86,24 @@ our app, or if training uses only the bookings on the plan the manager prices
 
 To settle: where the manager sets prices (Guestline, our app, or both), and
 whether training should keep only the manager's plan.
+
+## Testing
+
+### What should the testing setup measure?
+
+There's no testing setup the team trusts yet. The served model trains on every
+row and stores no accuracy (decision 0085), so everything about how good a
+version is comes from here. What's known it should cover:
+
+- **Accuracy against sales**, on nights the model hasn't seen: `just backtest`
+  does this today, with baselines (same weekday last year, last 4 weeks).
+- **The tune-up**: whether it beats the base, and after how many days of
+  manager rates. `just tuning-backtest` does a version of this, but assumes the
+  manager saw the base and booked one day ahead; it's to be redesigned.
+- **Closeness to the manager**, week by week: the gap between each manager rate
+  and the recommendation they saw (manager minus model, and its size). A
+  shrinking gap means retrains and tune-ups are working. This was the alignment
+  report, removed from the API by decision 0087.
+- **Open settings to test**: the manager weight (`MANAGER_SHARE`, 25%), whether
+  the correction sees `month` (decision 0075), and the backtest's options
+  (`--event-days`, `--start`), which may not all survive the rework.

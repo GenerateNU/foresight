@@ -1,6 +1,6 @@
 # 0071. The manager's rate is the target in every retrain and tune-up, and comes back with the recommendation
 
-**Status:** Accepted, amended by [0076](0076-booked-rooms-only-and-manager-rows.md) · **Date:** 2026-11-15 · Supersedes [0044](0044-train-on-feedback-given-after-the-night.md)
+**Status:** Accepted, amended by [0076](0076-booked-rooms-only-and-manager-rows.md), [0087](0087-backfills-newest-first-no-alignment.md) (no alignment report) · **Date:** 2026-11-15 · Supersedes [0044](0044-train-on-feedback-given-after-the-night.md)
 
 ## Context
 The model's job is to copy how the manager prices, and the manager makes the

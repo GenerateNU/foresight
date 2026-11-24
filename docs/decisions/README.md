@@ -100,3 +100,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0084](0084-no-fingerprint-no-price-job.md) | Snapshots are matched on their stored inputs; prices aren't saved ahead | ML / jobs |
 | [0085](0085-no-range-train-on-every-row.md) | No price range; the served model trains once on every row | ML / API |
 | [0086](0086-remove-unread-fields-and-room-type-routes.md) | Unread fields, the room-type routes and single-use abstractions are removed | ML / API / database |
+| [0087](0087-backfills-newest-first-no-alignment.md) | Events backfills always walk newest first; the alignment report is removed | ingest / API |

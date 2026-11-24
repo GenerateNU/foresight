@@ -5,15 +5,13 @@ and the job joins the back of the hotel's queue after the response: a hotel's
 jobs run one at a time, oldest first. Poll `GET /jobs/{id}` (routes/job.py)
 for status and progress.
 
-Dates (events): send neither for the routine refresh, or either to
-backfill a window:
-
-- start and end: that window.
-- start only: start to today.
-- end only: back from end to the hotel's first booked night, newest first.
+Dates (events): send neither for the routine refresh, or either to backfill a
+window. `end` defaults to today and `start` to the hotel's first booked night.
+A backfill walks newest month first, so the most recent events are saved
+first (decision 0087).
 
 If a job stops or fails part-way, `resume_from` says where to pick up: send it
-as `start` again (or as `end` for a run walking backwards).
+as `end` again, with the same `start`.
 """
 
 from datetime import date
@@ -52,13 +50,13 @@ class IngestRequest(RequestSchema):
 
     start: date | None = Field(
         default=None,
-        description=f"First day, inclusive. {_DATE_HELP}. Alone: from here to today",
+        description=f"First day, inclusive. {_DATE_HELP}. Omit for the hotel's "
+        "first booked night",
         examples=["2025-01-01"],
     )
     end: date | None = Field(
         default=None,
-        description=f"Last day, inclusive. {_DATE_HELP}. Alone: back from here "
-        "to the hotel's first loaded night",
+        description=f"Last day, inclusive. {_DATE_HELP}. Omit for today",
         examples=["2025-12-31"],
     )
 
@@ -68,15 +66,14 @@ class IngestRequest(RequestSchema):
 # down from it. The empty refresh body goes last.
 _FULL = example_body(IngestRequest)
 _DATE_EXAMPLES: dict[str, Any] = {
-    "window": {"summary": "Backfill a window", "value": _FULL},
+    "window": {
+        "summary": "Backfill a window",
+        "description": "Walks newest month first.",
+        "value": _FULL,
+    },
     "start_only": {
         "summary": "Backfill from a date to today",
         "value": {"start": _FULL["start"]},
-    },
-    "end_only": {
-        "summary": "Backfill back to the first loaded night",
-        "description": "Needs bookings loaded first; walks newest first.",
-        "value": {"end": _FULL["end"]},
     },
     "refresh": {
         "summary": "Routine refresh (no dates)",

@@ -330,8 +330,7 @@ def initial_resume_from(job: Job) -> date | None:
     """Where to pick up if the job ends before its first chunk is saved."""
     if job.params.get("mode") != "window":
         return None
-    window = Window.from_params(job.params)
-    return window.end if window.backwards else window.start
+    return Window.from_params(job.params).end
 
 
 async def mark_running(session: AsyncSession, job_id: int) -> bool:
@@ -395,15 +394,14 @@ async def _events(
         return
 
     window = Window.from_params(params)
-    months = list(window.months())
+    months = window.months()
     async for report, first, last in event_ingest.ingest_window(
         session, hotel.city, window, token=settings.predicthq_token
     ):
-        done = months.index((first, last))
-        yield Step(
-            _event_progress(report, (done + 1, len(months))),
-            _next_resume(window, [(None, a, b) for a, b in months], done),
-        )
+        done = months.index((first, last)) + 1
+        # Newest first: pick up with the next, older month as `end`.
+        resume = months[done][1] if done < len(months) else None
+        yield Step(_event_progress(report, (done, len(months))), resume)
 
 
 async def _file(
@@ -524,17 +522,6 @@ def _event_progress(
     if months is not None:
         progress["months_done"], progress["months_total"] = months
     return progress
-
-
-def _next_resume(
-    window: Window, pieces: Sequence[tuple[Any, date, date]], done: int
-) -> date | None:
-    """Where to pick up once piece `done` is saved: the next piece's start
-    (or end, walking backwards), or None when it was the last."""
-    if done + 1 >= len(pieces):
-        return None
-    _, first, last = pieces[done + 1]
-    return window.resume_point(first, last)
 
 
 def _date_or_none(value: str | None) -> date | None:
