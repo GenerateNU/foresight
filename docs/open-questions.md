@@ -9,17 +9,14 @@ Questions the team hasn't settled yet. Once one is decided, record it in
 
 Training reads every booked night up to the last one booked, which can be
 months ahead. Those nights are only partly sold, and some have a manager rate.
-Because they are the newest rows, they also land in the newest 15% of rows that
-set the stored scores and the interval width. The backtest, by contrast, stops
-at yesterday.
+The backtest, by contrast, stops at yesterday.
 
 The case for keeping them: there's no ground truth to check against. The model
 is trying to get as close to the manager as it can, so more data, including
 future bookings and future manager rates, should help.
 
-The case against: the stored scores then partly measure the model on
-half-sold nights, and a future night's early bookings may not reflect its
-final price.
+The case against: a future night's early bookings may not reflect its final
+price.
 
 Not settled; keep using the future nights for now.
 

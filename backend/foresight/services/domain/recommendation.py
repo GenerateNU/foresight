@@ -82,13 +82,6 @@ class Explanation:
 
 
 @dataclass(frozen=True, slots=True)
-class ConfidenceInterval:
-    lower: Decimal
-    upper: Decimal
-    level: float  # coverage, e.g. 0.8
-
-
-@dataclass(frozen=True, slots=True)
 class Recommendation:
     """One night's rate, why, and what it was priced from."""
 
@@ -100,7 +93,6 @@ class Recommendation:
     recommended_rate: Decimal
     currency: str
     explanation: Explanation
-    confidence_interval: ConfidenceInterval
     model_id: int
     model_version: str
     events: list[NightEvent]  # the events on the night, largest first
@@ -128,7 +120,6 @@ class _Scored:
     """What the model said about one night."""
 
     rate: Decimal
-    interval: ConfidenceInterval
     explanation: Explanation
 
 
@@ -307,16 +298,12 @@ async def _score(
     model = await load_model(session, stored)
 
     x = pd.concat([n.features for n in nights], ignore_index=True)
-    pred, lower, upper = model.predict_interval(x)
+    pred = model.predict(x)
     contributions = model.explain(x)
-    level = round(1 - model.alpha, 2)
 
     return {
         night.stay_date: _Scored(
             rate=_money(float(pred[i])),
-            interval=ConfidenceInterval(
-                _money(max(float(lower[i]), 0.0)), _money(float(upper[i])), level
-            ),
             explanation=_explanation(
                 model.intercept, contributions.iloc[i], x.iloc[i], float(pred[i])
             ),
@@ -413,9 +400,6 @@ async def _save(
         model_id=stored.id,
         model_version=_version(stored),
         rate=scored.rate,
-        interval_low=scored.interval.lower,
-        interval_high=scored.interval.upper,
-        interval_level=scored.interval.level,
         factors=_explanation_json(scored.explanation),
         inputs=night.inputs,
     )
@@ -435,9 +419,6 @@ def _from_snapshot(
         recommended_rate=snap.rate,
         currency=CURRENCY,
         explanation=_explanation_from_json(snap.factors),
-        confidence_interval=ConfidenceInterval(
-            snap.interval_low, snap.interval_high, snap.interval_level
-        ),
         model_id=snap.model_id,
         model_version=snap.model_version,
         events=[_event_from_json(e) for e in inputs.get("events", [])],
@@ -464,7 +445,6 @@ def _unsaved(
         recommended_rate=scored.rate,
         currency=CURRENCY,
         explanation=scored.explanation,
-        confidence_interval=scored.interval,
         model_id=stored.id,
         model_version=_version(stored),
         events=night.events,

@@ -26,10 +26,6 @@ export default function DayPopover({ rec, ref, style, ...props }) {
         <span className="font-display text-3xl font-medium tracking-tight">{formatEuro(rec.rate)}</span>
         <ChangeBadge change={rec.change} />
       </div>
-      <p className="text-xs text-stone-500">
-        Likely range {formatEuro(rec.interval.lower)} to {formatEuro(rec.interval.upper)} (
-        {Math.round(rec.interval.level * 100)}%)
-      </p>
 
       <div className="mt-3 border-t border-stone-100 pt-3">
         <p className="mb-1 text-xs font-medium text-stone-600">What moved the rate</p>

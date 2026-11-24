@@ -25,7 +25,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0002](0002-predict-rate-in-currency.md) | Predict the nightly rate in currency | ML |
 | [0003](0003-sample-weighting.md) | Weight training nights by occupancy (superseded by 0076) | ML |
 | [0004](0004-exclude-free-nights.md) | Exclude free and staff nights from training | ML |
-| [0005](0005-conformal-confidence-interval.md) | Conformal confidence interval, 80% by default | ML |
+| [0005](0005-conformal-confidence-interval.md) | Conformal confidence interval, 80% by default (superseded by 0085) | ML |
 | [0006](0006-uncertainty-alongside-interval.md) | Report model uncertainty alongside the interval (superseded by 0082) | ML |
 | [0007](0007-shared-feature-builder.md) | One feature builder for training and serving | ML |
 | [0008](0008-models-stored-in-postgres.md) | Store trained models in Postgres | ML / database |
@@ -98,3 +98,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0082](0082-dead-code-removed.md) | Unused pieces are removed: uncertainty, rate basis, booking curves, feedback flags, total rooms | ML / API / database |
 | [0083](0083-holidays-from-the-library-only.md) | Every holiday input comes from the `holidays` library; school holidays are dropped | ML |
 | [0084](0084-no-fingerprint-no-price-job.md) | Snapshots are matched on their stored inputs; prices aren't saved ahead | ML / jobs |
+| [0085](0085-no-range-train-on-every-row.md) | No price range; the served model trains once on every row | ML / API |

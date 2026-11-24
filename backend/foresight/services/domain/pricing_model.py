@@ -27,7 +27,6 @@ from foresight.services.domain.city import local_date
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
-from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel, TunedEBMModel
 from foresight.services.ml.features import FEATURES, build_features
 from foresight.services.ml.feedback import manager_row_weights
@@ -50,15 +49,12 @@ ALGORITHM = "ebm"
 # reads only these bookings; the room type is named after the code.
 MAIN_ROOM_CODE = "DOUBLE"
 MAIN_RATE_PLAN = "BAR_RO"
-# EBM needs enough rows for its own validation split plus our calibration set.
-# Rows are booked rooms (decision 0076).
+# Fewest booked rooms to train on (decision 0076); EBM holds some back for its
+# own early stopping.
 MIN_TRAINING_ROWS = 120
 # What every version learns to predict, stored in its metrics as `target`: each
 # booked room's rate per night before VAT (decisions 0056, 0076).
 TARGET = "adr_nett"
-# Share of the most recent rows scored after training; also the conformal
-# calibration share (decision 0005), so metrics describe unseen nights.
-HOLDOUT_FRAC = 0.15
 _FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "rate", "given_at"]
 LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
@@ -189,7 +185,7 @@ async def _with_manager_rows(
     rooms = data.nights.groupby("stay_date").size()
     weights = manager_row_weights(rows["stay_date"], rooms)
 
-    # Every row oldest night first, so the holdout stays the newest nights.
+    # Every row oldest night first, like the booked rooms.
     nights = pd.concat([data.nights, rows], ignore_index=True)
     order = nights["stay_date"].argsort(kind="stable").to_numpy()
     merged = TrainingData(
@@ -216,7 +212,7 @@ async def _with_manager_rows(
 async def fit(
     prepared: PreparedTraining, params: dict[str, Any]
 ) -> tuple[dict[str, Any], bytes]:
-    """Fit and score a model on prepared rows; returns its metrics and artifact.
+    """Fit a model on every prepared row; returns its metrics and artifact.
 
     Needs no database. CPU-bound for seconds to minutes, so it runs in a
     thread to keep the API answering.
@@ -416,43 +412,14 @@ def _fit(
     nights: pd.DataFrame,
     params: dict[str, Any],
 ) -> tuple[dict[str, Any], bytes]:
-    """Fit, score on the held-out rows, and serialize. Returns the metrics,
-    with the fit's time and memory, and the artifact to store.
+    """Fit on every row and serialize (decision 0085). Returns the fit's time
+    and memory as metrics, and the artifact to store.
 
     Rows the model can't tell apart are merged first (decision 0056), so booked
-    rooms fit in a fraction of the time; scores are still per original row.
+    rooms fit in a fraction of the time. Accuracy isn't scored here: the
+    model has seen every row, so the backtest is where it's measured.
     """
-    xc, yc, wc, group = combine_identical_rows(x, y, weights, nights["stay_date"])
+    xc, yc, wc, _ = combine_identical_rows(x, y, weights, nights["stay_date"])
     with measure() as cost:
-        model = EBMModel(alpha=0.2, calibration_frac=HOLDOUT_FRAC, **params).fit(
-            xc, yc, sample_weight=wc
-        )
-    cut = int(len(xc) * (1 - HOLDOUT_FRAC))
-    held = group >= cut
-    assert model.holdout_pred is not None
-    pred = model.holdout_pred[group[held] - cut]
-    metrics = _metrics(model, pred, y[held], nights.loc[held])
-    return {**metrics, **cost}, model.to_bytes()
-
-
-def _metrics(
-    model: EBMModel, pred: np.ndarray, y: pd.Series, nights: pd.DataFrame
-) -> dict[str, Any]:
-    """Scores on the most recent rows; these also calibrated the interval.
-
-    The kept model trained on these rows too, so its own scores here would
-    look too good; `pred` is the first fit's, on rows it hadn't seen
-    (decision 0045).
-    """
-    margin = model.interval_margin(model.alpha)
-    scores = score(y, pred, pred - margin, pred + margin)
-    return {
-        **{k: (None if v is None else round(float(v), 4)) for k, v in scores.items()},
-        "interval_level": 1 - model.alpha,
-        "interval_margin": round(model.interval_margin(model.alpha), 2),
-        "holdout_rows": len(y),
-        "holdout_nights": int(nights["stay_date"].nunique()),
-        "holdout_start": nights["stay_date"].min().isoformat(),
-        "holdout_end": nights["stay_date"].max().isoformat(),
-        "mean_rate": round(float(np.mean(y)), 2),
-    }
+        model = EBMModel(**params).fit(xc, yc, sample_weight=wc)
+    return {**cost, "mean_rate": round(float(np.mean(y)), 2)}, model.to_bytes()

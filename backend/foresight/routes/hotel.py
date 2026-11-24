@@ -121,15 +121,6 @@ class ExplanationResponse(ResponseSchema):
     factors: list[FactorResponse] = Field(description="Largest first")
 
 
-class ConfidenceIntervalResponse(ResponseSchema):
-    lower: Decimal = Field(description="Low end of the range, in EUR")
-    upper: Decimal = Field(description="High end of the range, in EUR")
-    level: float = Field(
-        description="Share of nights expected to fall inside the range",
-        examples=[0.8],
-    )
-
-
 class NightEventResponse(ResponseSchema):
     """An event as it falls on one night."""
 
@@ -166,9 +157,6 @@ class RecommendationResponse(ResponseSchema):
     )
     currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
     explanation: ExplanationResponse = Field(description="Why the rate is what it is")
-    confidence_interval: ConfidenceIntervalResponse = Field(
-        description="The range the rate is likely to fall in"
-    )
     model_id: int = Field(description="The model version that priced it")
     model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])
     events: list[NightEventResponse] = Field(

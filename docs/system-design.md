@@ -510,7 +510,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   progress = {stage: fitting}; commit           frees the connection during the fit (0056)
   → domain/pricing_model.fit                    no database
       ml/weighting.combine_identical_rows       same night, same inputs → one weighted row
-      EBMModel.fit in a thread                  calibrates on the newest 15%, then refits on all (0005, 0045)
+      EBMModel.fit in a thread                  one fit on every row; no holdout, no range (0085)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
   → domain/pricing_model.save_version
       model_repo.create_pricing_model           new version, inactive, with its own `features`,
@@ -530,7 +530,7 @@ GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
       feedback_repo.manager_rates               the manager's rate per night, read live (0071)
-  ← one per night: rate, manager_rate, lead_days, 80% interval, factors in €
+  ← one per night: rate, manager_rate, lead_days, factors in €
 ```
 
 A version trained on booked rooms also reads days booked ahead

@@ -91,7 +91,7 @@ async def backtest(
 
     path = out / f"hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
     # One point per night: booked rooms are averaged, so a night's line is its
-    # average rate per booked room; coverage in the subtitle is still per room.
+    # average rate per booked room; the scores in the subtitle are per room.
     _save_plot(
         rows.groupby("stay_date", as_index=False).mean(numeric_only=True),
         path,
@@ -422,22 +422,15 @@ def _parse_inputs(text: str) -> list[str]:
     return backtest_service.in_feature_order(expanded)
 
 
-def _format_metrics(metrics: dict[str, float | None]) -> list[tuple[str, str]]:
+def _format_metrics(metrics: dict[str, float]) -> list[tuple[str, str]]:
     """The backtest's scores as (label, value) pairs, for the terminal and plot."""
-    coverage = metrics["coverage"]
     bias = metrics["bias"]
-    assert bias is not None  # always scored; only coverage can be missing
-    interval = f"{1 - backtest_service.ALPHA:.0%}"
     return [
         ("MAE", f"€{metrics['mae']:.2f}"),
         ("RMSE", f"€{metrics['rmse']:.2f}"),
         ("Bias", f"{'+' if bias >= 0 else '−'}€{abs(bias):.2f}"),
         ("MAPE", f"{metrics['mape']:.1%}"),
         ("R²", f"{metrics['r2']:.3f}"),
-        (
-            f"{interval} coverage",
-            "n/a" if coverage is None else f"{coverage:.0%}",
-        ),
     ]
 
 
@@ -475,9 +468,7 @@ def _save_plot(
     import matplotlib.pyplot as plt
     import numpy as np
 
-    interval = f"{1 - backtest_service.ALPHA:.0%}"
     nights = nights.sort_values("stay_date").reset_index(drop=True)
-    missed = (nights["actual"] < nights["low"]) | (nights["actual"] > nights["high"])
 
     fig, ax = plt.subplots(figsize=(11, 4.5))
     # Nights side by side, with a break and a dotted divider where nights are
@@ -488,15 +479,6 @@ def _save_plot(
     def line(column: str) -> np.ndarray:
         return np.insert(nights[column].to_numpy(dtype=float), breaks, np.nan)
 
-    ax.fill_between(
-        x,
-        line("low"),
-        line("high"),
-        color="#eb6834",
-        alpha=0.15,
-        linewidth=0,
-        label=f"{interval} interval",
-    )
     ax.plot(
         x,
         line("actual"),
@@ -524,17 +506,6 @@ def _save_plot(
                 linewidth=1.2,
                 label=label,
             )
-    # The nights the interval missed: the ones that pull coverage down.
-    ax.scatter(
-        nights.index[missed],
-        nights.loc[missed, "actual"],
-        s=40,
-        color="#2a78d6",
-        edgecolors="white",
-        linewidths=1.5,
-        zorder=3,
-        label=f"Outside interval ({int(missed.sum())})",
-    )
     ax.set_title(title, loc="left", pad=24)
     ax.text(
         0,

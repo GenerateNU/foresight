@@ -26,9 +26,6 @@ async def create_recommendation_snapshot(
     model_id: int,
     model_version: str,
     rate: Decimal,
-    interval_low: Decimal,
-    interval_high: Decimal,
-    interval_level: float,
     factors: dict[str, Any],
     inputs: dict[str, Any],
 ) -> RecommendationSnapshot:
@@ -40,9 +37,6 @@ async def create_recommendation_snapshot(
         model_id=model_id,
         model_version=model_version,
         rate=rate,
-        interval_low=interval_low,
-        interval_high=interval_high,
-        interval_level=interval_level,
         factors=factors,
         inputs=inputs,
     )

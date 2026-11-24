@@ -23,7 +23,7 @@ import pandas as pd
 
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.pricing_model import HOLDOUT_FRAC, training_data
+from foresight.services.domain.pricing_model import training_data
 from foresight.services.domain.tuning import (
     MIN_TUNE_NIGHTS,
     UNTOUCHED_DAYS,
@@ -43,9 +43,6 @@ if TYPE_CHECKING:
 
     from foresight.services.domain.pricing_model import TrainingData
 
-# The model's prediction interval is (1 - ALPHA); `coverage` is scored against it.
-ALPHA = 0.2
-
 # Baselines the model is compared with: column in `nights` -> label.
 BASELINES = {
     "last_year": "Same weekday last year",
@@ -64,7 +61,7 @@ class BaselineScore:
     """A baseline scored on the test nights it could predict, beside the model."""
 
     nights: int  # test nights the baseline had history for
-    metrics: dict[str, float | None]  # as BacktestResult.metrics; no coverage
+    metrics: dict[str, float]  # as BacktestResult.metrics
     model_mae: float  # the model's MAE on those same nights
     skill: float | None  # 1 - model_mae / baseline mae; > 0 means the model wins
 
@@ -77,10 +74,10 @@ class BacktestResult:
     inputs: list[str]  # the features the model was trained on
     event_days: int | None  # event history the model saw; None means all of it
     # One row per booked room per night: stay_date, room_type, lead_days,
-    # actual, predicted, low, high (the (1 - ALPHA) interval); with baselines,
-    # also one column per BASELINES key (NaN where it had no history)
+    # actual, predicted; with baselines, also one column per BASELINES key
+    # (NaN where it had no history)
     rows: pd.DataFrame
-    metrics: dict[str, float | None]  # mae, rmse, mape, r2, bias, coverage
+    metrics: dict[str, float]  # mae, rmse, mape, r2, bias
     baselines: dict[str, BaselineScore]  # keyed like BASELINES; empty if not asked
 
 
@@ -142,14 +139,14 @@ async def run_backtest(
     if event_days is not None and event_days < 1:
         raise InvalidRequestError("--event-days must be at least 1")
     columns = in_feature_order(FEATURES if inputs is None else inputs)
-    predicted, low, high = await _fit_predict(split, columns, event_days)
-    rows = _test_rows(split, predicted, low, high, baselines=baselines)
+    predicted = await _fit_predict(split, columns, event_days)
+    rows = _test_rows(split, predicted, baselines=baselines)
     return BacktestResult(
         hotel_name=split.hotel_name,
         inputs=columns,
         event_days=event_days,
         rows=rows,
-        metrics=score(rows["actual"], rows["predicted"], low, high),
+        metrics=score(rows["actual"], rows["predicted"]),
         baselines={
             name: _score_baseline(rows, name) for name in BASELINES if baselines
         },
@@ -158,7 +155,7 @@ async def run_backtest(
 
 async def _fit_predict(
     split: BacktestSplit, columns: list[str], event_days: int | None = None
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> np.ndarray:
     """Fits on the training rows' `columns`; predicts the test rows.
 
     Rows the model can't tell apart are merged before the fit, as training
@@ -168,7 +165,7 @@ async def _fit_predict(
     if event_days is not None:
         x = _limit_event_history(x, split, event_days)
     model = await _fit_seen(split.data, split.seen, x)
-    return model.predict_interval(x[~split.seen])
+    return model.predict(x[~split.seen])
 
 
 async def _fit_seen(data: TrainingData, seen: np.ndarray, x: pd.DataFrame) -> EBMModel:
@@ -176,7 +173,7 @@ async def _fit_seen(data: TrainingData, seen: np.ndarray, x: pd.DataFrame) -> EB
     xc, yc, wc, _ = combine_identical_rows(
         x[seen], data.y[seen], data.weights[seen], data.nights.loc[seen, "stay_date"]
     )
-    model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
+    model = EBMModel()
     # CPU-bound for seconds; a thread keeps the event loop free.
     await asyncio.to_thread(model.fit, xc, yc, sample_weight=wc)
     return model
@@ -202,8 +199,6 @@ def _limit_event_history(
 def _test_rows(
     split: BacktestSplit,
     predicted: np.ndarray,
-    low: np.ndarray,
-    high: np.ndarray,
     *,
     baselines: bool,
 ) -> pd.DataFrame:
@@ -222,8 +217,6 @@ def _test_rows(
             LEAD: split.data.x.loc[~seen, LEAD].to_numpy(),
             "actual": split.data.y[~seen],
             "predicted": predicted,
-            "low": low,
-            "high": high,
         }
     )
     if baselines:
@@ -308,7 +301,7 @@ class TuningRow:
     untouched_nights: int  # rows learned as "no change" (decision 0072)
     feedback_dates: tuple[date, date]  # first and last feedback night
     untouched_dates: tuple[date, date] | None  # None when there were none
-    # As BacktestResult.metrics, no coverage; empty when skipped.
+    # As BacktestResult.metrics; empty when skipped.
     manager_only: dict[str, float | None]  # correction fit on the manager's rates
     with_untouched: dict[str, float | None]  # plus untouched nights: what ships
     skill_manager_only: float | None  # 1 - tuned MAE / base MAE; > 0 beats the base
