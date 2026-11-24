@@ -16,9 +16,9 @@ from dateutil.easter import easter
 from matplotlib.patches import Patch
 
 from foresight.database.session import async_session_factory
-from foresight.services.domain.backtest import ALPHA, in_feature_order
+from foresight.services.domain.backtest import in_feature_order
 from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.pricing_model import HOLDOUT_FRAC, training_data
+from foresight.services.domain.pricing_model import training_data
 from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import INPUT_GROUPS
@@ -27,6 +27,7 @@ HOTEL_ID = 1
 DATA_END = date(2025, 12, 31)
 # Calendar plus the public-holiday flag, which we build ourselves below.
 BASELINE_COLUMNS = in_feature_order([*INPUT_GROUPS["calendar"], "is_public_holiday"])
+
 
 # Load the training data from the database
 async def load(end=DATA_END):
@@ -42,7 +43,8 @@ dates = data.nights["stay_date"]
 print(f"{len(data.nights)} priced nights, {dates.min()} to {dates.max()}")
 
 
-# Irish public holidays for the years 2022 to 2025 are calculated and added to the dataset.
+# Irish public holidays for the years 2022 to 2025 are calculated and added to
+# the dataset.
 # %%
 def irish_public_holidays(year: int) -> set[date]:
     def first_monday(month: int) -> date:
@@ -85,10 +87,10 @@ def run_fold(train, test, data=data, x=x, columns=BASELINE_COLUMNS):
     `train` and `test` are True/False arrays with one entry per night in `data`.
     """
     inputs = x[columns]
-    model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
+    model = EBMModel()
     model.fit(inputs[train], data.y[train], sample_weight=data.weights[train])
-    predicted, low, high = model.predict_interval(inputs[test])
-    scores = score(data.y[test], predicted, low, high)
+    predicted = model.predict(inputs[test])
+    scores = score(data.y[test], predicted)
     nights = pd.DataFrame(
         {
             "stay_date": data.nights.loc[test, "stay_date"],
@@ -115,7 +117,7 @@ print(f"RMSE {check_scores['rmse']:.2f}")
 # %%
 # Year test: train on 2022-2024, test on all of 2025.
 stay = data.nights["stay_date"]
-# drop January 2022 as not all features have that data 
+# drop January 2022 as not all features have that data
 not_jan_2022 = ~((stay >= date(2022, 1, 1)) & (stay <= date(2022, 1, 31))).to_numpy()
 train = (stay < date(2025, 1, 1)).to_numpy() & not_jan_2022
 test = (stay >= date(2025, 1, 1)).to_numpy()
@@ -140,13 +142,11 @@ def season(month):
     return list(SEASON_COLORS)[(month % 12) // 3]
 
 
-
 def tidy(ax):
     """The look both charts share: light background, soft grid, no top/right box."""
     ax.set_facecolor(SURFACE)
     ax.grid(axis="y", color=GRID)
     ax.spines[["top", "right"]].set_visible(False)
-
 
 
 dates = pd.to_datetime(year_nights["stay_date"])
@@ -155,7 +155,9 @@ monthly_error = error.groupby(dates.dt.month).mean()
 
 fig, (top, bottom) = plt.subplots(2, 1, figsize=(10, 7), facecolor=SURFACE)
 top.plot(dates, year_nights["actual"], color=BLUE, linewidth=1.2, label="Actual")
-top.plot(dates, year_nights["predicted"], color=ORANGE, linewidth=1.2, label="Predicted")
+top.plot(
+    dates, year_nights["predicted"], color=ORANGE, linewidth=1.2, label="Predicted"
+)
 top.set_title("2025: actual vs predicted rate")
 top.legend(frameon=False)
 
@@ -184,9 +186,14 @@ for month_start in pd.date_range("2024-01-01", "2025-12-01", freq="MS"):
     rows.append({"month": start, "nights": holdout.sum(), **month_scores})
 
 rolling = pd.DataFrame(rows)
-print(rolling[["month", "nights", "mae", "rmse", "bias"]].round(2).to_string(index=False))
+print(
+    rolling[["month", "nights", "mae", "rmse", "bias"]].round(2).to_string(index=False)
+)
 in_2025 = rolling[rolling["month"] >= date(2025, 1, 1)]
-print(f"2024-2025 average MAE {rolling['mae'].mean():.2f}, spread {rolling['mae'].std():.2f}")
+print(
+    f"2024-2025 average MAE {rolling['mae'].mean():.2f}, "
+    f"spread {rolling['mae'].std():.2f}"
+)
 print(f"2025 only: average MAE {in_2025['mae'].mean():.2f} (year test was 18.66)")
 
 

@@ -38,8 +38,6 @@ from joblib import Parallel, delayed
 from matplotlib.patches import Patch
 from sklearn.linear_model import lasso_path
 
-from foresight.services.domain.backtest import ALPHA
-from foresight.services.domain.pricing_model import HOLDOUT_FRAC
 from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
 
@@ -374,17 +372,17 @@ def run_fold(arm, start, end):
     columns = BASELINE + ARMS[arm]
     train = (stay < start).to_numpy()
     test = ((stay >= start) & (stay < end)).to_numpy()
-    model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
+    model = EBMModel()
     model.fit(
         x_all.loc[train, columns],
         y[train].reset_index(drop=True),
         sample_weight=weights[train],
     )
-    predicted, low, high = model.predict_interval(x_all.loc[test, columns])
+    predicted = model.predict(x_all.loc[test, columns])
     return {
         "arm": arm,
         "fold": "",
-        **score(y[test].to_numpy(), predicted, low, high),
+        **score(y[test].to_numpy(), predicted),
     }
 
 

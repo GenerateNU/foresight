@@ -142,9 +142,6 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
             "tune_nights": len(feedback),
             "untouched_nights": len(untouched),
             "mean_correction": round(float(correction.mean()), 2),
-            # The interval served is the base's.
-            "interval_level": base_row.metrics.get("interval_level"),
-            "interval_margin": base_row.metrics.get("interval_margin"),
         },
         lib_versions={lib: version(lib) for lib in LIBS},
         data_start=min(base_row.data_start, feedback["stay_date"].min()),

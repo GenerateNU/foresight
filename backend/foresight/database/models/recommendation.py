@@ -39,9 +39,6 @@ class RecommendationSnapshot(Base):
     )
     model_version: Mapped[str] = mapped_column(String(60))
     rate: Mapped[Decimal] = mapped_column(Numeric(10, 2))
-    interval_low: Mapped[Decimal] = mapped_column(Numeric(10, 2))
-    interval_high: Mapped[Decimal] = mapped_column(Numeric(10, 2))
-    interval_level: Mapped[float]  # coverage of the interval, e.g. 0.8
     factors: Mapped[dict[str, Any]] = mapped_column(JSONB)  # baseline + factor list
     # What the model read for this night: its input row, the events on the
     # night and whether a backfill covered it. Returned with the recommendation.

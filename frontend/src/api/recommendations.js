@@ -23,11 +23,6 @@ function toRecommendation(row) {
     roomType: row.room_type,
     rate,
     change: previous == null ? null : rate - previous,
-    interval: {
-      lower: Number(row.confidence_interval.lower),
-      upper: Number(row.confidence_interval.upper),
-      level: row.confidence_interval.level,
-    },
     summary: row.explanation.summary,
     baseline: Number(row.explanation.baseline),
     factors: row.explanation.factors.map((f) => ({

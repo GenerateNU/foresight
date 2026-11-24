@@ -147,11 +147,13 @@ class PricingModelResponse(ResponseSchema):
         description="Model inputs, in order; includes lead_days if trained on bookings"
     )
     metrics: dict[str, Any] = Field(
-        description="Scored on the most recent rows, held out from training; "
-        "mae and rmse in EUR. Versions trained since decision 0046 also hold "
-        "train_seconds, peak_memory_mb and added_memory_mb for the fit; since "
-        "0056, target (`adr_nett` for booked rooms, `arr` for nights), "
-        "training_rows, training_nights, holdout_rows and holdout_nights"
+        description="What the version was trained on and what the fit cost: "
+        "target (`adr_nett`), training_rows, training_nights, feedback_nights, "
+        "one_off_nights, mean_rate (EUR), train_seconds, peak_memory_mb and "
+        "added_memory_mb. Accuracy isn't stored: the model trains on every row, "
+        "so `just backtest` measures it (decision 0085). A tune-up holds "
+        "tune_nights, untouched_nights and mean_correction instead. Older "
+        "versions may hold holdout scores (mae, rmse, coverage...)"
     )
     lib_versions: dict[str, str] = Field(
         description="Library versions it was trained with"

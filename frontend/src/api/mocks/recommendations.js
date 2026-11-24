@@ -55,7 +55,6 @@ function night(hotelId, room, date) {
       baseline: money(room.base),
       factors: factors.map((f) => ({ detail: f.detail, amount: money(f.amount) })),
     },
-    confidence_interval: { lower: money(rate * 0.9), upper: money(rate * 1.1), level: 0.8 },
     model_id: 1,
     model_version: 'ebm-v1',
     events: event ? [{ ...event, day_number: ((day.getDate() - 1) % 9) + 1, day_count: 3 }] : [],

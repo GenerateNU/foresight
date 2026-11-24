@@ -104,8 +104,8 @@ One line per file: what it's for. For how the pieces fit together, see
 | File | What it does |
 |---|---|
 | `features.py` | `FEATURES` (room type, weekday, month) and `build_features` |
-| `base.py` | Model base class and `score` (MAE, RMSE, coverage…) |
-| `ebm.py` | The EBM pricing model: fit, interval, explain, save/load; the tune-up's base + correction |
+| `base.py` | Model base class and `score` (MAE, RMSE, bias…) |
+| `ebm.py` | The EBM pricing model: fit, explain, save/load; the tune-up's base + correction |
 | `weighting.py` | Drops unpriced nights; weights nights by occupancy |
 | `feedback.py` | Applies manager feedback to training rates and weights |
 | `baselines.py` | Simple rules the model must beat (last year, recent weekdays) |
@@ -158,7 +158,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `test_feedback_training.py` | How feedback changes training |
 | `test_recommendation_snapshots.py` | Snapshot reuse and repricing |
 | `test_recommendation_range.py` | Bad recommendation date ranges |
-| `test_ebm.py` | EBM fit and holdout scores |
+| `test_ebm.py` | EBM fit and explanations |
 | `test_baselines.py` | Backtest baselines |
 | `test_backtest_inputs.py` | `--inputs` parsing |
 | `test_resources.py` | Time/memory measuring |

@@ -1,6 +1,6 @@
 # 0069. A daily tune-up corrects the active model with the manager's rates
 
-**Status:** Accepted, amended by [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md), [0075](0075-correction-ignores-month.md), [0076](0076-booked-rooms-only-and-manager-rows.md), [0078](0078-tune-up-keeps-what-was-shown-and-points-to-its-base.md) · **Date:** 2026-11-07
+**Status:** Accepted, amended by [0072](0072-tune-up-learns-untouched-nights-as-unchanged.md), [0075](0075-correction-ignores-month.md), [0076](0076-booked-rooms-only-and-manager-rows.md), [0078](0078-tune-up-keeps-what-was-shown-and-points-to-its-base.md), [0085](0085-no-range-train-on-every-row.md) · **Date:** 2026-11-07
 
 ## Context
 The manager records the rate they chose for a night
@@ -27,12 +27,12 @@ more just because they were learned from more recently.
   sums to the rate) and at most 300 boosting rounds. On a handful of rows
   early stopping has almost nothing to judge by, and the library's
   25,000-round limit made a 5-row fit take over a minute.
-- **The interval and uncertainty are the base's.**
+- ~~**The interval and uncertainty are the base's.**~~ Neither is served any more (0082, 0085).
 - **Skipped below `MIN_TUNE_NIGHTS` (5) rates**, saving nothing; the job's
   progress says why.
 - **Saved as a new version** (0029), algorithm `ebm-tuned`, served by
   default. `metrics` holds `base_model_id`, `base_version`, `tune_nights`,
-  `mean_correction`, and the base's `interval_level` and `interval_margin`.
+  `mean_correction`~~, and the base's `interval_level` and `interval_margin`~~ (0085).
   `pricing_model_feedback` records the rates used. No migration: the base is
   named in `metrics`.
 - **Started by `POST /hotels/{id}/tune`**, a `tune` job (0020). A daily cron

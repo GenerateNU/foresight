@@ -1,6 +1,6 @@
 # 0045. The kept model is refit on every row
 
-**Status:** Accepted · **Date:** 2026-11-02
+**Status:** Superseded by [0085](0085-no-range-train-on-every-row.md) (one fit, no holdout) · **Date:** 2026-11-02
 
 ## Context
 [0005](0005-conformal-confidence-interval.md) holds out the newest 15% of rows

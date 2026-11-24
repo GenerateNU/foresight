@@ -15,9 +15,9 @@ import pandas as pd
 from dateutil.easter import easter
 
 from foresight.database.session import async_session_factory
-from foresight.services.domain.backtest import ALPHA, in_feature_order
+from foresight.services.domain.backtest import in_feature_order
 from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.pricing_model import HOLDOUT_FRAC, training_data
+from foresight.services.domain.pricing_model import training_data
 from foresight.services.ml.base import score
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import INPUT_GROUPS
@@ -114,14 +114,14 @@ def run_fold(variant, start, end):
         multiplier = 0.5 ** ((pd.Timestamp(start) - stay).dt.days.to_numpy() / 365)
     weights = data.weights * np.broadcast_to(multiplier, len(y))
 
-    model = EBMModel(alpha=ALPHA, calibration_frac=HOLDOUT_FRAC)
+    model = EBMModel()
     model.fit(
         x.loc[train, columns],
         y[train].reset_index(drop=True),
         sample_weight=weights[train],
     )
-    predicted, low, high = model.predict_interval(x.loc[test, columns])
-    return score(y[test].to_numpy(), predicted, low, high)
+    predicted = model.predict(x.loc[test, columns])
+    return score(y[test].to_numpy(), predicted)
 
 
 # %%
