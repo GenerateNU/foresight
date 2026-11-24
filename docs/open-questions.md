@@ -40,6 +40,35 @@ weighting older rates less. Each could apply to retrains, tune-ups or both.
 
 Not settled; every rate counts the same for now.
 
+### Does a night left alone mean the manager agreed with it?
+
+The tune-up learns every past night in the last 30 days that has a snapshot,
+no manager rate and no one-off tag as "the manager accepted this price"
+(decisions 0072, 0074, 0078). A snapshot only says the price was shown, not
+that the manager looked at it.
+
+The calendar fetches a whole month at once, so opening it once saves a
+snapshot for every future night on screen. A manager who changes two
+Saturdays and ignores the rest of the month leaves around 28 nights that
+later count as accepted. Those nights pull the correction toward "keep the
+shown price" and dilute what the manager did change: 4 Saturdays raised by
+€15 and 6 left alone teach about +€6, not +€15. Before decision 0084 the
+price job made this worse, by giving every night a snapshot whether or not
+anyone opened the calendar.
+
+Options:
+
+- **Accept it** (as now): on screen and not changed counts as agreed.
+- **Record what the manager reviewed**, e.g. a night counts only if its
+  details were opened or the manager pressed "accept". Most accurate; needs a
+  frontend change and somewhere to store it.
+- **Weigh untouched nights less** than manager rates. Simple, but the weight
+  is a guess until there's a test the team trusts.
+- **Only count untouched nights from weeks the manager gave any feedback**,
+  as a sign they were reviewing.
+
+Not settled; on screen and not changed counts as agreed for now.
+
 ### Can a night left alone in the app disagree with Guestline?
 
 **Priority: low.**
