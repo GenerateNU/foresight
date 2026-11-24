@@ -149,17 +149,6 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         room_type_id=room_type_id,
         base_model_id=base_row.id,
     )
-    await model_repo.link_feedback(
-        session,
-        saved.id,
-        [
-            {
-                "feedback_id": int(row["id"]),
-                "training_rate": float(row["rate"]),
-            }
-            for row in rows
-        ],
-    )
     if activate:
         activated = await model_repo.activate_pricing_model(session, saved.id)
         assert activated is not None  # saved just above, in this transaction

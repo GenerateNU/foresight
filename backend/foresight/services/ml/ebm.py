@@ -5,13 +5,23 @@ import numpy as np
 import pandas as pd
 from interpret.glassbox import ExplainableBoostingRegressor
 
-from foresight.services.ml.base import Model
 
-
-class EBMModel(Model):
+class EBMModel:
     """Explainable Boosting Machine, trained once on every row (decision 0085)."""
 
     name = "ebm"
+
+    def __init__(self, seed: int = 9, **params):
+        """Stores the random seed and settings passed through to the EBM."""
+        self.seed = seed
+        self.params = params
+        self._model: ExplainableBoostingRegressor | None = None  # set by fit
+
+    def _fitted(self) -> ExplainableBoostingRegressor:
+        """The trained EBM. Raises RuntimeError before `fit`."""
+        if self._model is None:
+            raise RuntimeError(f"{self.name} must be fit before predicting")
+        return self._model
 
     def fit(self, x, y, sample_weight=None):
         """Trains the model on every row.
@@ -148,11 +158,9 @@ class TunedEBMModel(EBMModel):
     # No pairwise terms, so `explain` can add terms up by name. A few hundred
     # rounds: on a handful of rows early stopping has almost nothing to judge
     # by, and the library's 25,000-round limit makes 5 rows take a minute.
+    # It sees every input the base does (decision 0076); whether to keep `month`
+    # out (0075) is an open question.
     CORRECTION_DEFAULTS = {"interactions": 0, "max_rounds": 300}
-    # Inputs the correction never sees. Empty: it sees every input the base
-    # does (decision 0076). 0075 found that `month` made the correction learn a
-    # wrong seasonal effect; that is open for the team to settle.
-    CORRECTION_EXCLUDED_INPUTS: tuple[str, ...] = ()
 
     def __init__(self, base: EBMModel, **params):
         """Wraps a trained base model; `fit` then trains the correction.
@@ -207,21 +215,10 @@ class TunedEBMModel(EBMModel):
         Returns:
             TunedEBMModel: The model with its correction trained.
         """
-        inputs = x.drop(columns=list(self.CORRECTION_EXCLUDED_INPUTS), errors="ignore")
         self._model = ExplainableBoostingRegressor(
             random_state=self.seed, **{**self.CORRECTION_DEFAULTS, **self.params}
-        ).fit(
-            inputs, y, sample_weight=sample_weight, init_score=self._base().predict(x)
-        )
+        ).fit(x, y, sample_weight=sample_weight, init_score=self._base().predict(x))
         return self
-
-    def _inputs(self, x):
-        """The columns of x the fitted correction was trained on.
-
-        Read from the fitted EBM, not from CORRECTION_EXCLUDED_INPUTS, so a
-        tuned model saved before that setting existed still predicts.
-        """
-        return x[list(self._fitted().feature_names_in_)]
 
     def correction(self, x):
         """How much the correction moves each prediction.
@@ -235,7 +232,7 @@ class TunedEBMModel(EBMModel):
         Raises:
             RuntimeError: If fit has not been called yet.
         """
-        return self._fitted().predict(self._inputs(x))
+        return self._fitted().predict(x)
 
     def predict(self, x):
         """The base's prediction plus the correction, per row.
@@ -254,7 +251,7 @@ class TunedEBMModel(EBMModel):
         correction = self._fitted()
         base = self._base().explain(x)
         extra = pd.DataFrame(
-            correction.eval_terms(self._inputs(x)),
+            correction.eval_terms(x),
             columns=correction.term_names_,
             index=x.index,
         )

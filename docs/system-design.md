@@ -251,9 +251,7 @@ turns its source's quota responses into a named error:
 cities ─┬─< hotels ─┬─< room_types                       (DOUBLE, the one the model prices; 0079)
         │           ├─< bookings                          (rooms booked, still live; 0047)
         │           ├─< booking_cancellations             (rooms cancelled; linked by book_ref)
-        │           ├─< pricing_models ─< pricing_model_feedback >─ feedback
-        │           │                                     (trained models; one active; the
-        │           │                                      feedback each one used; 0044;
+        │           ├─< pricing_models                    (trained models; one active;
         │           │                                      a tune-up points to its base, 0078)
         │           ├─< recommendation_snapshots          (every rate recommended; 0038)
         │           ├─< feedback (also > room_types)      (the manager's view of a night; 0043)
@@ -288,12 +286,12 @@ A hotel is reachable only through its link.
 [0068](decisions/0068-manager-sends-the-rate-they-chose.md)) is the rate the
 manager chose for a night, sent only when they change ours, with an optional
 reason as tags from a fixed list, free text, or both. It names the snapshot the
-manager saw, and the server sets the verdict by comparing the two rates: higher
-means ours was too low, lower too high, the same about right. Rows are only
-added; a change is the next `version` for that room type and night, the highest
-is current, and earlier ones keep their times. It also records whether it came
-before or after the night (set by the server), and who gave it (null for
-feedback saved before sign-in was required).
+manager saw. Rows are only added; a change is the next `version` for that room
+type and night, the highest is current, and earlier ones keep their times. It
+records who gave it (null for feedback saved before sign-in was required).
+Whether ours was too high or too low, and whether it came before or after the
+night, aren't stored: they follow from the rates and dates
+([0086](decisions/0086-remove-unread-fields-and-room-type-routes.md)).
 
 **Foreign keys** always state `ON DELETE`:
 
@@ -516,7 +514,6 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       model_repo.create_pricing_model           new version, inactive, with its own `features`,
                                                 `target` (adr_nett) and room type, DOUBLE,
                                                 created the first time (0008, 0009, 0056, 0079)
-      model_repo.link_feedback                  records which feedback this version used
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}
 
@@ -553,8 +550,8 @@ the night. It's a booked-room row of its own, booked the day the manager saw
 the recommendation, weighing 25% of the night's booked rooms and at least 1
 ([0076](decisions/0076-booked-rooms-only-and-manager-rows.md)); the night's
 sales stay as they are. The daily tune-up follows the same rule.
-Each model version records the rates it used in `pricing_model_feedback`, and
-its `metrics` count them.
+A version's `metrics` count the manager rates it used (`feedback_nights`); which
+ones follows from its training window (0086).
 
 Each recommendation also carries `manager_rate`, the rate the manager set for
 the night (null if none). It's read live, not stored in the snapshot, so a new
@@ -660,7 +657,7 @@ POST /hotels/7/users {"email": "colleague@example.com"}
   ← 204
 ```
 
-`HotelId`, `JobId`, `ModelId` and `RoomTypeId` replace a bare path parameter, so
+`HotelId`, `JobId` and `ModelId` replace a bare path parameter, so
 using one in a handler is what checks access. Tests list every route from
 OpenAPI and assert the 401 and the cross-hotel 404 for each. The scheduler, when
 it exists, runs in the API process and calls the job services directly with no
@@ -745,8 +742,6 @@ cli.tuning_backtest
 | POST, GET | `/hotels` | a hotel includes its city; POST links its creator; GET lists only your hotels |
 | GET, PATCH | `/hotels/{id}` | |
 | POST | `/hotels/{id}/users` | `{email}`; links a colleague who has signed in; 204 |
-| POST, GET | `/hotels/{id}/room-types` | |
-| GET | `/room-types/{id}` | |
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
 | POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)) |

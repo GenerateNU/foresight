@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from foresight.database.models.booking import Booking
 
 
-BOOKING_ROW_COLUMNS = ["stay_date", "booked_on", "room_type_code", "rate"]
+BOOKING_ROW_COLUMNS = ["stay_date", "booked_on", "rate"]
 
 
 async def booking_rows(
@@ -49,7 +49,6 @@ async def booking_rows(
         booked_on: the day the booking was made. One dated after its night
             (late entries, no-shows) is kept; build_features gives it 0 days
             ahead.
-        room_type_code: Guestline's code, always `room_type_code`.
         rate: the booking's nett rate per night, before VAT. Every night of a
             stay gets the stay's average, so a weekend night in a longer stay
             is blurred with its weekdays.
@@ -67,7 +66,7 @@ async def booking_rows(
     )
     rows = pd.DataFrame(
         [
-            (night, b.booked_at.date(), b.room_type_code, float(b.adr_nett))
+            (night, b.booked_at.date(), float(b.adr_nett))
             for b in bookings
             for night in _nights(b, start, end)
         ],

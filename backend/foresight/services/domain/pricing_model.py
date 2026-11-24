@@ -29,7 +29,6 @@ from foresight.services.domain.model_inputs import events_for, hotel_location
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel, TunedEBMModel
 from foresight.services.ml.features import FEATURES, build_features
-from foresight.services.ml.feedback import manager_row_weights
 from foresight.services.ml.resources import measure
 from foresight.services.ml.weighting import combine_identical_rows
 
@@ -55,7 +54,11 @@ MIN_TRAINING_ROWS = 120
 # What every version learns to predict, stored in its metrics as `target`: each
 # booked room's rate per night before VAT (decisions 0056, 0076).
 TARGET = "adr_nett"
-_FEEDBACK_COLUMNS = ["id", "stay_date", "room_type", "rate", "given_at"]
+# A manager rate is a booked-room row of its own weighing this share of the
+# night's booked rooms, and at least 1, so one rate isn't drowned out by the
+# night's sales (decision 0076).
+MANAGER_SHARE = 0.25
+_FEEDBACK_COLUMNS = ["id", "stay_date", "rate", "given_at"]
 LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
@@ -64,11 +67,10 @@ class TrainingData:
     """Booked rooms, one row per room per night, and the model's inputs for
     them, row for row (decision 0076). Oldest night first."""
 
-    nights: pd.DataFrame  # stay_date, room_type, booked_on, rate; one per row of x
+    nights: pd.DataFrame  # stay_date, booked_on, rate; one per row of x
     x: pd.DataFrame  # every input in FEATURES order
     y: pd.Series  # each room's rate per night before VAT (adr_nett)
     weights: np.ndarray  # 1 per booked room; manager rows more (0076)
-    events_fetched: set[date]  # nights an events backfill covered (0041)
     one_off_dropped: int  # nights left out as one-off (decision 0070)
 
 
@@ -77,9 +79,8 @@ class TrainingResult:
     model: PricingModel
     activated: bool
     seconds: float
-    training_rows: int  # booked rooms or nights, whichever it trained on
+    training_rows: int  # booked rooms plus manager rows
     training_nights: int  # distinct nights among them
-    feedback_used: int  # nights whose rate or weight the manager's feedback changed
 
 
 async def check_trainable(
@@ -113,10 +114,8 @@ async def check_trainable(
 class PreparedTraining:
     """Everything a fit needs, loaded and with feedback applied; no session."""
 
-    data: TrainingData
-    y: pd.Series  # the rate after feedback
-    weights: np.ndarray  # after feedback
-    used: pd.DataFrame  # feedback that changed a night, once per piece
+    data: TrainingData  # booked rooms plus manager rows
+    feedback_nights: int  # manager rates added as rows
     began: float  # time.monotonic() when loading started
 
 
@@ -168,11 +167,10 @@ async def _with_manager_rows(
     booked rooms, and at least 1.
     """
     if feedback.empty:
-        used = pd.DataFrame(columns=["feedback_id", "training_rate"])
-        return PreparedTraining(data, data.y, data.weights, used, began)
+        return PreparedTraining(data, 0, began)
     rows = feedback.assign(
         booked_on=[local_date(hotel.city, t) for t in feedback["given_at"]]
-    )[["stay_date", "room_type", "booked_on", "rate"]]
+    )[["stay_date", "booked_on", "rate"]]
     events = await events_for(session, hotel.city, sorted(set(rows["stay_date"])))
     x_manager = build_features(
         rows,
@@ -182,8 +180,11 @@ async def _with_manager_rows(
         hotel_location=hotel_location(hotel),
         booked_on=rows["booked_on"],
     )[list(data.x.columns)]
+    # MANAGER_SHARE of the night's booked rooms, and at least 1, so a future
+    # night with no bookings yet still counts.
     rooms = data.nights.groupby("stay_date").size()
-    weights = manager_row_weights(rows["stay_date"], rooms)
+    booked = rows["stay_date"].map(rooms).fillna(0).to_numpy(float)
+    weights = np.maximum(MANAGER_SHARE * booked, 1.0)
 
     # Every row oldest night first, like the booked rooms.
     nights = pd.concat([data.nights, rows], ignore_index=True)
@@ -197,16 +198,9 @@ async def _with_manager_rows(
         .iloc[order]
         .reset_index(drop=True),
         weights=np.concatenate([data.weights, weights])[order],
-        events_fetched=data.events_fetched | events.fetched,
         one_off_dropped=data.one_off_dropped,
     )
-    used = pd.DataFrame(
-        {
-            "feedback_id": feedback["id"].astype(int).to_numpy(),
-            "training_rate": rows["rate"].to_numpy(float),
-        }
-    )
-    return PreparedTraining(merged, merged.y, merged.weights, used, began)
+    return PreparedTraining(merged, len(rows), began)
 
 
 async def fit(
@@ -219,12 +213,12 @@ async def fit(
     """
     data = prepared.data
     metrics, artifact = await asyncio.to_thread(
-        _fit, data.x, prepared.y, prepared.weights, data.nights, params
+        _fit, data.x, data.y, data.weights, data.nights, params
     )
     metrics["target"] = TARGET
     metrics["training_rows"] = len(data.nights)
     metrics["training_nights"] = int(data.nights["stay_date"].nunique())
-    metrics["feedback_nights"] = len(prepared.used)
+    metrics["feedback_nights"] = prepared.feedback_nights
     metrics["one_off_nights"] = data.one_off_dropped
     return metrics, artifact
 
@@ -259,9 +253,6 @@ async def save_version(
         data_end=nights["stay_date"].max(),
         room_type_id=room_type.id,
     )
-    await model_repo.link_feedback(
-        session, saved.id, prepared.used.to_dict(orient="records")
-    )
     if activate:
         activated = await model_repo.activate_pricing_model(session, saved.id)
         assert activated is not None  # saved just above, in this transaction
@@ -272,7 +263,6 @@ async def save_version(
         round(time.monotonic() - prepared.began, 1),
         len(nights),
         metrics["training_nights"],
-        len(prepared.used),
     )
 
 
@@ -304,8 +294,6 @@ async def training_data(
             room_type_code=MAIN_ROOM_CODE,
             rate_plan=MAIN_RATE_PLAN,
         )
-    booked["room_type"] = MAIN_ROOM_CODE
-
     # Decision 0070: a night the manager marked one-off teaches nothing.
     room_type = await main_room_type(session, hotel)
     one_off = (
@@ -335,7 +323,6 @@ async def training_data(
         x=x[FEATURES],
         y=booked["rate"].astype(float),
         weights=np.ones(len(booked)),
-        events_fetched=events.fetched,
         one_off_dropped=one_off_dropped,
     )
 

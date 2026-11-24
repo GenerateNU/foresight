@@ -38,7 +38,7 @@ from joblib import Parallel, delayed
 from matplotlib.patches import Patch
 from sklearn.linear_model import lasso_path
 
-from foresight.services.ml.base import score
+from foresight.services.domain.backtest import score
 from foresight.services.ml.ebm import EBMModel
 
 SCREEN_START, SCREEN_END = pd.Timestamp("2023-01-01"), pd.Timestamp("2024-12-31")

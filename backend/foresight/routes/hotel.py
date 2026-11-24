@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query, status
 from pydantic import Field, field_validator
 
 from foresight.database.enums import EventCategory
-from foresight.routes.access import CurrentUserDep, HotelId, RoomTypeId
+from foresight.routes.access import CurrentUserDep, HotelId
 from foresight.routes.city import CityResponse
 from foresight.routes.helpers import (
     RequestSchema,
@@ -91,20 +91,6 @@ class LinkUserRequest(RequestSchema):
     )
 
 
-class RoomTypeRequest(RequestSchema):
-    name: str = Field(
-        max_length=120,
-        description="The room type's name; unique within the hotel",
-        examples=["Example Room"],
-    )
-
-
-class RoomTypeResponse(ResponseSchema):
-    id: int = Field(description="The room type's id")
-    hotel_id: int = Field(description="The hotel it belongs to")
-    name: str = Field(description="The room type's name")
-
-
 class FactorResponse(ResponseSchema):
     """One term's pull on the recommended rate."""
 
@@ -153,12 +139,10 @@ class RecommendationResponse(ResponseSchema):
         "Null on snapshots from versions that didn't read it"
     )
     recommended_rate: Decimal = Field(
-        description="The rate to list, in `currency`, before VAT (decision 0076)"
+        description="The rate to list, in EUR, before VAT (decision 0076)"
     )
-    currency: str = Field(description="ISO-4217 currency code", examples=["EUR"])
     explanation: ExplanationResponse = Field(description="Why the rate is what it is")
     model_id: int = Field(description="The model version that priced it")
-    model_version: str = Field(description="Algorithm and version", examples=["ebm-v1"])
     events: list[NightEventResponse] = Field(
         description="Events on the night that the model counts, largest first: "
         "expected attendance, then local rank. Withdrawn events are left out"
@@ -171,7 +155,7 @@ class RecommendationResponse(ResponseSchema):
     )
     manager_rate: Decimal | None = Field(
         default=None,
-        description="The rate the manager set for the night, in `currency`, "
+        description="The rate the manager set for the night, in EUR, "
         "before VAT like `recommended_rate`; null if they haven't. Shown "
         "alongside it so a calendar needs one call",
         examples=["210.00"],
@@ -247,40 +231,6 @@ async def link_user(
     """Give a colleague access to this hotel, by the email of their Google
     account. They must have signed in once. Linking twice changes nothing."""
     await user_service.link_user_by_email(session, hotel_id=hotel_id, email=data.email)
-
-
-@router.post(
-    "/hotels/{hotel_id}/room-types",
-    response_model=RoomTypeResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_room_type(
-    hotel_id: HotelId, data: RoomTypeRequest, session: SessionDep
-) -> RoomTypeResponse:
-    """Add a room type to the hotel. Names are unique per hotel."""
-    room_type = await hotel_service.create_room_type(
-        session, hotel_id, **data.model_dump()
-    )
-    return RoomTypeResponse.model_validate(room_type)
-
-
-@router.get("/hotels/{hotel_id}/room-types", response_model=list[RoomTypeResponse])
-async def list_room_types(
-    hotel_id: HotelId, session: SessionDep
-) -> list[RoomTypeResponse]:
-    """The hotel's room types."""
-    room_types = await hotel_service.list_room_types(session, hotel_id)
-    return [RoomTypeResponse.model_validate(r) for r in room_types]
-
-
-@router.get("/room-types/{room_type_id}", response_model=RoomTypeResponse)
-async def get_room_type(
-    room_type_id: RoomTypeId, session: SessionDep
-) -> RoomTypeResponse:
-    """One room type."""
-    return RoomTypeResponse.model_validate(
-        await hotel_service.get_room_type(session, room_type_id)
-    )
 
 
 @router.get(

@@ -467,7 +467,7 @@ async def _train(
             "training_rows": result.training_rows,
             "training_nights": result.training_nights,
             "target": model.metrics.get("target"),
-            "feedback_used": result.feedback_used,
+            "feedback_nights": model.metrics.get("feedback_nights"),
             "metrics": {
                 k: model.metrics[k] for k in ("train_seconds", "peak_memory_mb")
             },

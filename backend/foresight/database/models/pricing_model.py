@@ -1,7 +1,6 @@
 """Trained pricing models, versioned per hotel."""
 
 from datetime import date, datetime
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -10,7 +9,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     LargeBinary,
-    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -78,25 +76,3 @@ class PricingModel(Base):
             postgresql_where=text("is_active"),
         ),
     )
-
-
-class PricingModelFeedback(Base):
-    """A piece of manager feedback that a model version was trained with.
-
-    One row per manager rate a version learnt from: a retrain's manager rows
-    (decision 0076) or a tune-up's rates (0069). Feedback is only ever added,
-    so a row still points at what the manager said at the time.
-    """
-
-    __tablename__ = "pricing_model_feedback"
-
-    # The composite key rejects a second row for the same pair, and its leading
-    # column serves as the foreign key index for pricing_model_id.
-    pricing_model_id: Mapped[int] = mapped_column(
-        ForeignKey("pricing_models.id", ondelete="CASCADE"), primary_key=True
-    )
-    feedback_id: Mapped[int] = mapped_column(
-        ForeignKey("feedback.id", ondelete="CASCADE"), primary_key=True, index=True
-    )
-    # The manager's rate, as trained on.
-    training_rate: Mapped[Decimal] = mapped_column(Numeric(10, 2))

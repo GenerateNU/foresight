@@ -244,7 +244,6 @@ def _save_tuning_plot(
 ) -> None:
     """Actual, base and each shipped tune-up's rate per scored night, as a PNG.
 
-    One panel per room type, so room types are never averaged together.
     Nights sit side by side, with a divider and a break in the lines where
     nights are missing, so a gap in the data isn't drawn as a trend or as
     empty space.
@@ -280,25 +279,18 @@ def _save_tuning_plot(
                     "markeredgewidth": 1, "label": actual_label, "zorder": 3})
     )  # fmt: skip
 
-    room_types = list(dict.fromkeys(nights["room_type"]))
-    fig, axes = plt.subplots(
-        len(room_types), 1, figsize=(11, 4.5 * len(room_types)), squeeze=False
-    )
-    for ax, room in zip(axes[:, 0], room_types, strict=True):
-        rows = nights.loc[nights["room_type"] == room].sort_values("stay_date")
-        dates = list(rows["stay_date"])
-        breaks = _gap_axis(ax, dates)
-        x = np.insert(np.arange(len(dates), dtype=float), breaks, np.nan)
-        for column, style in series:
-            y = np.insert(rows[column].to_numpy(dtype=float), breaks, np.nan)
-            ax.plot(x, y, **style)
-        if len(room_types) > 1:
-            ax.set_title(room, loc="left", fontsize=10, color="#52514e")
-        ax.set_ylabel("Rate (€)")
-        ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
-        ax.spines[["top", "right"]].set_visible(False)
+    fig, top_ax = plt.subplots(figsize=(11, 4.5))
+    rows = nights.sort_values("stay_date")
+    dates = list(rows["stay_date"])
+    breaks = _gap_axis(top_ax, dates)
+    x = np.insert(np.arange(len(dates), dtype=float), breaks, np.nan)
+    for column, style in series:
+        y = np.insert(rows[column].to_numpy(dtype=float), breaks, np.nan)
+        top_ax.plot(x, y, **style)
+    top_ax.set_ylabel("Rate (€)")
+    top_ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
+    top_ax.spines[["top", "right"]].set_visible(False)
 
-    top_ax = axes[0, 0]
     top_ax.set_title(title, loc="left", pad=24)
     top_ax.text(
         0, 1.02, subtitle, transform=top_ax.transAxes, fontsize=9,
@@ -307,7 +299,7 @@ def _save_tuning_plot(
     bottom, top = top_ax.get_ylim()
     top_ax.set_ylim(bottom, top + 0.25 * (top - bottom))  # room for the legend
     top_ax.legend(frameon=False, loc="upper left", ncols=3, fontsize=9)
-    axes[-1, 0].set_xlabel("Scored night (dotted lines: nights missing from the data)")
+    top_ax.set_xlabel("Scored night (dotted lines: nights missing from the data)")
     fig.tight_layout()
 
     path.parent.mkdir(parents=True, exist_ok=True)

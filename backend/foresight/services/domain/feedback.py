@@ -10,10 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from foresight.database.enums import FeedbackTiming, FeedbackVerdict
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import recommendation as snapshot_repo
-from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel, get_room_type
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
 
@@ -28,16 +26,6 @@ if TYPE_CHECKING:
     from foresight.database.models.feedback import Feedback
 
 MAX_NIGHTS = 366
-
-
-def verdict_for(rate: Decimal, recommended: Decimal) -> FeedbackVerdict:
-    """How the manager's rate compares with ours: if they charge more, ours
-    was too low; if less, too high; the same to the cent, about right."""
-    if rate > recommended:
-        return FeedbackVerdict.TOO_LOW
-    if rate < recommended:
-        return FeedbackVerdict.TOO_HIGH
-    return FeedbackVerdict.ABOUT_RIGHT
 
 
 async def add_feedback(
@@ -56,10 +44,8 @@ async def add_feedback(
 
     `rate` is what the manager chose, before VAT like the recommendation
     (decision 0076), and `snapshot_id` the recommendation they saw; the
-    verdict is worked out by comparing the two.
-    Whether it came before or after the night is set here, from the stay date
-    in the hotel's timezone: a night before today is over; today and later are
-    still ahead. A repeated tag is kept once.
+    snapshot must be for the same room type and night. A repeated tag is kept
+    once.
 
     Raises:
         NotFoundError: Unknown hotel, a room type that isn't the hotel's, or a
@@ -80,11 +66,6 @@ async def add_feedback(
             f"snapshot {snapshot_id} is for another room type or night"
         )
 
-    timing = (
-        FeedbackTiming.AFTER
-        if stay_date < local_today(hotel.city)
-        else FeedbackTiming.BEFORE
-    )
     feedback = await feedback_repo.create_feedback(
         session,
         hotel_id=hotel.id,
@@ -92,11 +73,9 @@ async def add_feedback(
         stay_date=stay_date,
         snapshot_id=snapshot_id,
         user_id=user_id,
-        verdict=verdict_for(rate, snapshot.rate),
         rate=rate,
         reason_tags=list(dict.fromkeys(reason_tags)),
         reason_text=reason_text,
-        timing=timing,
     )
     if feedback is None:
         raise ConflictError(

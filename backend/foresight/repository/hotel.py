@@ -89,21 +89,6 @@ async def create_hotel(
     return None if hotel_id is None else await get_hotel(session, hotel_id)
 
 
-async def create_room_type(
-    session: AsyncSession,
-    *,
-    hotel_id: int,
-    name: str,
-) -> RoomType | None:
-    """Insert a room type; None if the hotel already has one with this name."""
-    return await session.scalar(
-        insert(RoomType)
-        .values(hotel_id=hotel_id, name=name)
-        .on_conflict_do_nothing(constraint="uq_room_types_hotel_id_name")
-        .returning(RoomType)
-    )
-
-
 async def list_hotels(session: AsyncSession) -> Sequence[Hotel]:
     stmt = select(Hotel).options(joinedload(Hotel.city)).order_by(Hotel.id)
     return (await session.scalars(stmt)).all()
@@ -132,8 +117,3 @@ async def find_room_type(
 
 async def get_room_type(session: AsyncSession, room_type_id: int) -> RoomType | None:
     return await session.get(RoomType, room_type_id)
-
-
-async def list_room_types(session: AsyncSession, hotel_id: int) -> Sequence[RoomType]:
-    stmt = select(RoomType).where(RoomType.hotel_id == hotel_id).order_by(RoomType.id)
-    return (await session.scalars(stmt)).all()

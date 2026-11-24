@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from foresight.repository import hotel as hotel_repo
 from foresight.repository import job as job_repo
 from foresight.repository import pricing_model as model_repo
 from foresight.repository import user as user_repo
@@ -39,17 +38,6 @@ async def require_model(session: AsyncSession, user: User, model_id: int) -> Non
     model = await model_repo.get_pricing_model(session, model_id)
     if model is None or not await user_repo.has_hotel(session, user.id, model.hotel_id):
         raise NotFoundError("Pricing model", model_id)
-
-
-async def require_room_type(
-    session: AsyncSession, user: User, room_type_id: int
-) -> None:
-    """Raises NotFoundError unless the room type is one of the user's hotels'."""
-    room_type = await hotel_repo.get_room_type(session, room_type_id)
-    if room_type is None or not await user_repo.has_hotel(
-        session, user.id, room_type.hotel_id
-    ):
-        raise NotFoundError("Room type", room_type_id)
 
 
 async def require_city_member(session: AsyncSession, user: User, city_id: int) -> None:

@@ -10,7 +10,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Numeric,
-    String,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -37,7 +36,6 @@ class RecommendationSnapshot(Base):
         ForeignKey("pricing_models.id", ondelete="NO ACTION"),
         index=True,
     )
-    model_version: Mapped[str] = mapped_column(String(60))
     rate: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     factors: Mapped[dict[str, Any]] = mapped_column(JSONB)  # baseline + factor list
     # What the model read for this night: its input row, the events on the
