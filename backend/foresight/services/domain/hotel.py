@@ -102,32 +102,9 @@ async def list_hotels_for_user(session: AsyncSession, user_id: int) -> Sequence[
     return await hotel_repo.list_hotels_for_user(session, user_id)
 
 
-async def create_room_type(
-    session: AsyncSession,
-    hotel_id: int,
-    *,
-    name: str,
-) -> RoomType:
-    """Raises NotFoundError for an unknown hotel, ConflictError for a duplicate."""
-    await get_hotel(session, hotel_id)
-    room_type = await hotel_repo.create_room_type(
-        session,
-        hotel_id=hotel_id,
-        name=name,
-    )
-    if room_type is None:
-        raise ConflictError(f"Hotel {hotel_id} already has a room type named {name!r}")
-    return room_type
-
-
 async def get_room_type(session: AsyncSession, room_type_id: int) -> RoomType:
     """Raises NotFoundError for an unknown room type."""
     room_type = await hotel_repo.get_room_type(session, room_type_id)
     if room_type is None:
         raise NotFoundError("Room type", room_type_id)
     return room_type
-
-
-async def list_room_types(session: AsyncSession, hotel_id: int) -> Sequence[RoomType]:
-    await get_hotel(session, hotel_id)
-    return await hotel_repo.list_room_types(session, hotel_id)

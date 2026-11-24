@@ -20,7 +20,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from foresight.database.base import Base
-from foresight.database.enums import FeedbackReasonTag, FeedbackTiming, FeedbackVerdict
+from foresight.database.enums import FeedbackReasonTag
 
 
 class Feedback(Base):
@@ -52,9 +52,6 @@ class Feedback(Base):
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
 
-    verdict: Mapped[FeedbackVerdict] = mapped_column(
-        SAEnum(FeedbackVerdict, native_enum=False, length=20)
-    )
     # The rate the manager would charge, if they gave one.
     rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     # Why, two ways: tags from a fixed list, and free text. Tags are stored as
@@ -64,9 +61,6 @@ class Feedback(Base):
         server_default=text("'{}'"),
     )
     reason_text: Mapped[str | None] = mapped_column(Text)
-    timing: Mapped[FeedbackTiming] = mapped_column(
-        SAEnum(FeedbackTiming, native_enum=False, length=10)
-    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -7,11 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 from pydantic import Field
 
-from foresight.database.enums import (
-    FeedbackReasonTag,
-    FeedbackTiming,
-    FeedbackVerdict,
-)
+from foresight.database.enums import FeedbackReasonTag
 from foresight.routes.access import CurrentUserDep, HotelId
 from foresight.routes.helpers import RequestSchema, ResponseSchema, SessionDep
 from foresight.services.domain import alignment as alignment_service
@@ -30,7 +26,7 @@ class FeedbackRequest(RequestSchema):
     the earlier ones are kept."""
 
     room_type_id: int = Field(
-        description="The room type the feedback is about; see /hotels/{id}/room-types",
+        description="The `room_type_id` /hotels/{id}/recommendations returned",
         examples=[1],
     )
     stay_date: date = Field(
@@ -42,7 +38,7 @@ class FeedbackRequest(RequestSchema):
         max_digits=10,
         decimal_places=2,
         description="The nightly rate the manager chose, in EUR, before VAT like "
-        "the recommendation. Compared with it to set the verdict",
+        "the recommendation",
         examples=["210.00"],
     )
     reason_tags: list[FeedbackReasonTag] = Field(
@@ -78,20 +74,12 @@ class FeedbackResponse(ResponseSchema):
     user_id: int | None = Field(
         description="Who gave it; null for feedback saved before sign-in was required"
     )
-    verdict: FeedbackVerdict = Field(
-        description="Whether our recommendation was too high, too low or about "
-        "right; set by the server by comparing `rate` with it"
-    )
     rate: Decimal | None = Field(
         description="The rate the manager chose, in EUR, before VAT; null only "
         "on feedback saved before a rate was required"
     )
     reason_tags: list[FeedbackReasonTag] = Field(description="Why, from a fixed list")
     reason_text: str | None = Field(description="Why, in their words; null if none")
-    timing: FeedbackTiming = Field(
-        description="Whether it was given before the night or after it; set by "
-        "the server from the night's date"
-    )
     created_at: datetime = Field(description="When this version was given, UTC")
 
 

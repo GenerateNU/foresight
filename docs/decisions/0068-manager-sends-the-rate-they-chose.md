@@ -1,6 +1,6 @@
 # 0068. The manager sends the rate they chose; the verdict is worked out from it
 
-**Status:** Accepted · **Date:** 2026-11-07
+**Status:** Accepted, amended by [0086](0086-remove-unread-fields-and-room-type-routes.md) (the verdict isn't stored) · **Date:** 2026-11-07
 
 ## Context
 [0043](0043-manager-feedback-is-versioned.md) asks the manager for a verdict

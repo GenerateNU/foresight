@@ -1,6 +1,6 @@
 # 0043. Manager feedback is added to, never changed
 
-**Status:** Accepted; what the manager sends (verdict, rate, snapshot) superseded by [0068](0068-manager-sends-the-rate-they-chose.md) · **Date:** 2026-10-31
+**Status:** Accepted; what the manager sends (verdict, rate, snapshot) superseded by [0068](0068-manager-sends-the-rate-they-chose.md), amended by [0086](0086-remove-unread-fields-and-room-type-routes.md) (no verdict or timing stored) · **Date:** 2026-10-31
 
 ## Context
 The manager knows things the data doesn't: a wedding block, a venue that sold

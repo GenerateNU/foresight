@@ -1,6 +1,6 @@
 # 0079. The model prices one product: DOUBLE, room only
 
-**Status:** Accepted · **Date:** 2026-11-20 · Amends [0056](0056-lead-days-input.md),
+**Status:** Accepted, amended by [0086](0086-remove-unread-fields-and-room-type-routes.md) (no room-type routes) · **Date:** 2026-11-20 · Amends [0056](0056-lead-days-input.md),
 [0076](0076-booked-rooms-only-and-manager-rows.md)
 
 ## Context

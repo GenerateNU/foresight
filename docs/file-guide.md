@@ -103,11 +103,9 @@ One line per file: what it's for. For how the pieces fit together, see
 
 | File | What it does |
 |---|---|
-| `features.py` | `FEATURES` (room type, weekday, month) and `build_features` |
-| `base.py` | Model base class and `score` (MAE, RMSE, bias…) |
+| `features.py` | `FEATURES` (calendar, holidays, events, days ahead) and `build_features` |
 | `ebm.py` | The EBM pricing model: fit, explain, save/load; the tune-up's base + correction |
-| `weighting.py` | Drops unpriced nights; weights nights by occupancy |
-| `feedback.py` | Applies manager feedback to training rates and weights |
+| `weighting.py` | Drops unpriced rooms; merges rows the model can't tell apart |
 | `baselines.py` | Simple rules the model must beat (last year, recent weekdays) |
 | `resources.py` | Measures a fit's time and peak memory |
 
@@ -129,14 +127,14 @@ One line per file: what it's for. For how the pieces fit together, see
 | File | What it does |
 |---|---|
 | `base.py` | SQLAlchemy base with constraint naming convention |
-| `enums.py` | Enums stored in columns (job kinds, event categories, verdicts…) |
+| `enums.py` | Enums stored in columns (job kinds, event categories, reason tags…) |
 | `session.py` | Engine and per-request session |
 | `models/city.py` | `cities` |
 | `models/hotel.py` | `hotels`, `room_types` |
 | `models/user.py` | `users`, `user_hotels` |
 | `models/job.py` | `jobs` |
 | `models/booking.py` | `bookings`, `booking_cancellations` |
-| `models/pricing_model.py` | `pricing_models`, `pricing_model_feedback` |
+| `models/pricing_model.py` | `pricing_models` |
 | `models/recommendation.py` | `recommendation_snapshots` |
 | `models/feedback.py` | `feedback` |
 | `models/signals/event.py` | `events`, `event_observations` |

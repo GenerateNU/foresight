@@ -16,10 +16,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
@@ -30,7 +31,6 @@ from foresight.services.domain.tuning import (
     fit_correction,
 )
 from foresight.services.errors import InvalidRequestError
-from foresight.services.ml.base import score
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
@@ -48,6 +48,34 @@ BASELINES = {
     "last_year": "Same weekday last year",
     "recent_weekday": "Last 4 weeks, same weekday",
 }
+
+
+def score(y_true: Any, y_pred: Any) -> dict[str, float]:
+    """Scores predictions against the true values.
+
+    Shared by models and the backtest's baselines, so both are measured alike.
+
+    Args:
+        y_true (array-like): True target values.
+        y_pred (array-like): One prediction per true value.
+
+    Returns:
+        dict[str, float]: mae, rmse, mape, r2 and bias (mean of
+            predicted - true; positive means it predicts too high).
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+
+    nonzero = y_true != 0  # MAPE is undefined where the true value is 0
+    mape = np.mean(np.abs((y_true - y_pred)[nonzero] / y_true[nonzero]))
+
+    return {
+        "mae": mean_absolute_error(y_true, y_pred),
+        "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+        "mape": float(mape),
+        "r2": r2_score(y_true, y_pred),
+        "bias": float(np.mean(y_pred - y_true)),
+    }
 
 
 def in_feature_order(inputs: Sequence[str]) -> list[str]:
@@ -73,7 +101,7 @@ class BacktestResult:
     hotel_name: str
     inputs: list[str]  # the features the model was trained on
     event_days: int | None  # event history the model saw; None means all of it
-    # One row per booked room per night: stay_date, room_type, lead_days,
+    # One row per booked room per night: stay_date, lead_days,
     # actual, predicted; with baselines, also one column per BASELINES key
     # (NaN where it had no history)
     rows: pd.DataFrame
@@ -213,7 +241,6 @@ def _test_rows(
     result = pd.DataFrame(
         {
             "stay_date": targets["stay_date"],
-            "room_type": targets["room_type"],
             LEAD: split.data.x.loc[~seen, LEAD].to_numpy(),
             "actual": split.data.y[~seen],
             "predicted": predicted,
@@ -224,7 +251,7 @@ def _test_rows(
         history = (
             nights.loc[seen]
             .assign(rate=split.data.y[seen])
-            .groupby(["stay_date", "room_type"], as_index=False)["rate"]
+            .groupby("stay_date", as_index=False)["rate"]
             .mean()
         )
         result["last_year"] = same_weekday_last_year(history, targets)
@@ -297,7 +324,7 @@ class TuningRow:
     """The tune-up after `feedback_days` days of manager rates, on the eval nights."""
 
     feedback_days: int
-    feedback_nights: int  # rows (night x room type) the manager "priced"
+    feedback_nights: int  # nights the manager "priced"
     untouched_nights: int  # rows learned as "no change" (decision 0072)
     feedback_dates: tuple[date, date]  # first and last feedback night
     untouched_dates: tuple[date, date] | None  # None when there were none
@@ -330,7 +357,7 @@ class TuningBacktestResult:
     rows: list[TuningRow]
     rule: ManagerRule | None  # None: the recorded rate is the manager's
     manager_share: float  # share of feedback days the manager priced
-    # Every held-out night: stay_date, room_type, actual, base, day (its
+    # Every held-out night: stay_date, actual, base, day (its
     # priced-day number after the cutoff; the first max(sizes) are feedback),
     # scored, and per tuned size N, mgr_only_N and tuned_N (what ships),
     # NaN except on scored nights.
@@ -430,8 +457,6 @@ async def run_tuning_backtest(
     priced = pick[rank - 1]
     if rule is not None:  # a synthetic manager accepts nights the rule leaves
         priced &= rule.matches(x)
-    trained_on = set(split.data.nights.loc[split.seen, "room_type"])
-    known_room = held["room_type"].isin(trained_on).to_numpy()
 
     scored = rank > sizes[-1]
     x_eval = x[scored]
@@ -441,7 +466,6 @@ async def run_tuning_backtest(
     nights = pd.DataFrame(
         {
             "stay_date": stay.to_numpy(),
-            "room_type": held["room_type"].to_numpy(),
             "actual": y,
             "base": base_all,
             "day": rank,
@@ -458,7 +482,7 @@ async def run_tuning_backtest(
         window = rank <= n
         manager = window & priced
         horizon = (stay >= today - timedelta(days=UNTOUCHED_DAYS)).to_numpy()
-        untouched = window & ~priced & horizon & known_room
+        untouched = window & ~priced & horizon
         used = {
             "feedback_days": n,
             "feedback_nights": int(manager.sum()),
@@ -540,7 +564,7 @@ async def run_tuning_backtest(
 def _held_out_nights(
     data: TrainingData, seen: np.ndarray
 ) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
-    """One row per held-out room type and night: its key, inputs and rate.
+    """One row per held-out night: its date, inputs and rate.
 
     A night has many booked rooms; the manager prices the night, not a
     booking, so the night's rate is its average booked rate and its inputs are
@@ -548,10 +572,10 @@ def _held_out_nights(
     0076). Oldest night first.
     """
     held = ~seen
-    rows = data.nights.loc[held, ["stay_date", "room_type"]].reset_index(drop=True)
+    rows = data.nights.loc[held, ["stay_date"]].reset_index(drop=True)
     x = data.x.loc[held].reset_index(drop=True)
     y = data.y.loc[held].reset_index(drop=True).astype(float)
-    group = rows.groupby(["stay_date", "room_type"], sort=False).ngroup().to_numpy()
+    group = rows.groupby("stay_date", sort=False).ngroup().to_numpy()
     first = pd.Series(np.arange(len(rows))).groupby(group).first().to_numpy()
     x_nights = x.iloc[first].reset_index(drop=True)
     if LEAD in x_nights:

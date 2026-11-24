@@ -84,29 +84,6 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"  # removed from the queue before it ran
 
 
-class FeedbackVerdict(StrEnum):
-    """How the manager's rate compares with the one we recommended.
-
-    Worked out by the server from the two rates, never sent by the client
-    (decision 0068): a higher rate means ours was too low, and so on.
-    """
-
-    TOO_HIGH = "too_high"
-    TOO_LOW = "too_low"
-    ABOUT_RIGHT = "about_right"
-
-
-class FeedbackTiming(StrEnum):
-    """Whether feedback came before or after the night it is about.
-
-    Set by the server from the stay date, never sent by the client. A record
-    only: training and the tune-up treat both the same (decision 0071).
-    """
-
-    BEFORE = "before"
-    AFTER = "after"
-
-
 class FeedbackReasonTag(StrEnum):
     """Why a manager disagrees with the rate, picked from a fixed list.
 

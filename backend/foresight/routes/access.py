@@ -61,15 +61,6 @@ async def _model_id(
     return model_id
 
 
-async def _room_type_id(
-    room_type_id: Annotated[int, Path(description="The room type's id", examples=[1])],
-    user: CurrentUserDep,
-    session: SessionDep,
-) -> int:
-    await access_service.require_room_type(session, user, room_type_id)
-    return room_type_id
-
-
 async def _editable_city_id(
     city_id: Annotated[int, Path(description="The city's id", examples=[1])],
     user: CurrentUserDep,
@@ -82,5 +73,4 @@ async def _editable_city_id(
 HotelId = Annotated[int, Depends(_hotel_id)]
 JobId = Annotated[int, Depends(_job_id)]
 ModelId = Annotated[int, Depends(_model_id)]
-RoomTypeId = Annotated[int, Depends(_room_type_id)]
 EditableCityId = Annotated[int, Depends(_editable_city_id)]

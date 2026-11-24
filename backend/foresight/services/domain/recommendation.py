@@ -54,7 +54,6 @@ if TYPE_CHECKING:
     from foresight.database.models.recommendation import RecommendationSnapshot
 
 
-CURRENCY = "EUR"  # decision 0002
 # One request scores its changed nights in one batch; this bounds the batch.
 MAX_NIGHTS = 90
 # Terms worth naming in the explanation; smaller ones are summed as "other".
@@ -91,10 +90,8 @@ class Recommendation:
     room_type_id: int
     lead_days: int | None  # days from today it was priced at; None on old snapshots
     recommended_rate: Decimal
-    currency: str
     explanation: Explanation
     model_id: int
-    model_version: str
     events: list[NightEvent]  # the events on the night, largest first
     events_source: str | None  # "fetched" or "missing"; None on older snapshots
     snapshot_id: int | None  # None for a past night priced but not saved
@@ -398,7 +395,6 @@ async def _save(
         room_type_id=room_type.id,
         stay_date=night.stay_date,
         model_id=stored.id,
-        model_version=_version(stored),
         rate=scored.rate,
         factors=_explanation_json(scored.explanation),
         inputs=night.inputs,
@@ -417,10 +413,8 @@ def _from_snapshot(
         room_type_id=room_type.id,
         lead_days=_lead_days(inputs),
         recommended_rate=snap.rate,
-        currency=CURRENCY,
         explanation=_explanation_from_json(snap.factors),
         model_id=snap.model_id,
-        model_version=snap.model_version,
         events=[_event_from_json(e) for e in inputs.get("events", [])],
         events_source=inputs.get("events_source"),
         snapshot_id=snap.id,
@@ -443,10 +437,8 @@ def _unsaved(
         room_type_id=room_type.id,
         lead_days=_lead_days(night.inputs),
         recommended_rate=scored.rate,
-        currency=CURRENCY,
         explanation=scored.explanation,
         model_id=stored.id,
-        model_version=_version(stored),
         events=night.events,
         events_source=night.events_source,
         snapshot_id=None,
@@ -459,10 +451,6 @@ def _lead_days(inputs: dict[str, Any]) -> int | None:
     snapshots from versions that didn't read them."""
     value = inputs.get("features", {}).get(LEAD)
     return None if value is None else int(value)
-
-
-def _version(stored: PricingModel) -> str:
-    return f"{stored.algorithm}-v{stored.version}"
 
 
 def _explanation_json(explanation: Explanation) -> dict[str, Any]:

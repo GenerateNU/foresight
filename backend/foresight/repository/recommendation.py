@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
-from foresight.database.models.hotel import RoomType
 from foresight.database.models.recommendation import RecommendationSnapshot
 
 if TYPE_CHECKING:
@@ -24,7 +23,6 @@ async def create_recommendation_snapshot(
     room_type_id: int,
     stay_date: date,
     model_id: int,
-    model_version: str,
     rate: Decimal,
     factors: dict[str, Any],
     inputs: dict[str, Any],
@@ -35,7 +33,6 @@ async def create_recommendation_snapshot(
         room_type_id=room_type_id,
         stay_date=stay_date,
         model_id=model_id,
-        model_version=model_version,
         rate=rate,
         factors=factors,
         inputs=inputs,
@@ -72,19 +69,16 @@ async def snapshotted_nights(
 ) -> Sequence[Mapping[str, Any]]:
     """Each night in [start, end] the room type has a snapshot for.
 
-    One row per room type and night, however many snapshots it has, from its
-    latest snapshot. Rows carry stay_date, room_type_id, room_type (its name),
-    shown_at (when the snapshot was made) and rate (the rate it showed),
-    oldest night first.
+    One row per night, from its latest snapshot: stay_date, shown_at (when
+    the snapshot was made) and rate (the rate it showed), oldest night first.
     """
-    latest = (
+    stmt = (
         select(
             RecommendationSnapshot.stay_date,
-            RecommendationSnapshot.room_type_id,
             RecommendationSnapshot.created_at.label("shown_at"),
             RecommendationSnapshot.rate,
         )
-        .distinct(RecommendationSnapshot.stay_date, RecommendationSnapshot.room_type_id)
+        .distinct(RecommendationSnapshot.stay_date)
         .where(
             RecommendationSnapshot.room_type_id == room_type_id,
             RecommendationSnapshot.stay_date.between(start, end),
@@ -92,22 +86,9 @@ async def snapshotted_nights(
         # The id breaks ties: rows saved in one transaction share `created_at`.
         .order_by(
             RecommendationSnapshot.stay_date,
-            RecommendationSnapshot.room_type_id,
             RecommendationSnapshot.created_at.desc(),
             RecommendationSnapshot.id.desc(),
         )
-        .subquery()
-    )
-    stmt = (
-        select(
-            latest.c.stay_date,
-            latest.c.room_type_id,
-            RoomType.name.label("room_type"),
-            latest.c.shown_at,
-            latest.c.rate,
-        )
-        .join(RoomType, latest.c.room_type_id == RoomType.id)
-        .order_by(latest.c.stay_date, RoomType.name)
     )
     return (await session.execute(stmt)).mappings().all()
 
