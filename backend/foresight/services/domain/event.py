@@ -147,7 +147,10 @@ async def fetched_nights(
         skipped = job.progress.get("empty_months", []) + job.progress.get(
             "overflowed_months", []
         )
-        months = list(Window.from_params(job.params).months())
+        months = Window.from_params(job.params).months()
+        # Runs before decision 0087 could walk oldest first.
+        if job.params.get("backwards") is False:
+            months.reverse()
         for first, last in months[: job.progress.get("months_done", 0)]:
             if [first.isoformat(), last.isoformat()] in skipped:
                 continue

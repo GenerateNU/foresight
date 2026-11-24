@@ -33,8 +33,8 @@ class Job(Base):
     params: Mapped[dict[str, Any]] = mapped_column(JSONB)  # resolved inputs
     progress: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
-    # Where to pick up if the run ends early: the `start` to send again, or the
-    # `end` for a run walking backwards. Null once it succeeds.
+    # Where to pick up if a backfill ends early: the `end` to send again, since
+    # backfills walk newest first (decision 0087). Null once it succeeds.
     resume_from: Mapped[date | None] = mapped_column(Date)
 
     created_at: Mapped[datetime] = mapped_column(

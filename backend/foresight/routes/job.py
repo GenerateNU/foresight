@@ -3,8 +3,8 @@
 Each hotel's jobs run one at a time, oldest first. Poll `GET /jobs/{id}` for
 status and progress; `POST /jobs/{id}/cancel` takes a queued job out. If a job
 stops or fails part-way, `resume_from` says where to pick up: send it to the
-same ingest endpoint as `start` again (or as `end` for a run walking
-backwards). A file job that ends early is finished by uploading the file again.
+same ingest endpoint as `end`, with the same `start`. A file job that ends
+early is finished by uploading the file again.
 
 `GET /hotels/{id}/freshness` reads the same jobs to say when each kind of data
 last refreshed.
@@ -49,8 +49,8 @@ class JobResponse(ResponseSchema):
     progress: dict[str, Any] = Field(description="Counts so far; matches what's saved")
     error: str | None = Field(description="Why it stopped or failed; null otherwise")
     resume_from: date | None = Field(
-        description="Set when the run ended early: send it as `start` again, or "
-        "as `end` if the run was walking backwards"
+        description="Set when a backfill ended early: send it as `end`, with "
+        "the same `start`; backfills walk newest first"
     )
     created_at: datetime = Field(description="When it was queued, UTC")
     started_at: datetime | None = Field(

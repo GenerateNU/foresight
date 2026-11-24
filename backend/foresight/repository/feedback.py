@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Date, func, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from foresight.database.enums import FeedbackReasonTag
 from foresight.database.models.feedback import Feedback
-from foresight.database.models.recommendation import RecommendationSnapshot
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -193,30 +192,3 @@ async def manager_rates(
         select(current.c.stay_date, current.c.rate).where(current.c.rate.is_not(None))
     )
     return {day: rate for day, rate in rows}
-
-
-async def alignment_by_week(
-    session: AsyncSession, hotel_id: int
-) -> Sequence[Mapping[str, Any]]:
-    """How far the manager's rates were from the rates they were shown, by week.
-
-    Every version of feedback that has a rate and still has its snapshot counts
-    once, in the week (Monday, UTC) it was given. Rows carry week, nights,
-    mean_gap (manager minus model, so positive means the model priced low) and
-    mean_abs_gap, oldest week first (decision 0071).
-    """
-    gap = Feedback.rate - RecommendationSnapshot.rate
-    week = func.date_trunc("week", Feedback.created_at)
-    stmt = (
-        select(
-            func.cast(week, Date).label("week"),
-            func.count().label("nights"),
-            func.avg(gap).label("mean_gap"),
-            func.avg(func.abs(gap)).label("mean_abs_gap"),
-        )
-        .join(RecommendationSnapshot, Feedback.snapshot_id == RecommendationSnapshot.id)
-        .where(Feedback.hotel_id == hotel_id, Feedback.rate.is_not(None))
-        .group_by(week)
-        .order_by(week)
-    )
-    return (await session.execute(stmt)).mappings().all()

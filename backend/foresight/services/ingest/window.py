@@ -1,11 +1,10 @@
-"""The date window an ingest covers, from the optional `start` and `end` given.
+"""The date window an events backfill covers, from the optional `start` and
+`end` given (decision 0087).
 
-Giving any date makes the run a backfill over a window:
-
-- start and end: that window.
-- start only: start to today.
-- end only: backwards from end to the hotel's first booked night, newest
-  first, so a source that runs out of credits has saved the most recent part.
+Giving either date makes the run a backfill. `end` defaults to today and
+`start` to the hotel's first booked night. Every backfill walks newest month
+first, so a source that runs out of credits has saved the most recent part,
+and `resume_from` is always the `end` to send next.
 
 Giving neither isn't a window; each signal has its own routine refresh.
 """
@@ -20,7 +19,7 @@ from foresight.repository import booking as booking_repo
 from foresight.services.errors import InvalidRequestError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Mapping
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,44 +32,25 @@ class InvalidWindowError(InvalidRequestError):
 class Window:
     start: date
     end: date
-    backwards: bool = False  # walk newest first
 
-    def as_params(self) -> dict[str, str | bool]:
-        return {
-            "start": self.start.isoformat(),
-            "end": self.end.isoformat(),
-            "backwards": self.backwards,
-        }
+    def as_params(self) -> dict[str, str]:
+        return {"start": self.start.isoformat(), "end": self.end.isoformat()}
 
     @classmethod
     def from_params(cls, params: Mapping[str, Any]) -> Window:
         return cls(
-            date.fromisoformat(params["start"]),
-            date.fromisoformat(params["end"]),
-            params.get("backwards", False),
+            date.fromisoformat(params["start"]), date.fromisoformat(params["end"])
         )
 
-    def months(self) -> Iterator[tuple[date, date]]:
-        """Calendar-month pieces, inclusive, in walking order."""
-        return self._pieces(
-            lambda d: (d.replace(day=1) + timedelta(days=32)).replace(day=1)
-        )
-
-    def _pieces(
-        self, next_boundary: Callable[[date], date]
-    ) -> Iterator[tuple[date, date]]:
+    def months(self) -> list[tuple[date, date]]:
+        """Calendar-month pieces, inclusive, newest first."""
         pieces = []
-        first = self.start
-        while first <= self.end:
-            last = min(next_boundary(first) - timedelta(days=1), self.end)
+        last = self.end
+        while last >= self.start:
+            first = max(last.replace(day=1), self.start)
             pieces.append((first, last))
-            first = last + timedelta(days=1)
-        return reversed(pieces) if self.backwards else iter(pieces)
-
-    def resume_point(self, first: date, last: date) -> date:
-        """The `start` (forwards) or `end` (backwards) to pass to pick up at
-        the piece `first`..`last`."""
-        return last if self.backwards else first
+            last = first - timedelta(days=1)
+        return pieces
 
 
 async def resolve_window(
@@ -81,25 +61,23 @@ async def resolve_window(
     *,
     today: date,
 ) -> Window:
-    """Raises InvalidWindowError if the window is empty or can't be resolved.
+    """`end` defaults to today, `start` to the hotel's first booked night.
 
     Only call with at least one date given.
+
+    Raises:
+        InvalidWindowError: `start` is needed and no bookings are loaded, or
+            the window is empty.
     """
-    if start is not None and end is None:
-        end = today
-    elif start is None and end is not None:
+    end = end or today
+    if start is None:
         loaded = await booking_repo.booked_night_range(session, hotel_id)
         if loaded is None:
             raise InvalidWindowError(
-                "end alone walks back to the hotel's first booked night, and "
-                "no bookings are loaded; give a start too"
+                "without a start the backfill goes back to the hotel's first "
+                "booked night, and no bookings are loaded; give a start"
             )
-        if loaded[0] > end:
-            raise InvalidWindowError(
-                f"end {end} is before the hotel's first booked night {loaded[0]}"
-            )
-        return Window(loaded[0], end, backwards=True)
-    assert start is not None and end is not None
+        start = loaded[0]
     if start > end:
         raise InvalidWindowError(f"start {start} is after end {end}")
     return Window(start, end)
