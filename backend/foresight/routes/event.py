@@ -1,5 +1,3 @@
-"""Events in a hotel's city."""
-
 from datetime import date, datetime
 from typing import Annotated
 
@@ -26,7 +24,7 @@ router = APIRouter(tags=["Events"])
 
 
 class EventResponse(ResponseSchema):
-    """A merged event. Raw per-source sightings (`event_observations`) stay internal."""
+    """A merged event; raw per-source sightings stay internal."""
 
     id: int = Field(description="The event's id")
     title: str = Field(description="The event's name")
@@ -88,8 +86,24 @@ async def list_events(
         ),
     ] = None,
 ) -> PageResponse[EventResponse]:
-    """Events in the hotel's city overlapping the date range; cancelled and
-    deleted events are hidden."""
+    """Events in the hotel's city overlapping the date range.
+
+    Cancelled and deleted events are hidden.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        page (PageDep): Which page.
+        start (date | None): First day, inclusive.
+        end (date | None): Last day, inclusive.
+
+    Returns:
+        PageResponse[EventResponse]: The page.
+
+    Raises:
+        NotFoundError: The hotel doesn't exist.
+    """
     rows, total = await event_service.list_events(
         session, hotel_id, start=start, end=end, limit=page.limit, offset=page.offset
     )

@@ -58,6 +58,10 @@ API: http://localhost:8000 · docs: http://localhost:8000/docs
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`…).
 - **Lint/format:** ruff must pass before commit; pre-commit hooks are enforced.
+- **Docstrings and comments:** a Google docstring on every function
+  (`Args`/`Returns`/`Raises`), `Attributes:` on classes, no module docstrings,
+  box banners for sections, no decision numbers in comments
+  ([0088](docs/decisions/0088-one-docstring-style.md)).
 - **Migrations:** any model change needs an Alembic migration that applies *and*
   rolls back cleanly.
 - **Config:** add new settings to `config.py` and document them in `.env.example`.

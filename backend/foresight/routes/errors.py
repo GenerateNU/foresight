@@ -1,9 +1,3 @@
-"""Domain errors raised by services, mapped to HTTP status codes.
-
-The only place a service error becomes a status code. Every error body is
-`{"detail": "..."}`, the same shape FastAPI uses for its own errors.
-"""
-
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
@@ -28,10 +22,26 @@ _STATUS: dict[type[DomainError], int] = {
 
 
 async def _handle(_: Request, exc: Exception) -> JSONResponse:
+    """Turns a service error into its status code and a `{"detail": ...}` body.
+
+    The same shape FastAPI uses for its own errors.
+
+    Args:
+        _ (Request): Unused.
+        exc (Exception): The service error.
+
+    Returns:
+        JSONResponse: The error response.
+    """
     code = next(c for kind, c in _STATUS.items() if isinstance(exc, kind))
     return JSONResponse({"detail": str(exc)}, status_code=code)
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    """Maps every service error to its status code; the only place this happens.
+
+    Args:
+        app (FastAPI): The app.
+    """
     for kind in _STATUS:
         app.add_exception_handler(kind, _handle)

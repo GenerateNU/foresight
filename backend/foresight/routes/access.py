@@ -1,5 +1,3 @@
-"""Who is calling, and which hotels they may reach"""
-
 from typing import Annotated
 
 from fastapi import Depends, Path, Request
@@ -24,8 +22,22 @@ async def get_current_user(
     session: SessionDep,
     _cookie: Annotated[str | None, Depends(_cookie_scheme)] = None,
 ) -> User:
-    """The signed-in user. A missing, expired or tampered cookie arrives here as
-    an empty session, so every case is the same 401."""
+    """Gets the signed-in user.
+
+    A missing, expired or tampered cookie arrives here as an empty session, so
+    every case is the same 401.
+
+    Args:
+        request (Request): The request, with its session.
+        session (SessionDep): The database session.
+        _cookie (str | None): Declares the cookie, so /docs can send it.
+
+    Returns:
+        User: The user.
+
+    Raises:
+        NotSignedInError: No valid session.
+    """
     return await user_service.get_signed_in_user(
         session, request.session.get("user_id")
     )
@@ -39,6 +51,19 @@ async def _hotel_id(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> int:
+    """Checks the signed-in user may reach a hotel in the path.
+
+    Args:
+        hotel_id (int): The hotel.
+        user (CurrentUserDep): The signed-in user.
+        session (SessionDep): The database session.
+
+    Returns:
+        int: The hotel's id.
+
+    Raises:
+        NotFoundError: They may not, or it doesn't exist.
+    """
     await access_service.require_hotel(session, user, hotel_id)
     return hotel_id
 
@@ -48,6 +73,19 @@ async def _job_id(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> int:
+    """Checks the signed-in user may reach a job in the path.
+
+    Args:
+        job_id (int): The job.
+        user (CurrentUserDep): The signed-in user.
+        session (SessionDep): The database session.
+
+    Returns:
+        int: The job's id.
+
+    Raises:
+        NotFoundError: They may not, or it doesn't exist.
+    """
     await access_service.require_job(session, user, job_id)
     return job_id
 
@@ -57,6 +95,19 @@ async def _model_id(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> int:
+    """Checks the signed-in user may reach a model version in the path.
+
+    Args:
+        model_id (int): The version.
+        user (CurrentUserDep): The signed-in user.
+        session (SessionDep): The database session.
+
+    Returns:
+        int: The version's id.
+
+    Raises:
+        NotFoundError: They may not, or it doesn't exist.
+    """
     await access_service.require_model(session, user, model_id)
     return model_id
 
@@ -66,6 +117,19 @@ async def _editable_city_id(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> int:
+    """Checks the signed-in user may change a city in the path.
+
+    Args:
+        city_id (int): The city.
+        user (CurrentUserDep): The signed-in user.
+        session (SessionDep): The database session.
+
+    Returns:
+        int: The city's id.
+
+    Raises:
+        NotFoundError: They don't work in it, or it doesn't exist.
+    """
     await access_service.require_city_member(session, user, city_id)
     return city_id
 

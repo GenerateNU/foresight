@@ -1,15 +1,3 @@
-"""Jobs: read and cancel the background jobs that ingest and training queue.
-
-Each hotel's jobs run one at a time, oldest first. Poll `GET /jobs/{id}` for
-status and progress; `POST /jobs/{id}/cancel` takes a queued job out. If a job
-stops or fails part-way, `resume_from` says where to pick up: send it to the
-same ingest endpoint as `end`, with the same `start`. A file job that ends
-early is finished by uploading the file again.
-
-`GET /hotels/{id}/freshness` reads the same jobs to say when each kind of data
-last refreshed.
-"""
-
 from datetime import date, datetime
 from typing import Any
 
@@ -38,6 +26,8 @@ router = APIRouter(tags=["Jobs"])
 
 
 class JobResponse(ResponseSchema):
+    """A background job: its status, progress and resume point."""
+
     id: int = Field(description="The job's id; poll GET /jobs/{id}")
     hotel_id: int = Field(description="The hotel it runs for")
     kind: JobKind = Field(description="What the job does")
@@ -62,6 +52,8 @@ class JobResponse(ResponseSchema):
 
 
 class KindFreshnessResponse(ResponseSchema):
+    """When one kind of data last refreshed."""
+
     last_success: datetime | None = Field(
         description="When it last succeeded, UTC; null if it never has"
     )
@@ -73,6 +65,8 @@ class KindFreshnessResponse(ResponseSchema):
 
 
 class FreshnessResponse(ResponseSchema):
+    """When each kind of a hotel's data last refreshed."""
+
     events: KindFreshnessResponse = Field(description="Routine events refresh")
     hotel_data: KindFreshnessResponse = Field(
         description="Daily New Reservations upload (CSV)"
@@ -92,7 +86,25 @@ class FreshnessResponse(ResponseSchema):
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(job_id: JobId, session: SessionDep) -> JobResponse:
-    """One job's status, progress and resume point."""
+    """One job's status, progress and resume point.
+
+    Each hotel's jobs run one at a time, oldest first; poll this for status
+    and progress. If a job stops or fails part-way, `resume_from` says where
+    to pick up: send it to the same ingest endpoint as `end`, with the same
+    `start`. A file job that ends early is finished by uploading the file
+    again.
+
+    \f
+    Args:
+        job_id (JobId): The job.
+        session (SessionDep): The database session.
+
+    Returns:
+        JobResponse: The job.
+
+    Raises:
+        NotFoundError: The job doesn't exist.
+    """
     return JobResponse.model_validate(await job_service.get_job(session, job_id))
 
 
@@ -100,8 +112,22 @@ async def get_job(job_id: JobId, session: SessionDep) -> JobResponse:
 async def cancel_job(
     job_id: JobId, session: SessionDep, tasks: BackgroundTasks
 ) -> JobResponse:
-    """Take a queued job out of its hotel's queue. A running or finished job
-    can't be cancelled (409)."""
+    """Take a queued job out of its hotel's queue.
+
+    A running or finished job can't be cancelled (409).
+
+    \f
+    Args:
+        job_id (JobId): The job.
+        session (SessionDep): The database session.
+        tasks (BackgroundTasks): Drops it from the worker's queue.
+
+    Returns:
+        JobResponse: The cancelled job.
+
+    Raises:
+        ConflictError: The job is running or finished.
+    """
     job = await job_service.cancel_job(session, job_id)
     tasks.add_task(worker.discard, job.id)
     return JobResponse.model_validate(job)
@@ -111,7 +137,17 @@ async def cancel_job(
 async def list_jobs(
     hotel_id: HotelId, session: SessionDep, page: PageDep
 ) -> PageResponse[JobResponse]:
-    """The hotel's jobs, newest first."""
+    """The hotel's jobs, newest first.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        page (PageDep): Which page.
+
+    Returns:
+        PageResponse[JobResponse]: The page.
+    """
     jobs, total = await job_service.list_jobs(
         session, hotel_id, limit=page.limit, offset=page.offset
     )
@@ -120,7 +156,17 @@ async def list_jobs(
 
 @router.get("/hotels/{hotel_id}/freshness", response_model=FreshnessResponse)
 async def get_freshness(hotel_id: HotelId, session: SessionDep) -> FreshnessResponse:
-    """When each kind of data last refreshed, and whether the latest attempt
-    failed. Events count routine refreshes only, not backfills."""
+    """When each kind of data last refreshed, and whether the latest attempt failed.
+
+    Events count routine refreshes only, not backfills.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+
+    Returns:
+        FreshnessResponse: Each kind's latest success and failure.
+    """
     result = await freshness_service.get_freshness(session, hotel_id)
     return FreshnessResponse.model_validate(result)
