@@ -98,8 +98,8 @@ version is comes from here. What's known it should cover:
 - **Accuracy against sales**, on nights the model hasn't seen: `just backtest`
   does this today, with baselines (same weekday last year, last 4 weeks).
 - **The tune-up**: whether it beats the base, and after how many days of
-  manager rates. `just tuning-backtest` does a version of this, but assumes the
-  manager saw the base and booked one day ahead; it's to be redesigned.
+  manager rates. The old tuning backtest was removed for a redesign; it
+  assumed the manager saw the base and booked one day ahead.
 - **Closeness to the manager**, week by week: the gap between each manager rate
   and the recommendation they saw (manager minus model, and its size). A
   shrinking gap means retrains and tune-ups are working. This was the alignment

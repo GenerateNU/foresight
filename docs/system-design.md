@@ -677,15 +677,15 @@ cli.backtest
   → domain/backtest.run_backtest                no database
       one EBM on --inputs (default: every input the training data has),
         identical rows merged as in training
-      ml/base.score                             every test row: night or booked room
+      score                                     every test row (a booked room)
       on booked rooms: MAE by days booked ahead
       only with --baselines:
         ml/baselines on each night's average    same weekday last year,
           booked rate ≤ cutoff (0076)
                                                 last 4 weeks' weekday mean
-        ml/base.score                           each baseline vs the model
+        score                                   each baseline vs the model
                                                 on the nights it covers
-  ← scores (+ baseline table), and a PNG in backend/backtest-out/
+  ← scores (+ baseline table)
 ```
 
 `ml/features.INPUT_GROUPS` sorts every input into groups (calendar, holidays,
@@ -694,34 +694,6 @@ input sets by running it once per set: `--inputs calendar,events` leaves out day
 booked ahead. The test rows are booked rooms. `--start` leaves out
 earlier nights, and
 `--event-days` limits how much event history the model trains on.
-
-`just tuning-backtest 7 [--test-days 60] [--sizes 5,10,20,30]
-[--manager-share 0.5] [--manager-rule weekend+15%]` checks whether the daily
-tune-up beats the base model, and after how many days of manager rates
-([0073](decisions/0073-how-the-backtest-judges-the-tune-up.md)). A synthetic
-manager (`--manager-rule`) has a habit the base lacks, and the table shows how
-much of it the tune-up learned
-([0074](decisions/0074-only-past-nights-are-no-change.md)).
-
-```
-cli.tuning_backtest
-  → domain/backtest.load_tuning_backtest        then the session closes
-      cutoff = test_days priced days before the newest
-  → domain/backtest.run_tuning_backtest         no database
-      base EBM on the training rows ≤ cutoff, as training fits them
-      held-out nights: one row each; on booked rooms the night's average
-        booked rate, booked the day before (0076)
-      scored = nights after the first max(sizes) priced days after the cutoff
-      for each size N:
-        manager   = reviewed days of the first N priced days after the cutoff
-                    (recorded rate, or the base with --manager-rule applied)
-        untouched = the rest of those N days, past nights left alone (0074)
-        tuning.fit_correction  manager only, and + untouched (what ships)
-        ml/base.score          on the scored nights, beside the base
-  ← table: MAE and skill per size (+ Learned/Drift with a rule), the dates
-    each size used, and a PNG in
-    backend/backtest-out/ of actual, base and each tune-up per scored night
-```
 
 ---
 

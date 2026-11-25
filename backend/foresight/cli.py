@@ -3,25 +3,21 @@
 For jobs that can't wait for the app to offer them. Like `worker.run_job`, a
 command opens its own session and commits, once, when it succeeds; everything it
 does goes through `services/`. A `DomainError` is printed and exits 1, with
-nothing committed. `backtest` and `tuning-backtest` only read, so they never
-commit.
+nothing committed. `backtest` only reads, so it never commits.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import re
 import sys
-from datetime import date, datetime
-from itertools import pairwise
-from pathlib import Path
+from datetime import date
 from typing import TYPE_CHECKING
 
 from foresight.database.session import async_session_factory, engine
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
-from foresight.services.errors import DomainError, InvalidRequestError
+from foresight.services.errors import DomainError
 from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
 
 if TYPE_CHECKING:
@@ -44,7 +40,6 @@ async def link_user(email: str, hotel_id: int) -> None:
 async def backtest(
     hotel_id: int,
     test_days: int,
-    out: Path,
     baselines: bool,
     inputs: list[str] | None,
     event_days: int | None,
@@ -76,283 +71,6 @@ async def backtest(
     if result.baselines:
         print()
         print(_baseline_table(result.baselines, len(rows)))
-
-    path = out / f"hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
-    # One point per night: booked rooms are averaged, so a night's line is its
-    # average rate per booked room; the scores in the subtitle are per room.
-    _save_plot(
-        rows.groupby("stay_date", as_index=False).mean(numeric_only=True),
-        path,
-        ylabel="Average rate per booked room (€)",
-        title=(
-            f"Backtest: {result.hotel_name}, actual vs predicted rate, "
-            f"{first:%-d %b} – {last:%-d %b %Y} ({described})"
-        ),
-        subtitle="  ·  ".join(f"{name} {value}" for name, value in scores),
-    )
-    print(f"Plot saved to {path}")
-
-
-async def tuning_backtest(
-    hotel_id: int,
-    test_days: int,
-    sizes: list[int],
-    start: date | None,
-    out: Path,
-    rule: backtest_service.ManagerRule | None = None,
-    manager_share: float = 1.0,
-) -> None:
-    # Load, then let the connection go: the fits would outlast it.
-    async with async_session_factory() as session:
-        split = await backtest_service.load_tuning_backtest(
-            session, hotel_id, test_days=test_days, start=start
-        )
-    result = await backtest_service.run_tuning_backtest(
-        split, sizes=sizes, rule=rule, manager_share=manager_share
-    )
-    base_mae = result.base["mae"]
-    assert base_mae is not None
-    manager = (
-        f"synthetic, {result.rule} on the base" if result.rule else "recorded rates"
-    )
-    print(result.hotel_name)
-    print(f"  Manager          {manager}, prices {result.manager_share:.0%} of days")
-    print(f"  Base trained on  {result.train_start} to {result.cutoff}")
-    print(
-        f"  Scored on        {result.eval_start} to {result.eval_end} "
-        f"({result.eval_nights} nights)"
-    )
-    print(f"  Base model MAE   €{base_mae:.2f}")
-    print()
-    print(_tuning_table(result.rows, synthetic=result.rule is not None))
-
-    tuned = [r for r in result.rows if not r.skipped]
-    path = out / f"tuning-hotel-{hotel_id}-{datetime.now():%Y-%m-%d-%H%M%S}.png"
-    _save_tuning_plot(
-        result.nights.loc[result.nights["scored"]],
-        [r.feedback_days for r in tuned],
-        path,
-        actual_label=f"Manager ({result.rule})" if result.rule else "Actual",
-        title=(
-            f"Tune-up backtest: {result.hotel_name}, scored nights "
-            f"{result.eval_start:%-d %b} – {result.eval_end:%-d %b %Y}"
-        ),
-        subtitle="  ·  ".join(
-            [f"MAE: base {_euro(base_mae)}"]
-            + [f"{r.feedback_days}d {_euro(r.with_untouched['mae'])}" for r in tuned]
-        ),
-    )
-    print(f"Plot saved to {path}")
-
-
-def _tuning_table(
-    rows: list[backtest_service.TuningRow], *, synthetic: bool = False
-) -> str:
-    """Each feedback size's MAE and skill, without and with untouched nights.
-
-    With a synthetic manager, also how much of their habit was learned.
-    """
-    lines = [
-        f"{'Feedback':<10}{'Nights':>7}{'Untouched':>10}"
-        f"{'MAE mgr-only':>14}{'Skill':>7}{'MAE +untouched':>16}{'Skill':>7}"
-        f"{'Mean corr.':>12}" + (f"{'Learned':>9}{'Drift':>10}" if synthetic else "")
-    ]
-    for r in rows:
-        label = f"{r.feedback_days} days"
-        if r.skipped:
-            lines.append(
-                f"{label:<10}{r.feedback_nights:>7}{r.untouched_nights:>10}"
-                f"  skipped: {r.skipped}"
-            )
-            continue
-        corr = r.mean_correction or 0.0
-        lines.append(
-            f"{label:<10}{r.feedback_nights:>7}{r.untouched_nights:>10}"
-            f"{_euro(r.manager_only['mae']):>14}{_pct(r.skill_manager_only):>7}"
-            f"{_euro(r.with_untouched['mae']):>16}{_pct(r.skill_with_untouched):>7}"
-            f"{_signed_euro(corr):>12}"
-            + (
-                f"{_share(r.recovery):>9}{_signed_euro(r.drift):>10}"
-                if synthetic
-                else ""
-            )
-        )
-    lines.append(
-        "Skill > 0 means the tune-up beats the base. '+untouched' is what ships "
-        "(decision 0072)."
-    )
-    if synthetic:
-        lines.append(
-            "Learned: share of the manager's habit the shipped tune-up adds on the "
-            "nights it applies to (100% is all of it). Drift: mean change on the "
-            "other nights (€0 is right). Decision 0074."
-        )
-    lines.append("")
-    lines.append(f"{'Feedback':<10}{'Feedback nights':<26}Untouched nights")
-    for r in rows:
-        untouched = _date_range(r.untouched_dates) if r.untouched_dates else "none"
-        lines.append(
-            f"{f'{r.feedback_days} days':<10}{_date_range(r.feedback_dates):<26}"
-            f"{untouched}"
-        )
-    return "\n".join(lines)
-
-
-def _signed_euro(value: float | None) -> str:
-    if value is None:
-        return "n/a"
-    return ("+" if value >= 0 else "−") + "€" + format(abs(value), ".2f")
-
-
-def _share(value: float | None) -> str:
-    return "n/a" if value is None else f"{value:.0%}"
-
-
-def _date_range(dates: tuple[date, date]) -> str:
-    return f"{dates[0]} to {dates[1]}"
-
-
-# Tune-up sizes, fewest days of feedback first: four distinct hues, which
-# pass the palette validator on every pair (the lines cross everywhere). Each
-# size also gets its own marker, so colour is never the only cue.
-_TUNED_COLORS = ["#2a78d6", "#eda100", "#1baf7a", "#e34948"]
-_TUNED_MARKERS = ["s", "^", "D", "v"]
-# More sizes than that: one hue, light to dark (an ordinal ramp), no markers.
-_TUNED_RAMP = ["#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]
-
-
-def _save_tuning_plot(
-    nights: pd.DataFrame,
-    sizes: list[int],
-    path: Path,
-    *,
-    title: str,
-    subtitle: str,
-    actual_label: str = "Actual",
-) -> None:
-    """Actual, base and each shipped tune-up's rate per scored night, as a PNG.
-
-    Nights sit side by side, with a divider and a break in the lines where
-    nights are missing, so a gap in the data isn't drawn as a trend or as
-    empty space.
-    """
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if len(sizes) <= len(_TUNED_COLORS):
-        styles = [
-            {"color": c, "marker": m, "markersize": 5, "markeredgecolor": "white",
-             "markeredgewidth": 0.8}
-            for c, m in zip(_TUNED_COLORS, _TUNED_MARKERS, strict=False)
-        ]  # fmt: skip
-    else:  # spread the ramp; never repeat or cycle a colour
-        cmap = matplotlib.colors.LinearSegmentedColormap.from_list("t", _TUNED_RAMP)
-        styles = [{"color": c} for c in cmap(np.linspace(0, 1, len(sizes)))]
-    # Drawn in this order: tune-ups, then base on top (it sits almost under
-    # them), then actual.
-    series = [
-        (f"tuned_{n}", {**style, "linewidth": 1.8, "label": f"Tuned, {n} days"})
-        for n, style in zip(sizes, styles, strict=False)
-    ]
-    series.append(
-        ("base", {"color": "#52514e", "linestyle": (0, (3, 2)), "linewidth": 1.5,
-                  "label": "Base (untuned)"})
-    )  # fmt: skip
-    series.append(
-        ("actual", {"color": "#0b0b0b", "linewidth": 2, "marker": "o",
-                    "markersize": 5, "markeredgecolor": "white",
-                    "markeredgewidth": 1, "label": actual_label, "zorder": 3})
-    )  # fmt: skip
-
-    fig, top_ax = plt.subplots(figsize=(11, 4.5))
-    rows = nights.sort_values("stay_date")
-    dates = list(rows["stay_date"])
-    breaks = _gap_axis(top_ax, dates)
-    x = np.insert(np.arange(len(dates), dtype=float), breaks, np.nan)
-    for column, style in series:
-        y = np.insert(rows[column].to_numpy(dtype=float), breaks, np.nan)
-        top_ax.plot(x, y, **style)
-    top_ax.set_ylabel("Rate (€)")
-    top_ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
-    top_ax.spines[["top", "right"]].set_visible(False)
-
-    top_ax.set_title(title, loc="left", pad=24)
-    top_ax.text(
-        0, 1.02, subtitle, transform=top_ax.transAxes, fontsize=9,
-        color="#52514e", va="bottom",
-    )  # fmt: skip
-    bottom, top = top_ax.get_ylim()
-    top_ax.set_ylim(bottom, top + 0.25 * (top - bottom))  # room for the legend
-    top_ax.legend(frameon=False, loc="upper left", ncols=3, fontsize=9)
-    top_ax.set_xlabel("Scored night (dotted lines: nights missing from the data)")
-    fig.tight_layout()
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-
-
-def _gap_axis(ax, dates: list[date]):
-    """Sets up an x axis of nights side by side, one position per night.
-
-    Draws a dotted divider wherever nights are missing, labels the first
-    night, the first after each gap and every third night, and returns the
-    break positions: insert NaN there (`np.insert`) so lines stop at a gap.
-    """
-    import numpy as np
-
-    # A gap starts at every night more than a day after the one before.
-    gap = np.array([False] + [(b - a).days > 1 for a, b in pairwise(dates)])
-    breaks = np.flatnonzero(gap)
-    for b in breaks:
-        ax.axvline(b - 0.5, color="#c3c2b7", linewidth=1, linestyle=":")
-    ticks = [i for i in range(len(dates)) if i == 0 or gap[i] or i % 3 == 0]
-    ax.set_xticks(ticks, [f"{dates[i]:%-d %b}" for i in ticks], fontsize=9)
-    ax.set_xlim(-0.5, len(dates) - 0.5)
-    return breaks
-
-
-def _euro(value: float | None) -> str:
-    return "n/a" if value is None else f"€{value:.2f}"
-
-
-def _pct(value: float | None) -> str:
-    return "n/a" if value is None else f"{value:+.0%}"
-
-
-def _parse_manager_rule(text: str) -> backtest_service.ManagerRule:
-    """`--manager-rule`: nights, then a signed percent, e.g. weekend+15%.
-
-    Raises argparse.ArgumentTypeError for anything else.
-    """
-    match = re.fullmatch(r"([a-z]+)([+-]\d+(?:\.\d+)?)%?", text.strip().lower())
-    if match is None:
-        raise argparse.ArgumentTypeError(
-            f"expected nights and a percent, e.g. weekend+15%; got {text!r}"
-        )
-    try:
-        return backtest_service.ManagerRule(match.group(1), float(match.group(2)) / 100)
-    except InvalidRequestError as error:
-        raise argparse.ArgumentTypeError(str(error)) from error
-
-
-def _parse_sizes(text: str) -> list[int]:
-    """`--sizes`: comma-separated positive day counts, e.g. 5,10,20,30.
-
-    Raises argparse.ArgumentTypeError for anything else.
-    """
-    try:
-        sizes = [int(n) for n in text.split(",") if n.strip()]
-    except ValueError:
-        sizes = []
-    if not sizes or min(sizes) < 1:
-        raise argparse.ArgumentTypeError(
-            f"expected positive whole days, e.g. 5,10,20,30; got {text!r}"
-        )
-    return sorted(set(sizes))
 
 
 # Days-ahead buckets for the backtest's error breakdown: (label, low, high).
@@ -437,79 +155,6 @@ def _baseline_table(
     return "\n".join(lines)
 
 
-def _save_plot(
-    nights: pd.DataFrame, path: Path, *, ylabel: str, title: str, subtitle: str
-) -> None:
-    """Actual vs predicted rate per night, as a PNG, with the scores under the title."""
-    # Imported here so only this command needs matplotlib, not the API.
-    import matplotlib
-
-    matplotlib.use("Agg")  # write files; no window
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    nights = nights.sort_values("stay_date").reset_index(drop=True)
-
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-    # Nights side by side, with a break and a dotted divider where nights are
-    # missing, so a gap in the data isn't drawn as a trend.
-    breaks = _gap_axis(ax, list(nights["stay_date"]))
-    x = np.insert(np.arange(len(nights), dtype=float), breaks, np.nan)
-
-    def line(column: str) -> np.ndarray:
-        return np.insert(nights[column].to_numpy(dtype=float), breaks, np.nan)
-
-    ax.plot(
-        x,
-        line("actual"),
-        color="#2a78d6",
-        linewidth=2,
-        label="Actual",
-    )
-    ax.plot(
-        x,
-        line("predicted"),
-        color="#eb6834",
-        linewidth=2,
-        label="Predicted",
-    )
-    # Baselines:
-    for (name, label), style in zip(
-        backtest_service.BASELINES.items(), ["--", ":"], strict=True
-    ):
-        if name in nights and nights[name].notna().any():
-            ax.plot(
-                x,
-                line(name),
-                color="#888888",
-                linestyle=style,
-                linewidth=1.2,
-                label=label,
-            )
-    ax.set_title(title, loc="left", pad=24)
-    ax.text(
-        0,
-        1.02,
-        subtitle,
-        transform=ax.transAxes,
-        fontsize=9,
-        color="#555555",
-        va="bottom",
-    )
-    ax.set_ylabel(ylabel)
-    ax.grid(axis="y", color="#e5e5e5", linewidth=0.8)
-    ax.spines[["top", "right"]].set_visible(False)
-    bottom, top = ax.get_ylim()
-    ax.set_ylim(bottom, top + 0.25 * (top - bottom))  # room for the legend
-    ax.legend(frameon=False, loc="upper left", ncols=4)
-    ax.set_xlabel("Test night (dotted lines: nights missing from the data)")
-    fig.tight_layout()
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-
-
 async def _run(args: argparse.Namespace) -> None:
     try:
         if args.command == "link-user":
@@ -518,21 +163,10 @@ async def _run(args: argparse.Namespace) -> None:
             await backtest(
                 args.hotel_id,
                 args.test_days,
-                args.out,
                 args.baselines,
                 args.inputs,
                 args.event_days,
                 args.start,
-            )
-        elif args.command == "tuning-backtest":
-            await tuning_backtest(
-                args.hotel_id,
-                args.test_days,
-                args.sizes,
-                args.start,
-                args.out,
-                args.manager_rule,
-                args.manager_share,
             )
     finally:
         await engine.dispose()
@@ -580,61 +214,6 @@ def main(argv: list[str] | None = None) -> int:
             "calendar,event_count. Default: every input the hotel's training "
             "data has, like the served model"
         ),
-    )
-    bt.add_argument(
-        "--out", type=Path, default=Path("backtest-out"), help="Folder for the plot"
-    )
-
-    tb = commands.add_parser(
-        "tuning-backtest",
-        help="Score the tune-up against the base model, by days of manager feedback",
-    )
-    tb.add_argument("hotel_id", type=int, help="The hotel's id")
-    tb.add_argument(
-        "--test-days",
-        type=int,
-        default=60,
-        help=(
-            "Newest priced days held out from the base: the first max(--sizes) "
-            "are feedback, the rest are scored. Default: 60"
-        ),
-    )
-    tb.add_argument(
-        "--sizes",
-        type=_parse_sizes,
-        default=list(backtest_service.TUNING_SIZES),
-        metavar="DAYS",
-        help="Comma-separated days of manager feedback to try. Default: 5,10,20,30",
-    )
-    tb.add_argument("--start", type=date.fromisoformat, help="Leave out earlier nights")
-    tb.add_argument(
-        "--manager-rule",
-        type=_parse_manager_rule,
-        default=None,
-        metavar="RULE",
-        help=(
-            "A synthetic manager with a habit the base lacks, e.g. weekend+15%%, "
-            "events+20%%, all-10%%. Nights: "
-            f"{', '.join(backtest_service.RULE_NIGHTS)}. "
-            "Their rate is the base's with the rule applied. Default: none, the "
-            "recorded rate is the manager's"
-        ),
-    )
-    tb.add_argument(
-        "--manager-share",
-        type=float,
-        default=1.0,
-        metavar="SHARE",
-        help=(
-            "Share of feedback days the manager prices, e.g. 0.3; the rest are "
-            "learned as 'no change'. Default: 1, every day"
-        ),
-    )
-    tb.add_argument(
-        "--out",
-        type=Path,
-        default=Path("backtest-out"),
-        help="Folder for the plot",
     )
 
     args = parser.parse_args(argv)

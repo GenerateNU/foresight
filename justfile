@@ -98,18 +98,12 @@ migrate-down *flags: (_flags flags)
 
 # --- Model ---
 
-# Backtest the pricing model for a hotel; saves a plot to backend/backtest-out/
+# Backtest the pricing model for a hotel
 # `--neon` picks the database; other flags go to the CLI, e.g.
 # `just backtest 7 --baselines --test-days 60`
 backtest hotel_id *flags:
     @echo "Database: {{ if flags =~ '(^|\s)--neon(\s|$)' { "neon" } else { "local" } }}"
     cd backend && {{ if flags =~ '(^|\s)--neon(\s|$)' { "" } else { _env_local } }} uv run python -m foresight.cli backtest {{hotel_id}} {{ trim(replace(flags, "--neon", "")) }}
-
-# Score the daily tune-up against the base model, by days of manager feedback
-# e.g. `just tuning-backtest 7 --test-days 90 --sizes 5,10,20,30 --manager-rule weekend+15%`
-tuning-backtest hotel_id *flags:
-    @echo "Database: {{ if flags =~ '(^|\s)--neon(\s|$)' { "neon" } else { "local" } }}"
-    cd backend && {{ if flags =~ '(^|\s)--neon(\s|$)' { "" } else { _env_local } }} uv run python -m foresight.cli tuning-backtest {{hotel_id}} {{ trim(replace(flags, "--neon", "")) }}
 
 # --- Testing ---
 
