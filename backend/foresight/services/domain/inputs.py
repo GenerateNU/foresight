@@ -8,28 +8,20 @@ nights an events backfill covered, and when PredictHQ first saw each event. On
 a night no backfill covered, the event features stay empty, not zero.
 """
 
-from __future__ import annotations
-
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import timedelta
-from typing import TYPE_CHECKING
+from datetime import date, timedelta
 
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import Source
+from foresight.database.models.city import City
+from foresight.database.models.hotel import Hotel
 from foresight.repository.signals import event as event_repo
 from foresight.services.adapters import predicthq
 from foresight.services.domain import event as event_service
 from foresight.services.ml.features import build_features
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import date
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.city import City
-    from foresight.database.models.hotel import Hotel
 
 EVENT_COLUMNS = [
     "start_local_date",

@@ -1,20 +1,14 @@
 """Bulk upsert shared by every table with a natural key."""
 
-from __future__ import annotations
-
+from collections.abc import Iterable, Mapping, Sequence
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
-from sqlalchemy import func, literal_column, or_
+from sqlalchemy import Table, func, literal_column, or_
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
-
-    from sqlalchemy import Table
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.base import Base
+from foresight.database.base import Base
 
 # Postgres allows at most 32,767 bind parameters in one statement.
 _MAX_PARAMS = 32_767

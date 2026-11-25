@@ -5,18 +5,14 @@ refs, operators, free-text company and cancel reason) are never copied. A bad
 row is skipped and counted. A file missing a column we need is rejected.
 """
 
-from __future__ import annotations
-
 import csv
 import io
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

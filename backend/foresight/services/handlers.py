@@ -1,27 +1,22 @@
 """What each kind of job does once it runs: one async generator per kind, each
 yielding a `Step` after every saved chunk."""
 
-from __future__ import annotations
-
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.config import settings
 from foresight.database.enums import JobKind
+from foresight.database.models.hotel import Hotel
+from foresight.repository.upsert import Outcome
 from foresight.services.domain import model as model_service
 from foresight.services.domain import tuning as tuning_service
 from foresight.services.domain.window import Window
 from foresight.services.ingest import event as event_ingest
 from foresight.services.ingest import files as file_ingest
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel
-    from foresight.repository.upsert import Outcome
 
 
 @dataclass(frozen=True, slots=True)

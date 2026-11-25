@@ -1,22 +1,16 @@
 """Cities: the markets hotels sit in and every outside signal is keyed on."""
 
-from __future__ import annotations
-
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from datetime import date, datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from foresight.database.models.city import City
 from foresight.repository import city as city_repo
 from foresight.services.domain.normalize import slugify_city
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import date
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.city import City
 
 
 async def create_city(session: AsyncSession, *, name: str, **values: Any) -> City:

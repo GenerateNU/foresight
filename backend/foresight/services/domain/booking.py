@@ -1,23 +1,14 @@
 """Bookings: what each booked room paid, one row per night, for training."""
 
-from __future__ import annotations
-
-from datetime import timedelta
-from typing import TYPE_CHECKING
+from collections.abc import Iterator
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.models.booking import Booking
 from foresight.repository import booking as booking_repo
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from datetime import date
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.booking import Booking
-
 
 BOOKING_ROW_COLUMNS = ["stay_date", "booked_on", "rate"]
 

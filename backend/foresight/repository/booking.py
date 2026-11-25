@@ -4,22 +4,15 @@ Both are saved with an upsert on the hotel and Guestline's reference, so loading
 the same file twice changes nothing.
 """
 
-from __future__ import annotations
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import date, timedelta
+from typing import Any
 
-from datetime import timedelta
-from typing import TYPE_CHECKING, Any
-
-from sqlalchemy import exists, func, select
+from sqlalchemy import Select, exists, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.booking import Booking, BookingCancellation
 from foresight.repository.upsert import Outcome, upsert_rows
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
-    from datetime import date
-
-    from sqlalchemy import Select
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def upsert_bookings(

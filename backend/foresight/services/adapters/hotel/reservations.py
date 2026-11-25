@@ -3,8 +3,6 @@
 Never touches the database; `services/ingest/bookings.py` saves the rows.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from foresight.services.adapters.hotel.common import (

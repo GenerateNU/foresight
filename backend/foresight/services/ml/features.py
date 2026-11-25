@@ -1,16 +1,11 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from collections.abc import Collection
+from datetime import date
 
 import numpy as np
 import pandas as pd
 
 from foresight.database.enums import EventCategory
 from foresight.services.ml.holidays import night_before_holiday, public_holiday
-
-if TYPE_CHECKING:
-    from collections.abc import Collection
-    from datetime import date
 
 # Events whose predicted accommodation spend reaches this are "big" (decision
 # 0041). A starting point from 14 Dublin nights; the backtest may change it.

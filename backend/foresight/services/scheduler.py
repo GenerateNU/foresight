@@ -1,26 +1,20 @@
 """The daily routine: which jobs are due for each hotel, and queueing them."""
 
-from __future__ import annotations
-
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, time, timedelta
-from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
+from foresight.database.models.hotel import Hotel
+from foresight.database.models.job import Job
 from foresight.repository import job as job_repo
 from foresight.services.domain.hotel import list_hotels
 from foresight.services.errors import DomainError
 from foresight.services.job import start_events_job, start_train_job
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel
-    from foresight.database.models.job import Job
 
 log = logging.getLogger(__name__)
 

@@ -4,21 +4,16 @@ Every source must land on the same row for the same real-world event, so the
 dedupe key and the field normalizers live here rather than in an adapter.
 """
 
-from __future__ import annotations
-
 import hashlib
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, tzinfo
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
 
 _BRACKETED = re.compile(r"[(\[{][^)\]}]*[)\]}]")
 _PRESENTER_TAIL = re.compile(

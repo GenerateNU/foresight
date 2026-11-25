@@ -20,16 +20,19 @@ latest, as it was; one without is priced and returned unsaved.
 Returns domain dataclasses; the route maps them to its response schemas.
 """
 
-from __future__ import annotations
-
 import math
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from typing import Any
 
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import EventCategory
+from foresight.database.models.hotel import Hotel, RoomType
+from foresight.database.models.model import PricingModel
+from foresight.database.models.recommendation import RecommendationSnapshot
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain import event as event_service
@@ -48,17 +51,6 @@ from foresight.services.domain.inputs import build_inputs
 from foresight.services.domain.model import get_active_model, load_model
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.features import LEAD
-
-if TYPE_CHECKING:
-    from datetime import date
-    from decimal import Decimal
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel, RoomType
-    from foresight.database.models.model import PricingModel
-    from foresight.database.models.recommendation import RecommendationSnapshot
-
 
 # One request scores its changed nights in one batch; this bounds the batch.
 MAX_NIGHTS = 90

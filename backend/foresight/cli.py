@@ -6,22 +6,18 @@ does goes through `services/`. A `DomainError` is printed and exits 1, with
 nothing committed. `backtest` only reads, so it never commits.
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import sys
 from datetime import date
-from typing import TYPE_CHECKING
+
+import pandas as pd
 
 from foresight.database.session import async_session_factory, engine
 from foresight.services.domain import backtest as backtest_service
 from foresight.services.domain import user as user_service
 from foresight.services.errors import DomainError
 from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 async def link_user(email: str, hotel_id: int) -> None:

@@ -8,27 +8,21 @@ Two modes, chosen by whether the caller gave dates:
   time, so a run cut short keeps every finished month.
 """
 
-from __future__ import annotations
-
 import logging
 from collections import Counter
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from datetime import date, datetime
 
+import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from foresight.database.models.city import City
+from foresight.repository.upsert import Outcome
 from foresight.services.adapters import predicthq
 from foresight.services.adapters.predicthq import FetchResult, Market
 from foresight.services.domain.event import save_event
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-    from datetime import date, datetime
-
-    import httpx
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.city import City
-    from foresight.repository.upsert import Outcome
-    from foresight.services.domain.window import Window
+from foresight.services.domain.window import Window
 
 log = logging.getLogger(__name__)
 

@@ -1,20 +1,15 @@
 """Data access for `pricing_models`: trained model versions per hotel."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from datetime import date
+from typing import Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from foresight.database.models.model import PricingModel
 from foresight.repository.pagination import fetch_page
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import date
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def create_model(

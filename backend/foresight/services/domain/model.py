@@ -7,16 +7,20 @@ inactive and becomes the hotel's active one only once training succeeded,
 unless the caller asks to keep the current one serving.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from importlib.metadata import version
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
+import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.models.hotel import Hotel
+from foresight.database.models.model import PricingModel
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import model as model_repo
 from foresight.services.domain.hotel import get_hotel
@@ -32,16 +36,6 @@ from foresight.services.domain.training_data import (
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel, TunedEBMModel
 from foresight.services.ml.resources import measure
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import date
-
-    import pandas as pd
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel
-    from foresight.database.models.model import PricingModel
 
 ALGORITHM = "ebm"
 # Fewest booked rooms to train on (decision 0076); EBM holds some back for its

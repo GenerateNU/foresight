@@ -6,15 +6,15 @@ version that points to its base. A tune-up always starts from the active
 model's base, so corrections are rebuilt each time, never stacked.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING
 
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.models.hotel import Hotel
+from foresight.database.models.model import PricingModel
 from foresight.repository import model as model_repo
 from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain.city import local_date, local_today
@@ -28,12 +28,6 @@ from foresight.services.domain.model import (
 )
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.ebm import EBMModel, TunedEBMModel
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel
-    from foresight.database.models.model import PricingModel
 
 ALGORITHM = "ebm-tuned"
 MIN_TUNE_NIGHTS = 5

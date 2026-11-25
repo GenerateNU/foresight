@@ -1,20 +1,15 @@
 """Guestline Daily New Reservations and Cancellations: parse an uploaded file,
 then save its rows."""
 
-from __future__ import annotations
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-from typing import TYPE_CHECKING, Any
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.models.hotel import Hotel
 from foresight.repository import booking as booking_repo
+from foresight.repository.upsert import Outcome
 from foresight.services.adapters.hotel import cancellations, reservations
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel
-    from foresight.repository.upsert import Outcome
 
 PARSE_ERRORS = reservations.PARSE_ERRORS
 

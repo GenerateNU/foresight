@@ -1,23 +1,16 @@
 """Data access for `jobs`."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from foresight.database.enums import JobStatus
+from foresight.database.enums import JobKind, JobStatus
 from foresight.database.models.hotel import Hotel
 from foresight.database.models.job import Job
 from foresight.repository.pagination import fetch_page
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import datetime
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.enums import JobKind
 
 _UNFINISHED = (JobStatus.QUEUED, JobStatus.RUNNING)
 

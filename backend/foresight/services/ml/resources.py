@@ -4,17 +4,12 @@ Memory is this process's resident memory plus its children's: EBM fits in
 parallel (joblib worker processes), so most of it is outside this process.
 """
 
-from __future__ import annotations
-
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING
 
 import psutil
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 # How often memory is sampled. A spike shorter than this can be missed; fits
 # take seconds, so that's acceptable.
