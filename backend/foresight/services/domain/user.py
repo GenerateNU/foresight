@@ -1,5 +1,3 @@
-"""Users, and which hotels they work for."""
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.config import settings
@@ -16,7 +14,11 @@ from foresight.services.errors import (
 
 
 def require_sign_in_configured() -> None:
-    """Raises NotConfiguredError if a Google or session setting is missing."""
+    """Checks every Google and session setting sign-in needs is set.
+
+    Raises:
+        NotConfiguredError: Naming the settings that are missing.
+    """
     missing = [
         name
         for name, value in (
@@ -38,9 +40,20 @@ async def sign_in(
     email_verified: bool,
     name: str | None,
 ) -> User:
-    """Find or create the user for a Google account and record the sign-in.
+    """Finds or creates the user for a Google account and records the sign-in.
 
-    Raises ForbiddenError if Google gave no id or email, or didn't verify it.
+    Args:
+        session (AsyncSession): The database session.
+        google_id (str | None): Google's account id.
+        email (str | None): The account's email.
+        email_verified (bool): Whether Google verified the email.
+        name (str | None): The account's display name.
+
+    Returns:
+        User: The signed-in user.
+
+    Raises:
+        ForbiddenError: Google gave no id or email, or didn't verify it.
     """
     if not google_id or not email or not email_verified:
         raise ForbiddenError("Google did not confirm a verified email for this account")
@@ -50,7 +63,18 @@ async def sign_in(
 
 
 async def get_signed_in_user(session: AsyncSession, user_id: object) -> User:
-    """The user a session belongs to. Raises NotSignedInError if there isn't one."""
+    """Gets the user a session belongs to.
+
+    Args:
+        session (AsyncSession): The database session.
+        user_id (object): The id stored in the session cookie, unchecked.
+
+    Returns:
+        User: The user.
+
+    Raises:
+        NotSignedInError: The id isn't an int, or no such user exists.
+    """
     if not isinstance(user_id, int) or isinstance(user_id, bool):
         raise NotSignedInError("Not signed in")
     user = await user_repo.get_user(session, user_id)
@@ -60,28 +84,38 @@ async def get_signed_in_user(session: AsyncSession, user_id: object) -> User:
 
 
 async def get_user(session: AsyncSession, user_id: int) -> User:
-    """Raises NotFoundError for an unknown user."""
+    """Gets a user.
+
+    Args:
+        session (AsyncSession): The database session.
+        user_id (int): The user.
+
+    Returns:
+        User: The user.
+
+    Raises:
+        NotFoundError: The user doesn't exist.
+    """
     user = await user_repo.get_user(session, user_id)
     if user is None:
         raise NotFoundError("User", user_id)
     return user
 
 
-async def get_user_by_google_id(session: AsyncSession, google_id: str) -> User:
-    """Raises NotFoundError if no user has this Google account id."""
-    user = await user_repo.get_user_by_google_id(session, google_id)
-    if user is None:
-        raise NotFoundError("User", google_id)
-    return user
-
-
 async def get_user_by_email(session: AsyncSession, email: str) -> User:
-    """The user with this email, ignoring case.
+    """Gets the user with an email, ignoring case.
+
+    Args:
+        session (AsyncSession): The database session.
+        email (str): The email.
+
+    Returns:
+        User: The user.
 
     Raises:
         NotFoundError: No user has this email.
-        ConflictError: Several do. Emails change hands, so this never picks one:
-            it would give a hotel's access to the wrong person.
+        ConflictError: Several do. Emails change hands, so this never picks
+            one: it would give a hotel's access to the wrong person.
     """
     users = await user_repo.list_users_by_email(session, email)
     if not users:
@@ -115,11 +149,22 @@ async def link_user_to_hotel(
 async def link_user_by_email(
     session: AsyncSession, *, hotel_id: int, email: str
 ) -> bool:
-    """Link the user who has this email to a hotel. True if the link is new.
+    """Links the user with an email to a hotel.
 
-    Raises NotFoundError if nobody with this email has signed in yet (or the
-    hotel is unknown), ConflictError if several users share it. The caller has
-    checked that whoever is linking may reach the hotel.
+    The caller has checked that whoever is linking may reach the hotel.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        email (str): The user's email.
+
+    Returns:
+        bool: True if the link is new, False if it already existed.
+
+    Raises:
+        NotFoundError: Nobody with this email has signed in yet, or the hotel
+            is unknown.
+        ConflictError: Several users share the email.
     """
     user = await get_user_by_email(session, email)
     return await link_user_to_hotel(session, user_id=user.id, hotel_id=hotel_id)

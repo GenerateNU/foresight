@@ -1,5 +1,3 @@
-"""Cities: the markets hotels sit in and every outside signal is keyed on."""
-
 from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
@@ -14,7 +12,20 @@ from foresight.services.errors import ConflictError, InvalidRequestError, NotFou
 
 
 async def create_city(session: AsyncSession, *, name: str, **values: Any) -> City:
-    """Raises ConflictError if a city with the same normalized name exists."""
+    """Creates a city: a market hotels sit in and outside signals are keyed on.
+
+    Args:
+        session (AsyncSession): The database session.
+        name (str): The city's name.
+        **values (Any): Its other columns.
+
+    Returns:
+        City: The new city.
+
+    Raises:
+        ConflictError: A city with the same normalized name exists.
+        InvalidRequestError: The name has no letters or digits.
+    """
     city = await city_repo.create_city(session, name=name, slug=_slug(name), **values)
     if city is None:
         raise ConflictError(f"City {name!r} already exists")
@@ -22,7 +33,18 @@ async def create_city(session: AsyncSession, *, name: str, **values: Any) -> Cit
 
 
 async def get_city(session: AsyncSession, city_id: int) -> City:
-    """Raises NotFoundError for an unknown city."""
+    """Gets a city.
+
+    Args:
+        session (AsyncSession): The database session.
+        city_id (int): The city.
+
+    Returns:
+        City: The city.
+
+    Raises:
+        NotFoundError: The city doesn't exist.
+    """
     city = await city_repo.get_city(session, city_id)
     if city is None:
         raise NotFoundError("City", city_id)
@@ -30,18 +52,35 @@ async def get_city(session: AsyncSession, city_id: int) -> City:
 
 
 async def list_cities(session: AsyncSession) -> Sequence[City]:
+    """Lists every city.
+
+    Args:
+        session (AsyncSession): The database session.
+
+    Returns:
+        Sequence[City]: The cities.
+    """
     return await city_repo.list_cities(session)
 
 
 async def update_city(
     session: AsyncSession, city_id: int, changes: dict[str, Any]
 ) -> City:
-    """Change only the fields given. A rename re-derives the slug.
+    """Changes only the fields given; a rename re-derives the slug.
 
     Events already saved keep the dedupe key built from the old name, so a
     rename is for fixing a typo before ingesting, not for routine use.
 
+    Args:
+        session (AsyncSession): The database session.
+        city_id (int): The city.
+        changes (dict[str, Any]): New values by column name.
+
+    Returns:
+        City: The updated city.
+
     Raises:
+        InvalidRequestError: The new name has no letters or digits.
         NotFoundError: Unknown city.
         ConflictError: The new name normalizes to another city's.
     """
@@ -57,16 +96,42 @@ async def update_city(
 
 
 def local_today(city: City) -> date:
-    """Today where the city is: stay nights are local (decision 0023)."""
+    """Gives today's date in the city; stay nights are local dates.
+
+    Args:
+        city (City): The city.
+
+    Returns:
+        date: Today there.
+    """
     return datetime.now(ZoneInfo(city.timezone)).date()
 
 
 def local_date(city: City, moment: datetime) -> date:
-    """The date in the city at `moment`, e.g. the day a manager saw a price."""
+    """Gives the date in the city at a moment, e.g. when a manager saw a price.
+
+    Args:
+        city (City): The city.
+        moment (datetime): The moment, with a timezone.
+
+    Returns:
+        date: The date there.
+    """
     return moment.astimezone(ZoneInfo(city.timezone)).date()
 
 
 def _slug(name: str) -> str:
+    """Builds a city's slug from its name.
+
+    Args:
+        name (str): The name.
+
+    Returns:
+        str: The slug.
+
+    Raises:
+        InvalidRequestError: The name has no letters or digits.
+    """
     slug = slugify_city(name)
     if not slug:
         raise InvalidRequestError(f"city name {name!r} has no letters or digits")

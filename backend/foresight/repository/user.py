@@ -54,19 +54,6 @@ async def get_user(session: AsyncSession, user_id: int) -> User | None:
     return await session.get(User, user_id)
 
 
-async def get_user_by_google_id(session: AsyncSession, google_id: str) -> User | None:
-    """Gets the user for a Google account.
-
-    Args:
-        session (AsyncSession): The database session.
-        google_id (str): Google's account id.
-
-    Returns:
-        User | None: The user, or None if there isn't one.
-    """
-    return await session.scalar(select(User).where(User.google_id == google_id))
-
-
 async def list_users_by_email(session: AsyncSession, email: str) -> Sequence[User]:
     """Lists the users with an email, ignoring case.
 

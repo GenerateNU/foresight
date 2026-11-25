@@ -1,13 +1,7 @@
-"""Events: merging sightings from several sources onto one canonical row.
-
-PredictHQ is the only source today, but it can list the same real-world event
-more than once. Each record is kept as an observation, and the `events` row
-carries the values of whichever sighting ranks highest (see `_rank`).
-"""
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,44 +16,58 @@ from foresight.services.domain.window import Window
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.features import ATTENDED_CATEGORIES
 
-# How much each source is trusted; a new source gets a rank here.
 _PRECEDENCE = {Source.PREDICTHQ: 1}
-# Withdrawn or called-off events don't count as demand.
 _WITHDRAWN = (EventStatus.DELETED, EventStatus.CANCELLED)
 _NEVER = datetime.min.replace(tzinfo=UTC)
-# The categories the model counts on a night: attended events. Holidays come
-# from the `holidays` library, not from events (decision 0083).
 _COUNTED = frozenset(EventCategory(c) for c in ATTENDED_CATEGORIES)
 
 
 @dataclass(frozen=True, slots=True)
 class NightEvent:
-    """An event as it falls on one night."""
+    """An event as it falls on one night.
+
+    Attributes:
+        event_id (int): The event.
+        title (str): Its title.
+        venue (str | None): Where.
+        category (EventCategory): What kind of event.
+        expected_attendance (int | None): How many people.
+        day_number (int): This night's place in the event, from 1.
+        day_count (int): Nights the event spans; 1 for a single day.
+    """
 
     event_id: int
     title: str
     venue: str | None
     category: EventCategory
     expected_attendance: int | None
-    day_number: int  # 1-based position of this night within the event
-    day_count: int  # nights the event spans; 1 for a single-day event
+    day_number: int
+    day_count: int
 
 
 async def save_event(
     session: AsyncSession, city_id: int, event: NormalizedEvent
 ) -> Outcome:
-    """Resolve `event` to its canonical row in `city_id`, write it, and record
-    the sighting.
+    """Saves an event onto its canonical row and records the sighting.
 
-    Does not commit; the caller owns the transaction.
+    One real-world event can be listed more than once, so each record is kept
+    as an observation and the `events` row carries the values of whichever
+    sighting ranks highest (see `_rank`). The sighting is looked up by source
+    id before dedupe key: a revised start date changes the key, and resolving
+    by key first would orphan the old row. Does not commit.
+
+    Args:
+        session (AsyncSession): The database session.
+        city_id (int): The event's city.
+        event (NormalizedEvent): The record.
+
+    Returns:
+        Outcome: Whether the row is new, updated or unchanged.
     """
     row = {**event.as_row(), "city_id": city_id}
     event_id = await event_repo.find_event_id_by_sighting(
         session, source=event.source, source_ref=event.source_ref
     )
-
-    # Source identity must be checked before dedupe_key: a revised start date
-    # changes the key, and resolving by key first would orphan the old row.
     if event_id is not None:
         event_id = await _absorb_key_collision(session, event_id, row["dedupe_key"])
         outcome = await _apply(session, event_id, event, row)
@@ -90,8 +98,23 @@ async def list_events(
     limit: int,
     offset: int,
 ) -> tuple[Sequence[Event], int]:
-    """Live events in the hotel's city overlapping [start, end]; withdrawn ones
-    are hidden."""
+    """Lists the live events in the hotel's city overlapping a range.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date | None): First night, inclusive; None for no limit.
+        end (date | None): Last night, inclusive; None for no limit.
+        limit (int): Page size.
+        offset (int): Rows to skip.
+
+    Returns:
+        tuple[Sequence[Event], int]: The page, and the total; withdrawn
+            events are hidden.
+
+    Raises:
+        NotFoundError: The hotel doesn't exist.
+    """
     hotel = await get_hotel(session, hotel_id)
     return await event_repo.list_events(
         session,
@@ -107,8 +130,20 @@ async def list_events(
 async def counted_events(
     session: AsyncSession, city_id: int, *, start: date, end: date
 ) -> Sequence[Event]:
-    """Live events in the city, of a category the model counts, that fall on
-    any night in [start, end], both inclusive (decision 0032)."""
+    """Lists the events the model counts that fall on any night in a range.
+
+    Live events in the city, of an attended category; holidays come from the
+    `holidays` library, not from events.
+
+    Args:
+        session (AsyncSession): The database session.
+        city_id (int): The city.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+
+    Returns:
+        Sequence[Event]: The events.
+    """
     return await event_repo.list_events_overlapping(
         session,
         city_id=city_id,
@@ -122,13 +157,23 @@ async def counted_events(
 async def fetched_nights(
     session: AsyncSession, city_id: int, *, start: date, end: date
 ) -> set[date]:
-    """The nights in [start, end] an events backfill has fetched for the city.
+    """Lists the nights in a range an events backfill has fetched for the city.
 
-    Nights outside it are unknown, not quiet (decision 0041). Only backfills
-    count: the routine refresh asks for what changed, not for any nights. Each
-    job counts for the months it saved, except months PredictHQ cut short or
-    that came back empty: a month with nothing points to a plan limit, not a
-    quiet city.
+    Other nights are unknown, not quiet. Only backfills count: the routine
+    refresh asks for what changed, not for any nights. Each job counts for
+    the months it saved, except months PredictHQ cut short or that came back
+    empty: a month with nothing points to a plan limit, not a quiet city.
+    Jobs recorded before `fetched` was tracked count for nothing; older ones
+    with `backwards` false walked oldest month first.
+
+    Args:
+        session (AsyncSession): The database session.
+        city_id (int): The city.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+
+    Returns:
+        set[date]: The nights fetched.
     """
     jobs = await job_repo.list_finished_jobs_in_city(
         session, city_id=city_id, kind=JobKind.EVENTS, params={"mode": "window"}
@@ -136,12 +181,11 @@ async def fetched_nights(
     nights: set[date] = set()
     for job in jobs:
         if not job.progress.get("fetched"):
-            continue  # recorded before `empty_months` existed
+            continue
         skipped = job.progress.get("empty_months", []) + job.progress.get(
             "overflowed_months", []
         )
         months = Window.from_params(job.params).months()
-        # Runs before decision 0087 could walk oldest first.
         if job.params.get("backwards") is False:
             months.reverse()
         for first, last in months[: job.progress.get("months_done", 0)]:
@@ -157,13 +201,21 @@ async def fetched_nights(
 async def events_by_night(
     session: AsyncSession, city_id: int, *, start: date, end: date
 ) -> dict[date, list[NightEvent]]:
-    """The events affecting each night in [start, end], both inclusive.
+    """Lists the events affecting each night in a range.
 
-    Uses the model's rule (decision 0032): live events in the city, of a
-    category the model counts, on every night from their start to their end
-    date. Every night in the range is a key, with an empty list when nothing
-    affects it. Each night's events are largest first: expected attendance,
-    then local rank; unknown values last.
+    Uses the model's rule: the events `counted_events` finds, on every night
+    from their start to their end date.
+
+    Args:
+        session (AsyncSession): The database session.
+        city_id (int): The city.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+
+    Returns:
+        dict[date, list[NightEvent]]: Every night in the range, with an empty
+            list when nothing affects it. Each night's events are largest
+            first: expected attendance, then local rank; unknown values last.
 
     Raises:
         InvalidRequestError: `end` is before `start`.
@@ -171,17 +223,25 @@ async def events_by_night(
     if end < start:
         raise InvalidRequestError("end must not be before start")
     events = await counted_events(session, city_id, start=start, end=end)
-
     return _by_night(events, start, end)
 
 
 def _by_night(
     events: Sequence[Event], start: date, end: date
 ) -> dict[date, list[NightEvent]]:
+    """Spreads events over the nights in a range, largest first.
+
+    Args:
+        events (Sequence[Event]): The events.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+
+    Returns:
+        dict[date, list[NightEvent]]: Every night in the range.
+    """
     by_night: dict[date, list[NightEvent]] = {
         start + timedelta(days=i): [] for i in range((end - start).days + 1)
     }
-    # Largest first, so each night's list comes out in that order.
     for event in sorted(events, key=_importance):
         day_count = (event.end_local_date - event.start_local_date).days + 1
         first = max(event.start_local_date, start)
@@ -203,7 +263,14 @@ def _by_night(
 
 
 def _importance(event: Event) -> tuple[int, int, int]:
-    """Sort key putting the biggest event first; unknown values sort last."""
+    """Sorts the biggest event first; unknown values sort last.
+
+    Args:
+        event (Event): The event.
+
+    Returns:
+        tuple[int, int, int]: The sort key.
+    """
     return (
         -(event.expected_attendance if event.expected_attendance is not None else -1),
         -(event.local_rank if event.local_rank is not None else -1),
@@ -214,7 +281,18 @@ def _importance(event: Event) -> tuple[int, int, int]:
 async def _absorb_key_collision(
     session: AsyncSession, event_id: int, new_key: str
 ) -> int:
-    """If a revision moved onto a key another sighting already holds, merge."""
+    """Merges the row into another that already holds its new dedupe key.
+
+    A revision can move an event onto a key another sighting holds.
+
+    Args:
+        session (AsyncSession): The database session.
+        event_id (int): The event's row.
+        new_key (str): Its new dedupe key.
+
+    Returns:
+        int: The row the event now lives on.
+    """
     other_id = await event_repo.find_other_event_id_by_key(
         session, dedupe_key=new_key, exclude_id=event_id
     )
@@ -225,10 +303,23 @@ async def _absorb_key_collision(
 
 
 async def _apply(
-    session: AsyncSession, event_id: int, event: NormalizedEvent, row: dict
+    session: AsyncSession,
+    event_id: int,
+    event: NormalizedEvent,
+    row: dict[str, Any],
 ) -> Outcome:
-    current = await event_repo.lock_event(session, event_id)
+    """Writes a sighting's values onto its row, if it outranks the others.
 
+    Args:
+        session (AsyncSession): The database session.
+        event_id (int): The event's row.
+        event (NormalizedEvent): The sighting.
+        row (dict[str, Any]): Its column values.
+
+    Returns:
+        Outcome: Whether the row changed.
+    """
+    current = await event_repo.lock_event(session, event_id)
     changes = {}
     if await _outranks_other_sightings(session, event_id, event):
         changes = {k: v for k, v in row.items() if current[k] != v}
@@ -240,12 +331,20 @@ async def _apply(
 async def _outranks_other_sightings(
     session: AsyncSession, event_id: int, event: NormalizedEvent
 ) -> bool:
-    """Whether `event` is the sighting whose values the row should carry.
+    """Says whether a sighting is the one whose values the row should carry.
 
     Every sighting of a row is ranked the same way, so reruns settle on one
     winner instead of duplicate listings overwriting each other in turn. A
     deleted duplicate thus never takes down the live listing it shares a row
-    with, on the first run or any later one.
+    with.
+
+    Args:
+        session (AsyncSession): The database session.
+        event_id (int): The event's row.
+        event (NormalizedEvent): The sighting.
+
+    Returns:
+        bool: True if it outranks every other sighting.
     """
     others = await event_repo.list_other_sightings(
         session, event_id, source=event.source, source_ref=event.source_ref
@@ -260,9 +359,16 @@ def _rank(
     updated_at: datetime | None,
     source_ref: str,
 ) -> tuple[int, bool, datetime, str]:
-    """Structured sources first, then live listings, then the latest revision.
+    """Ranks a sighting: trusted source, then live, then latest revision.
 
-    source_ref only breaks exact ties, so the winner is stable across reruns.
+    Args:
+        source (Source): Where it came from; `_PRECEDENCE` ranks sources.
+        status (EventStatus | None): Withdrawn ranks below live.
+        updated_at (datetime | None): When the source last changed it.
+        source_ref (str): Only breaks exact ties, so the winner is stable.
+
+    Returns:
+        tuple[int, bool, datetime, str]: Higher ranks first.
     """
     return (
         _PRECEDENCE[Source(source)],

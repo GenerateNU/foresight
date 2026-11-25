@@ -7,18 +7,10 @@ import pandas as pd
 from foresight.database.enums import EventCategory
 from foresight.services.ml.holidays import night_before_holiday, public_holiday
 
-# Events whose predicted accommodation spend reaches this are "big" (decision
-# 0041). A starting point from 14 Dublin nights; the backtest may change it.
 BIG_EVENT_SPEND = 100_000
 _EARTH_RADIUS_KM = 6371.0
-
-# Days from booking to the night (decision 0056). Only rows that are booked
-# rooms have it; a model trained on nights leaves it out of its inputs.
 LEAD = "lead_days"
 
-# Every model input, in order. Training and serving both build all of them;
-# each version stores the ones it trained on, and serving selects those.
-# Every version prices one room type (decision 0079), so it isn't an input.
 FEATURES = [
     "day_of_week",
     "month",
@@ -33,11 +25,6 @@ FEATURES = [
     LEAD,
 ]
 
-# FEATURES by kind, for choosing which inputs a backtest trains on. Every
-# input is in exactly one group. `holidays` are worked out from the date alone
-# with the `holidays` library (decisions 0067, 0083), so unlike events they are
-# never unknown, and they stay out of `calendar` so that group, the baseline's
-# inputs, doesn't change.
 INPUT_GROUPS = {
     "calendar": ["day_of_week", "month"],
     "holidays": ["night_before_holiday", "is_public_holiday"],
@@ -52,9 +39,6 @@ INPUT_GROUPS = {
     LEAD: [LEAD],
 }
 
-# Events that bring people to the city. Holidays come from the `holidays`
-# library instead (decision 0083), and categories like disasters or airport
-# delays aren't counted as demand.
 ATTENDED_CATEGORIES = [
     EventCategory.ACADEMIC.value,
     EventCategory.COMMUNITY.value,
@@ -81,12 +65,18 @@ def build_features(
     Used for training (past nights) and serving (the night being priced), so
     both see identical features. The event columns stay empty on nights no
     events backfill covered; the model learns a separate effect for unknown
-    values. The holiday flags are never empty: they come from the date alone,
-    not from events (decisions 0067, 0083).
+    values. The holiday flags are never empty: they come from the date alone.
 
     An event counts on a night only if PredictHQ first saw it before that
-    night (decision 0055), so training never learns from an event the market
-    couldn't have known about. Rows without `first_seen` always count.
+    night, so training never learns from an event the market couldn't have
+    known about. Rows without `first_seen` always count. Only attended
+    categories count as demand (`ATTENDED_CATEGORIES`); an event is big when
+    its predicted accommodation spend reaches `BIG_EVENT_SPEND`, a starting
+    point from 14 Dublin nights.
+
+    `FEATURES` lists every input in order; each version stores the ones it
+    trained on and serving selects those. `INPUT_GROUPS` sorts them by kind
+    for the backtest; holidays stay out of `calendar`, the baseline's inputs.
 
     Args:
         nights (pd.DataFrame): One row per night or booked room, with a
@@ -96,7 +86,7 @@ def build_features(
             local_rank, and optionally first_seen.
         events_fetched (Collection[date] | None): Nights an events backfill
             covered. On any other night the event columns stay empty: no
-            events there means unknown, not quiet (decision 0041). None
+            events there means unknown, not quiet. None
             treats every night as covered.
         events_impacts (pd.DataFrame | None): Predicted accommodation impacts
             for each event, with columns impact_date, guests, and optionally
@@ -133,7 +123,16 @@ def build_features(
 
 
 def _lead_days(stay_date: pd.Series, booked_on: pd.Series | date | None) -> np.ndarray:
-    """Days from booking to each night, clipped at 0; NaN without `booked_on`."""
+    """Counts the days from booking to each night, never below 0.
+
+    Args:
+        stay_date (pd.Series): The nights, as datetimes.
+        booked_on (pd.Series | date | None): When each was booked, or one
+            date for all.
+
+    Returns:
+        np.ndarray: Days per night; NaN everywhere without `booked_on`.
+    """
     if booked_on is None:
         return np.full(len(stay_date), np.nan)
     if isinstance(booked_on, pd.Series):
@@ -243,9 +242,16 @@ def _nightly_totals(
 def _km_from(
     location: tuple[float, float] | None, latitude: pd.Series, longitude: pd.Series
 ) -> pd.Series:
-    """Great-circle distance in km from `location` to each point (haversine).
+    """Measures the great-circle distance from a location to each point.
 
-    Empty everywhere when `location` is None, e.g. a hotel without coordinates.
+    Args:
+        location (tuple[float, float] | None): Latitude and longitude, e.g.
+            the hotel's; None for a hotel without coordinates.
+        latitude (pd.Series): Each point's latitude.
+        longitude (pd.Series): Each point's longitude.
+
+    Returns:
+        pd.Series: Kilometres per point (haversine); NaN without `location`.
     """
     if location is None:
         return pd.Series(float("nan"), index=latitude.index)
@@ -259,7 +265,15 @@ def _km_from(
 
 
 def _impact(impacts: pd.DataFrame | None, dates: pd.DatetimeIndex) -> pd.Series:
-    """PredictHQ's expected hotel guests from events, summed per night."""
+    """Sums PredictHQ's expected hotel guests from events per night.
+
+    Args:
+        impacts (pd.DataFrame | None): See `build_features`.
+        dates (pd.DatetimeIndex): The nights.
+
+    Returns:
+        pd.Series: Guests per night, 0 where there are none.
+    """
     if impacts is None or impacts.empty:
         return pd.Series(0.0, index=dates, name="event_accommodation_impact")
     night = pd.to_datetime(impacts["impact_date"])
@@ -269,8 +283,15 @@ def _impact(impacts: pd.DataFrame | None, dates: pd.DatetimeIndex) -> pd.Series:
 
 
 def _known_before(rows: pd.DataFrame, night: pd.Series) -> pd.Series:
-    """True where PredictHQ first saw the row's event before `night`, or where
-    there's no `first_seen` to judge by (decision 0055)."""
+    """Flags the rows whose event PredictHQ first saw before the night.
+
+    Args:
+        rows (pd.DataFrame): Events or impacts, optionally with first_seen.
+        night (pd.Series): Each row's night.
+
+    Returns:
+        pd.Series: True where seen before, or where there's no first_seen.
+    """
     if "first_seen" not in rows.columns:
         return pd.Series(True, index=rows.index)
     first_seen = pd.to_datetime(rows["first_seen"])

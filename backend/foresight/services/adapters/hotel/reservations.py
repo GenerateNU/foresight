@@ -1,8 +1,3 @@
-"""Guestline Daily New Reservations export: one row per room booked.
-
-Never touches the database; `services/ingest/bookings.py` saves the rows.
-"""
-
 from typing import Any
 
 from foresight.services.adapters.hotel.common import (
@@ -19,7 +14,6 @@ from foresight.services.adapters.hotel.common import (
 __all__ = ["COLUMNS", "PARSE_ERRORS", "REPORT", "Parsed", "parse"]
 
 REPORT = "Daily New Reservations"
-
 COLUMNS = [
     "BookRef",
     "BookingDate",
@@ -37,10 +31,32 @@ COLUMNS = [
 
 
 def parse(content: bytes) -> Parsed:
+    """Parses a Daily New Reservations export: one row per room booked.
+
+    Args:
+        content (bytes): The uploaded file.
+
+    Returns:
+        Parsed: One booking per readable row.
+
+    Raises:
+        ValueError: A needed column is missing, or no row is readable.
+    """
     return parse_rows(content, REPORT, COLUMNS, _row)
 
 
 def _row(line: dict[str, str]) -> dict[str, Any]:
+    """Reads one booked room; `Company` is a code, `CompanyName` free text.
+
+    Args:
+        line (dict[str, str]): One CSV line.
+
+    Returns:
+        dict[str, Any]: The booking's columns.
+
+    Raises:
+        ValueError: A value is missing or malformed, or the stay is empty.
+    """
     booking = {
         "book_ref": required(line["BookRef"], 32),
         "booked_at": timestamp(line["BookingDate"]),
@@ -48,7 +64,6 @@ def _row(line: dict[str, str]) -> dict[str, Any]:
         "departure": day(line["Departure"]),
         "nights": int(line["Nights"]),
         "room_type_code": required(line["RoomType"], 32),
-        # Company is a code; CompanyName is free text.
         "company_code": optional(line["Company"], 64),
         "agent_code": optional(line["Agent"], 64),
         "adr_nett": money(line["ADRSoldNett"]),

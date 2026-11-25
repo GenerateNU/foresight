@@ -1,8 +1,3 @@
-"""Guestline Cancellations export: one row per room cancelled.
-
-Never touches the database; `services/ingest/bookings.py` saves the rows.
-"""
-
 from typing import Any
 
 from foresight.services.adapters.hotel.common import (
@@ -19,7 +14,6 @@ from foresight.services.adapters.hotel.common import (
 __all__ = ["COLUMNS", "PARSE_ERRORS", "REPORT", "Parsed", "parse"]
 
 REPORT = "Cancellations"
-
 COLUMNS = [
     "CancelRef",
     "Ref",
@@ -33,10 +27,33 @@ COLUMNS = [
 
 
 def parse(content: bytes) -> Parsed:
+    """Parses a Cancellations export: one row per room cancelled.
+
+    Args:
+        content (bytes): The uploaded file.
+
+    Returns:
+        Parsed: One cancellation per readable row.
+
+    Raises:
+        ValueError: A needed column is missing, or no row is readable.
+    """
     return parse_rows(content, REPORT, COLUMNS, _row)
 
 
 def _row(line: dict[str, str]) -> dict[str, Any]:
+    """Reads one cancelled room.
+
+    Args:
+        line (dict[str, str]): One CSV line.
+
+    Returns:
+        dict[str, Any]: The cancellation's columns.
+
+    Raises:
+        ValueError: A value is missing or malformed, the stay is empty, or it
+            was cancelled before it was booked.
+    """
     cancellation = {
         "cancel_ref": required(line["CancelRef"], 32),
         "book_ref": required(line["Ref"], 32),

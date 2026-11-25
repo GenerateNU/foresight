@@ -1,11 +1,3 @@
-"""The manager's feedback on a night's rate, before or after the night.
-
-Feedback is only ever added: changing it adds the next version for that room
-type and night, and the highest version is the current one (decision 0043).
-The manager sends the rate they chose; whether ours was too high, too low or
-about right is worked out from it (decision 0068).
-"""
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -35,12 +27,28 @@ async def add_feedback(
     snapshot_id: int,
     user_id: int | None = None,
 ) -> Feedback:
-    """Save the next version of the feedback for this room type and night.
+    """Saves the next version of the feedback for a room type and night.
 
-    `rate` is what the manager chose, before VAT like the recommendation
-    (decision 0076), and `snapshot_id` the recommendation they saw; the
-    snapshot must be for the same room type and night. A repeated tag is kept
-    once.
+    Feedback is only ever added: changing it adds the next version, and the
+    highest version is the current one. The manager sends the rate they
+    chose; whether ours was too high or too low is worked out from it.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        room_type_id (int): The room type.
+        stay_date (date): The night.
+        rate (Decimal): The rate the manager chose, before VAT like the
+            recommendation.
+        reason_tags (list[FeedbackReasonTag]): Why; a repeated tag is kept
+            once.
+        reason_text (str | None): Why, in their words.
+        snapshot_id (int): The recommendation they saw, for the same room
+            type and night.
+        user_id (int | None): Who gave it.
+
+    Returns:
+        Feedback: The new version.
 
     Raises:
         NotFoundError: Unknown hotel, a room type that isn't the hotel's, or a
@@ -88,8 +96,18 @@ async def list_feedback(
     room_type_id: int | None = None,
     include_history: bool = False,
 ) -> Sequence[Feedback]:
-    """The current feedback for each night in [start, end], oldest night first;
-    with `include_history`, every version.
+    """Lists the current feedback for each night in a range.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+        room_type_id (int | None): Only this room type; None for all.
+        include_history (bool): Every version, not just the current one.
+
+    Returns:
+        Sequence[Feedback]: Oldest night first.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -142,8 +160,9 @@ class CurrentFeedback:
 
     @property
     def training_rates(self) -> list[Feedback]:
-        """The rates a retrain or a tune-up learns from: every night with a
-        rate that isn't one-off.
+        """The rates a retrain or a tune-up learns from.
+
+        Every night with a rate that isn't one-off.
 
         Returns:
             list[Feedback]: The feedback rows, oldest night first.
