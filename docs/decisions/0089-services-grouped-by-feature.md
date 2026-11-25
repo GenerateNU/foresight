@@ -41,3 +41,7 @@ Their findings are recorded in the decisions that used them (0051, 0055,
 0067), and one script no longer ran. `just backtest` is how the model is
 scored. `matplotlib`, used only by them, leaves the dev dependencies. Earlier
 records that cite `experiments/` describe what was true then.
+
+The scripts were then restored, unchanged, to `backend/archive/experiments/`
+for reference. The archive is excluded from ruff and isn't kept up to date;
+see `backend/archive/README.md`.
