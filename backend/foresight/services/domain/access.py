@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from foresight.repository import job as job_repo
-from foresight.repository import pricing_model as model_repo
+from foresight.repository import model as model_repo
 from foresight.repository import user as user_repo
 from foresight.services.errors import NotFoundError
 
@@ -35,7 +35,7 @@ async def require_job(session: AsyncSession, user: User, job_id: int) -> None:
 
 async def require_model(session: AsyncSession, user: User, model_id: int) -> None:
     """Raises NotFoundError unless the model is one of the user's hotels'."""
-    model = await model_repo.get_pricing_model(session, model_id)
+    model = await model_repo.get_model(session, model_id)
     if model is None or not await user_repo.has_hotel(session, user.id, model.hotel_id):
         raise NotFoundError("Pricing model", model_id)
 

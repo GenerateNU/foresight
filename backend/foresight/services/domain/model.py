@@ -21,7 +21,7 @@ import pandas as pd
 from foresight.repository import booking as booking_repo
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
-from foresight.repository import pricing_model as model_repo
+from foresight.repository import model as model_repo
 from foresight.services.domain.booking import BOOKING_ROW_COLUMNS, booking_rows
 from foresight.services.domain.city import local_date
 from foresight.services.domain.hotel import get_hotel
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.hotel import Hotel, RoomType
-    from foresight.database.models.pricing_model import PricingModel
+    from foresight.database.models.model import PricingModel
 
 ALGORITHM = "ebm"
 # The one product the model prices (decision 0079): Guestline's DOUBLE room,
@@ -240,7 +240,7 @@ async def save_version(
     room_type = await hotel_repo.get_or_create_room_type(
         session, hotel_id=hotel.id, name=MAIN_ROOM_CODE
     )
-    saved = await model_repo.create_pricing_model(
+    saved = await model_repo.create_model(
         session,
         hotel_id=hotel.id,
         algorithm=ALGORITHM,
@@ -254,7 +254,7 @@ async def save_version(
         room_type_id=room_type.id,
     )
     if activate:
-        activated = await model_repo.activate_pricing_model(session, saved.id)
+        activated = await model_repo.activate_model(session, saved.id)
         assert activated is not None  # saved just above, in this transaction
         saved = activated
     return TrainingResult(
@@ -346,14 +346,12 @@ async def list_models(
     session: AsyncSession, hotel_id: int, *, limit: int, offset: int
 ) -> tuple[Sequence[PricingModel], int]:
     await get_hotel(session, hotel_id)
-    return await model_repo.list_pricing_models(
-        session, hotel_id, limit=limit, offset=offset
-    )
+    return await model_repo.list_models(session, hotel_id, limit=limit, offset=offset)
 
 
 async def get_model(session: AsyncSession, model_id: int) -> PricingModel:
     """Raises NotFoundError for an unknown model."""
-    model = await model_repo.get_pricing_model(session, model_id)
+    model = await model_repo.get_model(session, model_id)
     if model is None:
         raise NotFoundError("Pricing model", model_id)
     return model
@@ -387,7 +385,7 @@ async def _artifact(session: AsyncSession, model_id: int) -> bytes:
 async def activate_model(session: AsyncSession, model_id: int) -> PricingModel:
     """Make this version the one its hotel serves. Raises NotFoundError."""
     await get_model(session, model_id)
-    model = await model_repo.activate_pricing_model(session, model_id)
+    model = await model_repo.activate_model(session, model_id)
     assert model is not None
     return model
 

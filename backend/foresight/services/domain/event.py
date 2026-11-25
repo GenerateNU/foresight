@@ -16,8 +16,8 @@ from foresight.repository import job as job_repo
 from foresight.repository.signals import event as event_repo
 from foresight.repository.upsert import Outcome
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.window import Window
 from foresight.services.errors import InvalidRequestError
-from foresight.services.ingest.window import Window
 from foresight.services.ml.features import ATTENDED_CATEGORIES
 
 if TYPE_CHECKING:

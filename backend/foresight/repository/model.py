@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import defer
 
-from foresight.database.models.pricing_model import PricingModel
+from foresight.database.models.model import PricingModel
 from foresight.repository.pagination import fetch_page
 
 if TYPE_CHECKING:
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-async def create_pricing_model(
+async def create_model(
     session: AsyncSession,
     *,
     hotel_id: int,
@@ -34,7 +34,7 @@ async def create_pricing_model(
 ) -> PricingModel:
     """Save a new, inactive model as the hotel's next version.
 
-    Call `activate_pricing_model` afterwards to start serving it. A tune-up
+    Call `activate_model` afterwards to start serving it. A tune-up
     passes `base_model_id`, the version it corrects (decision 0078).
     """
     model = PricingModel(
@@ -58,7 +58,7 @@ async def create_pricing_model(
     return model
 
 
-async def get_pricing_model(
+async def get_model(
     session: AsyncSession, model_id: int, *, with_artifact: bool = False
 ) -> PricingModel | None:
     """One model. The artifact (megabytes) is only loaded if asked for."""
@@ -68,7 +68,7 @@ async def get_pricing_model(
     return await session.scalar(stmt)
 
 
-async def list_pricing_models(
+async def list_models(
     session: AsyncSession, hotel_id: int, *, limit: int, offset: int
 ) -> tuple[Sequence[PricingModel], int]:
     """The hotel's models, newest version first, without their artifacts."""
@@ -81,9 +81,7 @@ async def list_pricing_models(
     return await fetch_page(session, stmt, limit=limit, offset=offset)
 
 
-async def get_active_pricing_model(
-    session: AsyncSession, hotel_id: int
-) -> PricingModel | None:
+async def get_active_model(session: AsyncSession, hotel_id: int) -> PricingModel | None:
     """The model currently serving the hotel, if any, without its artifact;
     `get_artifact` loads that when the model has to run."""
     return await session.scalar(
@@ -100,16 +98,14 @@ async def get_artifact(session: AsyncSession, model_id: int) -> bytes | None:
     )
 
 
-async def activate_pricing_model(
-    session: AsyncSession, model_id: int
-) -> PricingModel | None:
+async def activate_model(session: AsyncSession, model_id: int) -> PricingModel | None:
     """Make this model the hotel's active one, deactivating any other.
 
     Both writes land in the caller's transaction, so once it commits the hotel
     is never left with zero or two active models. Returns None if the model
     doesn't exist.
     """
-    model = await get_pricing_model(session, model_id)
+    model = await get_model(session, model_id)
     if model is None:
         return None
 

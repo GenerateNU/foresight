@@ -22,7 +22,7 @@ from foresight.routes import (
     hotel,
     ingest,
     job,
-    pricing_model,
+    model,
 )
 from foresight.routes.access import SESSION_COOKIE, get_current_user
 from foresight.routes.errors import register_error_handlers
@@ -86,7 +86,7 @@ app.include_router(feedback.router, **login_required)
 app.include_router(event.router, **login_required)
 app.include_router(ingest.router, **login_required)
 app.include_router(job.router, **login_required)
-app.include_router(pricing_model.router, **login_required)
+app.include_router(model.router, **login_required)
 
 
 @app.get("/docs", include_in_schema=False)

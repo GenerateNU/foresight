@@ -54,7 +54,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `event.py` | List events in a hotel's city |
 | `ingest.py` | Start events jobs; upload hotel CSVs (one job per file) |
 | `job.py` | Read and cancel jobs; data freshness |
-| `pricing_model.py` | Train, list, read and activate model versions |
+| `model.py` | Train, list, read and activate model versions |
 | `feedback.py` | Add and list manager feedback on rates |
 
 ## services/ — business logic
@@ -74,7 +74,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `hotel.py` | Hotels and room types |
 | `event.py` | Merge event sightings into one row per event; list events |
 | `booking.py` | Rebuild how many rooms were booked for a night on any past date |
-| `pricing_model.py` | Training data, train a version, list/activate versions |
+| `model.py` | Train a version, list/activate versions |
 | `recommendation.py` | Price nights with the active model; snapshots; explanations |
 | `feedback.py` | Save and list versioned manager feedback |
 | `freshness.py` | When each kind of data last refreshed |
@@ -117,7 +117,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `pagination.py` | Shared limit/offset paging |
 | `city.py`, `hotel.py`, `user.py`, `job.py` | Queries for those tables |
 | `booking.py` | Bookings and cancellations |
-| `pricing_model.py` | Model versions, artifacts, activation, feedback links |
+| `model.py` | Model versions, artifacts, activation |
 | `recommendation.py` | Recommendation snapshots |
 | `feedback.py` | Feedback rows, incl. what training uses |
 | `signals/event.py` | Events and their sightings |
@@ -134,7 +134,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `models/user.py` | `users`, `user_hotels` |
 | `models/job.py` | `jobs` |
 | `models/booking.py` | `bookings`, `booking_cancellations` |
-| `models/pricing_model.py` | `pricing_models` |
+| `models/model.py` | `pricing_models` |
 | `models/recommendation.py` | `recommendation_snapshots` |
 | `models/feedback.py` | `feedback` |
 | `models/signals/event.py` | `events`, `event_observations` |

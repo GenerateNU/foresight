@@ -30,6 +30,7 @@ from typing import Any
 
 from foresight.database.session import async_session_factory
 from foresight.services import job as job_service
+from foresight.services import scheduler
 
 log = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ async def schedule_forever() -> None:
     while True:
         try:
             async with async_session_factory() as session:
-                jobs = await job_service.start_due_jobs(session)
+                jobs = await scheduler.start_due_jobs(session)
                 await session.commit()
             for job in jobs:
                 await enqueue(job.id, job.hotel_id)
