@@ -1,13 +1,3 @@
-"""Rooms booked and cancelled at a hotel, from its Guestline exports.
-
-Guestline lists live bookings and cancelled ones in separate reports, so the two
-tables are linked by `book_ref`, not a foreign key. Because uploads overlap, a
-booking stored as live can later show up as cancelled too: a booking is only
-live if it has no cancellation.
-
-Times are the hotel's local time. Money is nett (before 13.5% VAT).
-"""
-
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -18,7 +8,29 @@ from foresight.database.base import Base
 
 
 class Booking(Base):
-    """One room on a live booking, e.g. BK100014/2 is the second room of BK100014."""
+    """One room on a live booking, from Guestline's Daily New Reservations.
+
+    BK100014/2 is the second room of BK100014. A booking is live only if no
+    cancellation has its `book_ref`: uploads overlap, so one can arrive as
+    live and later appear as cancelled. Times are the hotel's local time;
+    money is before VAT.
+
+    Attributes:
+        id (int): Primary key.
+        hotel_id (int): The hotel.
+        book_ref (str): Guestline's reference for the room.
+        booked_at (datetime): When it was booked.
+        arrival (date): First night.
+        departure (date): The morning after the last night.
+        nights (int): Nights booked.
+        room_type_code (str): Guestline's room code, e.g. DOUBLE.
+        company_code (str | None): The company's code, if any.
+        agent_code (str | None): The agent's code, if any.
+        adr_nett (Decimal): Average rate per night, before VAT.
+        value_nett (Decimal): Value of the whole stay, before VAT.
+        rate_plan (str | None): Guestline's rate plan, e.g. BAR_RO.
+        market_segment (str | None): Guestline's market segment.
+    """
 
     __tablename__ = "bookings"
 
@@ -29,9 +41,7 @@ class Booking(Base):
     arrival: Mapped[date] = mapped_column(Date)
     departure: Mapped[date] = mapped_column(Date)
     nights: Mapped[int]
-    room_type_code: Mapped[str] = mapped_column(
-        String(32)
-    )  # Guestline's code, e.g. DOUBLE
+    room_type_code: Mapped[str] = mapped_column(String(32))
     company_code: Mapped[str | None] = mapped_column(String(64))
     agent_code: Mapped[str | None] = mapped_column(String(64))
     adr_nett: Mapped[Decimal] = mapped_column(Numeric(10, 2))
@@ -43,7 +53,20 @@ class Booking(Base):
 
 
 class BookingCancellation(Base):
-    """One cancelled room. `book_ref` is the booking it cancelled."""
+    """One cancelled room, from Guestline's Cancellations report.
+
+    Attributes:
+        id (int): Primary key.
+        hotel_id (int): The hotel.
+        cancel_ref (str): Guestline's reference for the cancellation.
+        book_ref (str): The booking it cancelled.
+        booked_at (datetime): When the booking was made.
+        cancelled_at (datetime): When it was cancelled.
+        reason_code (str | None): Guestline's reason code.
+        arrival (date): First night it would have stayed.
+        departure (date): The morning after its last night.
+        lost_revenue (Decimal): Revenue lost, before VAT.
+    """
 
     __tablename__ = "booking_cancellations"
 

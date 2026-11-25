@@ -7,7 +7,6 @@ from foresight.config import settings
 engine = create_async_engine(
     settings.async_database_url,
     echo=settings.debug,
-    # Neon computes scale to zero and drop idle connections; validate before use.
     pool_pre_ping=True,
 )
 
@@ -19,10 +18,13 @@ async_session_factory = async_sessionmaker(
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """One transaction per request: commits on success, rolls back on error.
+    """Opens one transaction per request: commits on success, rolls back on error.
 
-    Repositories never commit. Depend on this with `scope="function"` so the
-    commit runs before the response is sent and a failed commit returns a 500.
+    Repositories never commit. Depend on this with `scope="function"`, so the
+    commit runs before the response is sent and a failed commit is a 500.
+
+    Yields:
+        AsyncSession: The request's session.
     """
     async with async_session_factory() as session:
         try:

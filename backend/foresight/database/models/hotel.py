@@ -1,5 +1,3 @@
-"""A hotel and its room types."""
-
 from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -8,18 +6,23 @@ from foresight.database.models.city import City
 
 
 class Hotel(Base):
-    """A property we price for."""
+    """A hotel we price for.
+
+    Attributes:
+        id (int): Primary key.
+        name (str): The hotel's name; unique within its city.
+        city_id (int): Its market. A city can't be deleted while it has hotels.
+        latitude (float | None): The hotel itself, for distance to venues.
+        longitude (float | None): The hotel itself, for distance to venues.
+        city (City): The city, loaded with the hotel.
+        room_types (list[RoomType]): Its room types.
+    """
 
     __tablename__ = "hotels"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    # Its market. Timezone and every outside signal come from here.
-    # RESTRICT: a city can't be deleted while hotels are in it.
     city_id: Mapped[int] = mapped_column(ForeignKey("cities.id", ondelete="RESTRICT"))
-
-    # The hotel's own location, for distance to event venues. The city's
-    # centre is used for searching.
     latitude: Mapped[float | None]
     longitude: Mapped[float | None]
 
@@ -28,12 +31,18 @@ class Hotel(Base):
         back_populates="hotel", lazy="raise", passive_deletes=True
     )
 
-    # Leads on city_id, so it also serves as the foreign key index.
     __table_args__ = (UniqueConstraint("city_id", "name"),)
 
 
 class RoomType(Base):
-    """A category of room, e.g. "Deluxe King". Price is set per room type."""
+    """A room type the model prices, named after Guestline's room code.
+
+    Attributes:
+        id (int): Primary key.
+        hotel_id (int): The hotel.
+        name (str): The room code, e.g. DOUBLE; unique within the hotel.
+        hotel (Hotel): The hotel.
+    """
 
     __tablename__ = "room_types"
 
@@ -43,5 +52,4 @@ class RoomType(Base):
 
     hotel: Mapped["Hotel"] = relationship(back_populates="room_types", lazy="raise")
 
-    # Leads on hotel_id, so it also serves as the foreign key index.
     __table_args__ = (UniqueConstraint("hotel_id", "name"),)
