@@ -33,3 +33,11 @@ from when weather was a second signal.
 - Most folders hold 2-5 files, and a feature's code is in one place.
 - Moves and import changes only: no behaviour or schema change.
 - Earlier decision records keep the paths they were written with.
+
+## Addendum, 2026-11-25: experiments removed
+`backend/experiments/` (the feature-screening notebook, lasso screen, baseline,
+COVID-recovery and candidate scripts, and the feature inventory) is deleted.
+Their findings are recorded in the decisions that used them (0051, 0055,
+0067), and one script no longer ran. `just backtest` is how the model is
+scored. `matplotlib`, used only by them, leaves the dev dependencies. Earlier
+records that cite `experiments/` describe what was true then.
