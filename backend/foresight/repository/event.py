@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import EventCategory, EventStatus, Source
-from foresight.database.models.signals.event import Event, EventObservation
+from foresight.database.models.event import Event, EventObservation
 from foresight.repository.pagination import fetch_page
 
 _EVENTS = Event.__table__

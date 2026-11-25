@@ -9,8 +9,8 @@ from foresight.config import settings
 from foresight.routes.access import CurrentUserDep
 from foresight.routes.helpers import ResponseSchema, SessionDep
 from foresight.routes.hotel import HotelResponse
-from foresight.services.domain import hotel as hotel_service
-from foresight.services.domain import user as user_service
+from foresight.services.hotels import hotel as hotel_service
+from foresight.services.users import user as user_service
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 

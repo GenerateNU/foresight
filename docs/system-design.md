@@ -21,11 +21,10 @@ nightly rate.
                                    │ plain arguments in, domain objects out
                     ┌──────────────▼───────────────────────────────┐
   worker.py ──────▶ │ services                                      │
-  (jobs, schedule)  │   domain/    rules and reads per domain       │
-                    │   ingest/    fetch + save, in chunks          │
-                    │   adapters/  outside APIs and files, no DB    │──▶ outside APIs
-                    │   job.py     job kinds + lifecycle            │
-                    │   ml/        pricing model (EBM)              │
+  (jobs, schedule)  │   one folder per feature: hotels, users,      │
+                    │   events, bookings, pricing,                  │──▶ outside APIs
+                    │   recommendations, jobs                       │
+                    │   ml/        pricing model (EBM), no DB       │
                     └──────────────┬───────────────────────────────┘
                                    │ plain values in, ORM objects out
                     ┌──────────────▼───────────────────────────────┐
@@ -68,9 +67,9 @@ Actual imports:
 ```
 routes      → services, database.enums, database.models.user (the signed-in
               user's type), worker (to schedule a job)
-services    → repository, database.models/enums, config (job.py, domain/user.py)
+services    → repository, database.models/enums, config (jobs/, users/user.py)
 repository  → database
-worker      → services.job, database.session
+worker      → services.jobs, database.session
 ```
 
 Enums live in `database/enums.py` because columns use them; every layer may
@@ -78,8 +77,10 @@ import them.
 
 ### 2.1 File layout
 
-One file per domain, singular, with the same name in each layer. Outside
-signals are grouped under `signals/` in both the database and the repository.
+One file per domain, singular, with the same name in each layer. Routes,
+repository and database models are flat. Services group their files into one
+folder per feature, each holding that feature's outside sources, ingest and
+rules ([0089](decisions/0089-services-grouped-by-feature.md)).
 
 ```
 backend/foresight/
@@ -97,33 +98,31 @@ backend/foresight/
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured /
                            NotSignedIn / Forbidden
-    job.py                 starting jobs and their lifecycle
-    handlers.py            what each kind of job does once it runs
-    scheduler.py           the daily routine
-    domain/                booking, city, hotel, user, event, normalize, window,
-                           model, training_data, tuning, backtest,
-                           recommendation, explanation, feedback, freshness
-    ingest/                event; files (report kinds, header recognition),
-                           bookings
-    adapters/              predicthq
-      hotel/               one per CSV report: reservations, cancellations;
+    hotels/                hotel, city
+    users/                 user, access
+    events/                predicthq, normalize, window, ingest, event
+    bookings/              uploads (report kinds, header recognition, saving),
+                           rows (booked rooms for training)
+      guestline/           one per CSV report: reservations, cancellations;
                            common (shared reading)
+    pricing/               model, training_data, inputs, tuning, backtest
+    recommendations/       recommendation, explanation, feedback
+    jobs/                  job (start, lifecycle), handlers (what each kind
+                           does), scheduler (the daily routine), freshness
     ml/                    ebm, features, holidays, baselines, resources
   repository/
     upsert.py pagination.py
     booking.py city.py hotel.py job.py model.py recommendation.py feedback.py
-    user.py
-    signals/               event
+    user.py event.py
   database/
     base.py enums.py session.py
-    models/                booking, city, hotel, job, pricing_model, recommendation, feedback,
-                           user
-      signals/             event
+    models/                booking, city, hotel, job, model, recommendation, feedback,
+                           user, event
     migrations/
 ```
 
-`city.py` in each layer is a small, complete slice to copy when adding a
-domain.
+`city.py` in each layer (`services/hotels/city.py` in services) is a small,
+complete slice to copy when adding a domain.
 
 ---
 
@@ -153,7 +152,7 @@ DomainError
  ├─ NotFoundError         ─────────▶   404
  ├─ ConflictError         ─────────▶   409
  ├─ InvalidRequestError   ─────────▶   422
- │   └─ InvalidWindowError  (services/domain/window.py)
+ │   └─ InvalidWindowError  (services/events/window.py)
  ├─ NotConfiguredError    ─────────▶   503   (an API key or secret isn't set)
  ├─ NotSignedInError      ─────────▶   401   (no valid session)
  └─ ForbiddenError        ─────────▶   403   (known, but not allowed)
@@ -320,7 +319,7 @@ loads `Hotel.city` with a join, because almost every service needs it.
 
 **Events** ([0019](decisions/0019-events-merged-across-sources.md)): `events`
 holds one merged row per real-world event; `event_observations` keeps each
-source's raw record. `services/domain/event.save_event`:
+source's raw record. `services/events/event.save_event`:
 
 1. Looks the sighting up by the source's own id first, then by dedupe key. A
    revised start date changes the key, so looking up by key first would orphan
@@ -353,7 +352,7 @@ Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
 queue. Prices aren't saved ahead: the calendar prices on request
 ([0084](decisions/0084-no-fingerprint-no-price-job.md)).
 
-**Window rules** (`services/domain/window.py`):
+**Window rules** (`services/events/window.py`):
 
 | Given | Window |
 |---|---|
@@ -367,7 +366,7 @@ the most recent events ([0087](decisions/0087-backfills-newest-first-no-alignmen
 Events use a 10km radius around the city centre and need `PREDICTHQ_TOKEN`
 (a 503 if it isn't set).
 
-**Uploaded files** (`services/ingest/files.py`): `REPORTS` lists each report
+**Uploaded files** (`services/bookings/uploads.py`): `REPORTS` lists each report
 kind with the columns it needs. A file is the kind whose columns its header
 holds; none or more than one is a 422. Every file is recognised and parsed
 before any job is queued, so one bad file is a 422 naming it and nothing is
@@ -453,9 +452,9 @@ Prices aren't saved ahead; the calendar prices on request (0084).
 
 ```
 routes/event.list_events
-  → services/domain/event.list_events(session, 7, …)
+  → services/events/event.list_events(session, 7, …)
       → get_hotel(7)                                   404 if missing
-      → repository/signals/event.list_events(city_id=hotel.city_id, …)
+      → repository/event.list_events(city_id=hotel.city_id, …)
   ← (rows, total)
   → paginate(EventResponse, rows, total, page)
 ```
@@ -466,7 +465,7 @@ routes/event.list_events
 POST /hotels/7/ingest/files  files=DailyNewReservations.csv, Cancellation.csv
   → too many files, or one too big?                      → 413
   → job_service.start_file_jobs
-      → ingest/files.parse_files, per file:
+      → bookings/uploads.parse_files, per file:
           recognise by header (no or several matches)    → 422
           the report's parse; any failure                → 422
       → one job per file (RESERVATIONS, CANCELLATIONS), in upload order
@@ -490,7 +489,7 @@ job EVENTS, mode=window, 2025-01-01 … 2025-12-31
   for each month, newest first:
       predicthq.fetch(window_params(city centre, month))
           pages through `next`; each record → NormalizedEvent, or rejected with a reason
-      for each event: domain/event.save_event(session, city_id, event)
+      for each event: events/event.save_event(session, city_id, event)
       yield Step(progress, resume_from = the next, older month's end)   → commit
 ```
 
@@ -502,13 +501,13 @@ Both read only what's already ingested; neither fetches
 ```
 POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   job_service.start_train_job       DOUBLE BAR_RO bookings loaded in window → else 422 (0079)
-  → domain/model.prepare_training
+  → pricing/model.prepare_training
       training_data                             shared with the backtest (6.7)
-        domain/booking.booking_rows             one row per booked room per night, from
+        bookings/rows.booking_rows              one row per booked room per night, from
                                                 DOUBLE BAR_RO bookings alone: rate = adr_nett,
                                                 weight 1 (0076, 0079)
         feedback.current_feedback            drop the rooms of nights tagged one-off (0070)
-        domain/inputs.build_inputs          counted events, backfilled nights, first seen
+        pricing/inputs.build_inputs          counted events, backfilled nights, first seen
         ml/features.build_features              calendar + holidays + events + lead_days from booked_on
                                                 (0055, 0056, 0067); holidays from the
                                                 library alone (0083)
@@ -516,11 +515,11 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       each manager rate is a row of its own, booked the day they saw the recommendation;
                     weight 25% of the night's rooms, at least 1 (0071, 0076)
   progress = {stage: fitting}; commit           frees the connection during the fit (0056)
-  → domain/model.fit                    no database
+  → pricing/model.fit                   no database
       training_data.combine_identical_rows      same night, same inputs → one weighted row
       EBMModel.fit in a thread                  one fit on every row; no holdout, no range (0085)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
-  → domain/model.save_version
+  → pricing/model.save_version
       model_repo.create_pricing_model           new version, inactive, with its own `features`,
                                                 `target` (adr_nett) and room type, DOUBLE,
                                                 created the first time (0008, 0009, 0056, 0079)
@@ -528,7 +527,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   progress = {model_id, version, metrics, ...}
 
 GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
-  → domain/recommendation.get_recommendations             at most 90 nights
+  → recommendations/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
       per night: build_features row (booked_on = today), keep the version's
                  `features`; the night's events, events_source
@@ -574,7 +573,7 @@ is converted.
 
 A daily tune-up (`POST /hotels/{id}/tune`, a `tune` job;
 [0069](decisions/0069-daily-tune-up.md)) corrects the active model without
-retraining it. `domain/tuning.tune` keeps the active model's base as it is and
+retraining it. `pricing/tuning.tune` keeps the active model's base as it is and
 fits a small EBM on the gap between its predictions and the manager's current
 rates, before or after the night. Each row is built as serving built it, with
 the base version's stored inputs: a manager row booked the day they set the
@@ -679,10 +678,10 @@ models are trained in memory and thrown away.
 
 ```
 cli.backtest
-  → domain/backtest.load_backtest               then the session closes
+  → pricing/backtest.load_backtest              then the session closes
       pricing_model.training_data               the same inputs training sees
       cutoff = newest night − test_days (default 90)
-  → domain/backtest.run_backtest                no database
+  → pricing/backtest.run_backtest               no database
       one EBM on --inputs (default: every input the training data has),
         identical rows merged as in training
       score                                     every test row (a booked room)
@@ -751,12 +750,12 @@ setting is listed in `.env.example`.
 |---|---|
 | `DATABASE_URL`, `DEBUG` | `database/session.py` (`DEBUG` echoes SQL) |
 | `PREDICTHQ_TOKEN` | events job |
-| `GOOGLE_CLIENT_ID`, `_SECRET`, `GOOGLE_REDIRECT_URI` | the OAuth client in `routes/auth.py`; the 503 check in `services/domain/user.py` |
+| `GOOGLE_CLIENT_ID`, `_SECRET`, `GOOGLE_REDIRECT_URI` | the OAuth client in `routes/auth.py`; the 503 check in `services/users/user.py` |
 | `SESSION_SECRET`, `SESSION_MAX_AGE_SECONDS`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE` | the session middleware in `main.py` (the secret also in the 503 check) |
 | `FRONTEND_URL` | the CORS origin in `main.py`, and where the callback redirects |
 | `UPLOAD_MAX_FILES`, `UPLOAD_MAX_FILE_MB` | the 413 checks in `routes/ingest.py` |
 
-`services/job.py` and `services/domain/user.py` read settings; `main.py` reads
+`services/jobs/` and `services/users/user.py` read settings; `main.py` reads
 them to build the middleware. A missing key is a 503 when the job or the
 sign-in is requested.
 

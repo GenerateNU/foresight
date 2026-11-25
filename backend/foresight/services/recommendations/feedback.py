@@ -9,8 +9,8 @@ from foresight.database.enums import FeedbackReasonTag
 from foresight.database.models.feedback import Feedback
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import recommendation as recommendation_repo
-from foresight.services.domain.hotel import get_hotel, get_room_type
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
+from foresight.services.hotels.hotel import get_hotel, get_room_type
 
 MAX_NIGHTS = 366
 

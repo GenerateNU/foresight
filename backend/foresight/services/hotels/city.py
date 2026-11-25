@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.city import City
 from foresight.repository import city as city_repo
-from foresight.services.domain.normalize import slugify_city
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
+from foresight.services.events.normalize import slugify_city
 
 
 async def create_city(session: AsyncSession, *, name: str, **values: Any) -> City:

@@ -57,53 +57,79 @@ One line per file: what it's for. For how the pieces fit together, see
 | `model.py` | Train, list, read and activate model versions |
 | `feedback.py` | Add and list manager feedback on rates |
 
-## services/ — business logic
+## services/ — business logic, one folder per feature
 
 | File | What it does |
 |---|---|
 | `errors.py` | Domain errors (`NotFound`, `Conflict`, `InvalidRequest`, …) |
-| `job.py` | Job kinds, validation, handlers and lifecycle |
 
-### services/domain/
+### services/hotels/
 
 | File | What it does |
 |---|---|
-| `access.py` | Checks a user may reach a hotel, job, model, room type or city |
-| `user.py` | Sign-in, users, linking users to hotels |
-| `city.py` | City rules; "today" in a city's timezone |
 | `hotel.py` | Hotels and room types |
-| `event.py` | Merge event sightings into one row per event; list events |
-| `booking.py` | Rebuild how many rooms were booked for a night on any past date |
-| `model.py` | Train a version, list/activate versions |
-| `recommendation.py` | Price nights with the active model; snapshots; explanations |
-| `feedback.py` | Save and list versioned manager feedback |
-| `freshness.py` | When each kind of data last refreshed |
-| `backtest.py` | Train on older nights, score on the newest; baselines; the tune-up after N days of feedback |
+| `city.py` | City rules; "today" in a city's timezone |
 
-### services/ingest/ — fetch/parse and save, in chunks
+### services/users/
 
 | File | What it does |
 |---|---|
-| `window.py` | Works out the date window from optional start/end |
-| `event.py` | Fetch and save PredictHQ events (recent or by window) |
-| `files.py` | The list of uploadable reports; recognises each file by its header, parses it, records it on its job |
-| `bookings.py` | Parse and save the Daily New Reservations and Cancellations exports |
+| `user.py` | Sign-in, users, linking users to hotels |
+| `access.py` | Checks a user may reach a hotel, job, model or city |
 
-### services/adapters/ — outside APIs and files, no DB
+### services/events/
 
 | File | What it does |
 |---|---|
-| `predicthq.py` | PredictHQ events → normalized events |
+| `predicthq.py` | PredictHQ client: events → normalized events, no DB |
 | `normalize.py` | Shared event shape, title/city normalizing, dedupe key |
-| `hotel/reservations.py` | Parses the Guestline Daily New Reservations export |
-| `hotel/cancellations.py` | Parses the Guestline Cancellations export |
-| `hotel/common.py` | Shared row-by-row CSV reading and value checks for the Guestline exports |
+| `window.py` | Works out a backfill's date window from optional start/end |
+| `ingest.py` | Fetch and save PredictHQ events (recent, or a window newest month first) |
+| `event.py` | Merge event sightings into one row per event; list events; which nights are covered |
+
+### services/bookings/
+
+| File | What it does |
+|---|---|
+| `guestline/reservations.py` | Parses the Guestline Daily New Reservations export |
+| `guestline/cancellations.py` | Parses the Guestline Cancellations export |
+| `guestline/common.py` | Shared row-by-row CSV reading and value checks |
+| `uploads.py` | The uploadable reports; recognises each file by its header, parses it, saves it in chunks |
+| `rows.py` | Booked rooms, one row per room per night, for training |
+
+### services/pricing/
+
+| File | What it does |
+|---|---|
+| `model.py` | Train a version (prepare, fit, save); list, read, load and activate versions |
+| `training_data.py` | The main product's booked rooms plus the manager's rates |
+| `inputs.py` | Builds the model's inputs the same way for training and serving |
+| `tuning.py` | The daily tune-up: a correction on the active model's base |
+| `backtest.py` | Train on older nights, score on the newest; baselines |
+
+### services/recommendations/
+
+| File | What it does |
+|---|---|
+| `recommendation.py` | Price nights with the active model; snapshots |
+| `explanation.py` | Why a rate is what it is, in words and euros |
+| `feedback.py` | Save and list versioned manager feedback |
+
+### services/jobs/
+
+| File | What it does |
+|---|---|
+| `job.py` | Starting jobs and their lifecycle |
+| `handlers.py` | What each kind of job does once it runs |
+| `scheduler.py` | The daily routine: which jobs are due |
+| `freshness.py` | When each kind of data last refreshed |
 
 ### services/ml/ — the model
 
 | File | What it does |
 |---|---|
 | `features.py` | `FEATURES` (calendar, holidays, events, days ahead) and `build_features` |
+| `holidays.py` | Public holidays and their weekdays off, from the `holidays` library |
 | `ebm.py` | The EBM pricing model: fit, explain, save/load; the tune-up's base + correction |
 | `baselines.py` | Simple rules the model must beat (last year, recent weekdays) |
 | `resources.py` | Measures a fit's time and peak memory |
@@ -119,7 +145,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `model.py` | Model versions, artifacts, activation |
 | `recommendation.py` | Recommendation snapshots |
 | `feedback.py` | Feedback rows, incl. what training uses |
-| `signals/event.py` | Events and their sightings |
+| `event.py` | Events and their sightings |
 
 ## database/
 
@@ -136,7 +162,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `models/model.py` | `pricing_models` |
 | `models/recommendation.py` | `recommendation_snapshots` |
 | `models/feedback.py` | `feedback` |
-| `models/signals/event.py` | `events`, `event_observations` |
+| `models/event.py` | `events`, `event_observations` |
 | `migrations/env.py`, `script.py.mako` | Alembic runner and new-migration template |
 | `migrations/versions/*.py` | Schema history, one change per file |
 

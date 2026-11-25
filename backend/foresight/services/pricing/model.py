@@ -14,8 +14,11 @@ from foresight.database.models.hotel import Hotel
 from foresight.database.models.model import PricingModel
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import model as model_repo
-from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.training_data import (
+from foresight.services.errors import InvalidRequestError, NotFoundError
+from foresight.services.hotels.hotel import get_hotel
+from foresight.services.ml.ebm import EBMModel, TunedEBMModel
+from foresight.services.ml.resources import measure
+from foresight.services.pricing.training_data import (
     MAIN_RATE_PLAN,
     MAIN_ROOM_CODE,
     TrainingData,
@@ -24,9 +27,6 @@ from foresight.services.domain.training_data import (
     training_data,
     with_manager_rows,
 )
-from foresight.services.errors import InvalidRequestError, NotFoundError
-from foresight.services.ml.ebm import EBMModel, TunedEBMModel
-from foresight.services.ml.resources import measure
 
 ALGORITHM = "ebm"
 MIN_TRAINING_ROWS = 120

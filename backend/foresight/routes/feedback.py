@@ -8,7 +8,7 @@ from pydantic import Field
 from foresight.database.enums import FeedbackReasonTag
 from foresight.routes.access import CurrentUserDep, HotelId
 from foresight.routes.helpers import RequestSchema, ResponseSchema, SessionDep
-from foresight.services.domain import feedback as feedback_service
+from foresight.services.recommendations import feedback as feedback_service
 
 router = APIRouter(tags=["Feedback"])
 

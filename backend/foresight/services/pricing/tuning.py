@@ -9,17 +9,20 @@ from foresight.database.models.hotel import Hotel
 from foresight.database.models.model import PricingModel
 from foresight.repository import model as model_repo
 from foresight.repository import recommendation as recommendation_repo
-from foresight.services.domain.city import local_date, local_today
-from foresight.services.domain.feedback import CurrentFeedback, current_feedback
-from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.inputs import build_inputs
-from foresight.services.domain.model import (
+from foresight.services.errors import InvalidRequestError
+from foresight.services.hotels.city import local_date, local_today
+from foresight.services.hotels.hotel import get_hotel
+from foresight.services.ml.ebm import EBMModel, TunedEBMModel
+from foresight.services.pricing.inputs import build_inputs
+from foresight.services.pricing.model import (
     create_version,
     get_model,
     load_model,
 )
-from foresight.services.errors import InvalidRequestError
-from foresight.services.ml.ebm import EBMModel, TunedEBMModel
+from foresight.services.recommendations.feedback import (
+    CurrentFeedback,
+    current_feedback,
+)
 
 ALGORITHM = "ebm-tuned"
 MIN_TUNE_NIGHTS = 5

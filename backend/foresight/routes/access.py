@@ -5,8 +5,8 @@ from fastapi.security import APIKeyCookie
 
 from foresight.database.models.user import User
 from foresight.routes.helpers import SessionDep
-from foresight.services.domain import access as access_service
-from foresight.services.domain import user as user_service
+from foresight.services.users import access as access_service
+from foresight.services.users import user as user_service
 
 SESSION_COOKIE = "foresight_session"
 

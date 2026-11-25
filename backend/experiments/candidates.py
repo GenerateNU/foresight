@@ -22,9 +22,9 @@ from sqlalchemy import select
 
 from foresight.database.models.booking import Booking, BookingCancellation
 from foresight.database.session import async_session_factory
-from foresight.services.domain.booking import booking_curves, rooms_on
-from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.training_data import training_data
+from foresight.services.bookings.rows import booking_curves, rooms_on
+from foresight.services.hotels.hotel import get_hotel
+from foresight.services.pricing.training_data import training_data
 
 HOTEL_ID = 1
 HORIZON = 30  # days before the night that every feature is known

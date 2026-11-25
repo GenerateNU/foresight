@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
-from foresight.services.domain.normalize import (
+from foresight.services.events.normalize import (
     NormalizedEvent,
     coords_from_geojson,
     to_local_date,

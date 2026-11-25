@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from foresight.database.models.hotel import Hotel, RoomType
 from foresight.repository import booking as booking_repo
 from foresight.repository import hotel as hotel_repo
-from foresight.services.domain.booking import BOOKING_ROW_COLUMNS, booking_rows
-from foresight.services.domain.city import local_date
-from foresight.services.domain.feedback import current_feedback
-from foresight.services.domain.inputs import build_inputs
+from foresight.services.bookings.rows import BOOKING_ROW_COLUMNS, booking_rows
+from foresight.services.hotels.city import local_date
 from foresight.services.ml.features import FEATURES
+from foresight.services.pricing.inputs import build_inputs
+from foresight.services.recommendations.feedback import current_feedback
 
 MAIN_ROOM_CODE = "DOUBLE"
 MAIN_RATE_PLAN = "BAR_RO"

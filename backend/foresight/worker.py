@@ -4,8 +4,8 @@ from collections import deque
 from typing import Any
 
 from foresight.database.session import async_session_factory
-from foresight.services import job as job_service
-from foresight.services import scheduler
+from foresight.services.jobs import job as job_service
+from foresight.services.jobs import scheduler
 
 log = logging.getLogger(__name__)
 

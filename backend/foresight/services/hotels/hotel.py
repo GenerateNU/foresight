@@ -7,8 +7,8 @@ from foresight.database.models.hotel import Hotel, RoomType
 from foresight.database.models.user import User
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import user as user_repo
-from foresight.services.domain.city import get_city
 from foresight.services.errors import ConflictError, NotFoundError
+from foresight.services.hotels.city import get_city
 
 
 async def create_hotel(

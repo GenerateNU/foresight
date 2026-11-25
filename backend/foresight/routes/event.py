@@ -13,7 +13,7 @@ from foresight.routes.helpers import (
     SessionDep,
     paginate,
 )
-from foresight.services.domain import event as event_service
+from foresight.services.events import event as event_service
 
 router = APIRouter(tags=["Events"])
 
