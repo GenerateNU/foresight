@@ -47,7 +47,10 @@ packages = ["foresight"]
 [tool.ruff]
 target-version = "py312"
 src = ["."]
-exclude = ["foresight/database/migrations"]
+# Archived research is kept as it was, not linted. force-exclude applies this
+# to files pre-commit passes by name too.
+exclude = ["foresight/database/migrations", "archive"]
+force-exclude = true
 line-length = 88
 
 [tool.ruff.lint]
