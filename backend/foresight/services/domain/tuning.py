@@ -18,12 +18,12 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from foresight.repository import feedback as feedback_repo
-from foresight.repository import pricing_model as model_repo
-from foresight.repository import recommendation as snapshot_repo
+from foresight.repository import model as model_repo
+from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain.city import local_date, local_today
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.model import LIBS
 from foresight.services.domain.model_inputs import events_for, hotel_location
-from foresight.services.domain.pricing_model import LIBS
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.ebm import EBMModel, TunedEBMModel
 from foresight.services.ml.features import build_features
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.hotel import Hotel
-    from foresight.database.models.pricing_model import PricingModel
+    from foresight.database.models.model import PricingModel
 
 ALGORITHM = "ebm-tuned"
 # Fewer manager rates than this and the tune-up is skipped.
@@ -60,7 +60,7 @@ async def check_tunable(session: AsyncSession, hotel_id: int) -> Hotel:
         InvalidRequestError: The hotel has no active model.
     """
     hotel = await get_hotel(session, hotel_id)
-    if await model_repo.get_active_pricing_model(session, hotel.id) is None:
+    if await model_repo.get_active_model(session, hotel.id) is None:
         raise InvalidRequestError("the hotel has no active model; train one first")
     return hotel
 
@@ -73,7 +73,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     Raises:
         InvalidRequestError: The hotel has no active model.
     """
-    active = await model_repo.get_active_pricing_model(session, hotel.id)
+    active = await model_repo.get_active_model(session, hotel.id)
     if active is None:
         raise InvalidRequestError("the hotel has no active model; train one first")
 
@@ -131,7 +131,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
     )
     correction = model.correction(x.iloc[: len(feedback)])
 
-    saved = await model_repo.create_pricing_model(
+    saved = await model_repo.create_model(
         session,
         hotel_id=hotel.id,
         algorithm=ALGORITHM,
@@ -150,7 +150,7 @@ async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneRe
         base_model_id=base_row.id,
     )
     if activate:
-        activated = await model_repo.activate_pricing_model(session, saved.id)
+        activated = await model_repo.activate_model(session, saved.id)
         assert activated is not None  # saved just above, in this transaction
         saved = activated
     return TuneResult(saved, activate, len(feedback), len(untouched))
@@ -197,7 +197,7 @@ async def _untouched(
     today = local_today(hotel.city)
     start = today - timedelta(days=UNTOUCHED_DAYS)
     end = today - timedelta(days=1)
-    nights = await snapshot_repo.snapshotted_nights(
+    nights = await recommendation_repo.snapshotted_nights(
         session, room_type_id, start=start, end=end
     )
     touched = set(feedback["stay_date"])
@@ -222,7 +222,7 @@ async def _untouched(
 
 
 async def _model(session: AsyncSession, model_id: int) -> PricingModel:
-    model = await model_repo.get_pricing_model(session, model_id)
+    model = await model_repo.get_model(session, model_id)
     if model is None:
         raise NotFoundError("Pricing model", model_id)
     return model

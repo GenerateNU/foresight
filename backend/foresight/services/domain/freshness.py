@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
-from foresight.repository import recommendation as snapshot_repo
+from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain.hotel import get_hotel
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ async def get_freshness(session: AsyncSession, hotel_id: int) -> HotelFreshness:
             last_failure=latest.finished_at if failed else None,
             error=latest.error if failed else None,
         )
-    snapshot_at = await snapshot_repo.latest_snapshot_at(session, hotel_id)
+    snapshot_at = await recommendation_repo.latest_snapshot_at(session, hotel_id)
     return HotelFreshness(
         **result,
         recommendations=Freshness(

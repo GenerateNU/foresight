@@ -4,7 +4,7 @@ Read-only; models are trained in memory and thrown away. Trains on every
 night except the last `test_days`, as if it were trained that day, then
 predicts those nights. For a hotel that trains on bookings the rows are booked
 rooms, one per room per night (decision 0056), so scores are per room. The
-inputs come from `pricing_model.training_data`, the same loader training uses,
+inputs come from `model.training_data`, the same loader training uses,
 so the backtest scores the model that would ship.
 
 `run_backtest` scores one set of inputs; compare sets by running it once per set.
@@ -23,7 +23,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.pricing_model import training_data
+from foresight.services.domain.model import training_data
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.services.domain.pricing_model import TrainingData
+    from foresight.services.domain.model import TrainingData
 
 # Baselines the model is compared with: column in `nights` -> label.
 BASELINES = {

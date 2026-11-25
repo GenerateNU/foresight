@@ -24,7 +24,7 @@ from foresight.routes.helpers import (
 )
 from foresight.routes.job import JobResponse
 from foresight.services import job as job_service
-from foresight.services.domain import pricing_model as model_service
+from foresight.services.domain import model as model_service
 
 router = APIRouter(tags=["Models"])
 

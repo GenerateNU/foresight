@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from foresight.repository import feedback as feedback_repo
-from foresight.repository import recommendation as snapshot_repo
+from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain.hotel import get_hotel, get_room_type
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
 
@@ -58,7 +58,7 @@ async def add_feedback(
     if room_type.hotel_id != hotel.id:
         raise NotFoundError("Room type", room_type_id)
 
-    snapshot = await snapshot_repo.get_snapshot(session, snapshot_id)
+    snapshot = await recommendation_repo.get_snapshot(session, snapshot_id)
     if snapshot is None or snapshot.hotel_id != hotel.id:
         raise NotFoundError("Snapshot", snapshot_id)
     if snapshot.room_type_id != room_type.id or snapshot.stay_date != stay_date:

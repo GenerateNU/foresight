@@ -91,7 +91,7 @@ backend/foresight/
     helpers.py             SessionDep, schema bases, PageResponse, paginate
     errors.py              domain error → status code
     city.py hotel.py event.py ingest.py job.py
-    pricing_model.py feedback.py health.py
+    model.py feedback.py health.py
     auth.py                Google sign-in, logout, /auth/me
     access.py              CurrentUserDep
   services/
@@ -108,7 +108,7 @@ backend/foresight/
     ml/                    base, ebm, features, holidays, weighting, baselines
   repository/
     upsert.py pagination.py
-    booking.py city.py hotel.py job.py pricing_model.py recommendation.py feedback.py
+    booking.py city.py hotel.py job.py model.py recommendation.py feedback.py
     user.py
     signals/               event
   database/
@@ -150,7 +150,7 @@ DomainError
  ├─ NotFoundError         ─────────▶   404
  ├─ ConflictError         ─────────▶   409
  ├─ InvalidRequestError   ─────────▶   422
- │   └─ InvalidWindowError  (services/ingest/window.py)
+ │   └─ InvalidWindowError  (services/domain/window.py)
  ├─ NotConfiguredError    ─────────▶   503   (an API key or secret isn't set)
  ├─ NotSignedInError      ─────────▶   401   (no valid session)
  └─ ForbiddenError        ─────────▶   403   (known, but not allowed)
@@ -345,7 +345,7 @@ Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
 queue. Prices aren't saved ahead: the calendar prices on request
 ([0084](decisions/0084-no-fingerprint-no-price-job.md)).
 
-**Window rules** (`services/ingest/window.py`):
+**Window rules** (`services/domain/window.py`):
 
 | Given | Window |
 |---|---|
@@ -427,7 +427,7 @@ With `SCHEDULER_ENABLED`, `worker.schedule_forever` runs from startup
 
 ```
 every 15 minutes
-  job_service.start_due_jobs(session)
+  scheduler.start_due_jobs(session)
     for each hotel, in order: events, train (SCHEDULED_TRAINING)
       no scheduled run of that kind since SCHEDULE_HOUR (hotel time) last
       passed, or the last one failed 1h ago? Manual runs don't count.
@@ -494,7 +494,7 @@ Both read only what's already ingested; neither fetches
 ```
 POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
   job_service.start_train_job       DOUBLE BAR_RO bookings loaded in window → else 422 (0079)
-  → domain/pricing_model.prepare_training
+  → domain/model.prepare_training
       training_data                             shared with the backtest (6.7)
         domain/booking.booking_rows             one row per booked room per night, from
                                                 DOUBLE BAR_RO bookings alone: rate = adr_nett,
@@ -508,11 +508,11 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       each manager rate is a row of its own, booked the day they saw the recommendation;
                     weight 25% of the night's rooms, at least 1 (0071, 0076)
   progress = {stage: fitting}; commit           frees the connection during the fit (0056)
-  → domain/pricing_model.fit                    no database
+  → domain/model.fit                    no database
       ml/weighting.combine_identical_rows       same night, same inputs → one weighted row
       EBMModel.fit in a thread                  one fit on every row; no holdout, no range (0085)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
-  → domain/pricing_model.save_version
+  → domain/model.save_version
       model_repo.create_pricing_model           new version, inactive, with its own `features`,
                                                 `target` (adr_nett) and room type, DOUBLE,
                                                 created the first time (0008, 0009, 0056, 0079)

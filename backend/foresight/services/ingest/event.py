@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
     from foresight.database.models.city import City
     from foresight.repository.upsert import Outcome
-    from foresight.services.ingest.window import Window
+    from foresight.services.domain.window import Window
 
 log = logging.getLogger(__name__)
 

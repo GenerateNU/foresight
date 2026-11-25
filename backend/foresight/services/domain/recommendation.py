@@ -33,14 +33,14 @@ import pandas as pd
 from foresight.database.enums import EventCategory
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
-from foresight.repository import pricing_model as model_repo
-from foresight.repository import recommendation as snapshot_repo
+from foresight.repository import model as model_repo
+from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain import event as event_service
 from foresight.services.domain.city import local_today
 from foresight.services.domain.event import NightEvent
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.model import load_model
 from foresight.services.domain.model_inputs import events_for, hotel_location
-from foresight.services.domain.pricing_model import load_model
 from foresight.services.errors import InvalidRequestError, NotFoundError
 from foresight.services.ml.features import LEAD, build_features
 
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.hotel import Hotel, RoomType
-    from foresight.database.models.pricing_model import PricingModel
+    from foresight.database.models.model import PricingModel
     from foresight.database.models.recommendation import RecommendationSnapshot
 
 
@@ -144,14 +144,14 @@ async def get_recommendations(
         raise InvalidRequestError(f"at most {MAX_NIGHTS} nights at a time")
 
     hotel = await get_hotel(session, hotel_id)
-    stored = await model_repo.get_active_pricing_model(session, hotel.id)
+    stored = await model_repo.get_active_model(session, hotel.id)
     if stored is None:
         raise NotFoundError("Active pricing model for hotel", hotel.id)
     room_type = await _room_type(session, stored, room_type_id)
 
     today = local_today(hotel.city)
     nights = await _load_nights(session, hotel, room_type, stored, today, start, end)
-    latest = await snapshot_repo.latest_snapshots(
+    latest = await recommendation_repo.latest_snapshots(
         session, room_type.id, start=start, end=end
     )
 
@@ -389,7 +389,7 @@ async def _save(
     scored: _Scored,
 ) -> RecommendationSnapshot:
     """Store a freshly priced night as a new snapshot."""
-    return await snapshot_repo.create_recommendation_snapshot(
+    return await recommendation_repo.create_recommendation_snapshot(
         session,
         hotel_id=hotel.id,
         room_type_id=room_type.id,
