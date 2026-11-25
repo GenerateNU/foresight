@@ -1,26 +1,3 @@
-"""Runs background jobs started through the API, one hotel queue at a time.
-
-Each hotel has one in-memory queue (decision 0052). Jobs of every kind join it
-in the order they were queued and run one at a time; different hotels' queues
-run side by side. A request queues a job with `tasks.add_task(enqueue, ...)`,
-so the job joins only after the request has committed its row. A job that is
-no longer `queued` when its turn comes (it was cancelled) is skipped.
-
-The one place besides `database.session.get_session` that opens a session and
-commits. A job outlives the request that queued it, and it commits after every
-chunk so a run that ends early keeps its finished work and records where to
-resume. Everything it does goes through `services/job.py`.
-
-With SCHEDULER_ENABLED, `schedule_forever` also queues each hotel's routine
-jobs once they're due.
-
-The queues live in the API process, so production runs a single uvicorn
-worker. A restart, deploy or sleep loses them; on startup
-`fail_interrupted_jobs` marks jobs left queued or running failed so they can
-be started again. That's safe on Render's free plan, where the old process has
-stopped before the new one starts; a paid plan overlaps them (decision 0077).
-"""
-
 import asyncio
 import logging
 from collections import deque
@@ -34,17 +11,31 @@ log = logging.getLogger(__name__)
 
 SCHEDULE_CHECK_SECONDS = 15 * 60
 
-# hotel id → job ids waiting, oldest first
 _queues: dict[int, deque[int]] = {}
-# hotel id → the task working through its queue, while there is one
 _runners: dict[int, asyncio.Task[None]] = {}
-# job id → in-memory input a request handed over (a parsed file)
 _payloads: dict[int, Any] = {}
 
 
 async def enqueue(job_id: int, hotel_id: int, payload: Any = None) -> None:
-    """Add a committed job to the back of its hotel's queue. Async so FastAPI
-    runs it on the event loop rather than in a thread."""
+    """Adds a committed job to the back of its hotel's queue.
+
+    Each hotel has one in-memory queue: jobs of every kind run one at a time,
+    in the order queued, and different hotels' queues run side by side. A
+    request queues a job with `tasks.add_task(enqueue, ...)`, so it joins only
+    after the request has committed its row. Async, so FastAPI runs it on the
+    event loop rather than in a thread.
+
+    The queues live in the API process, so production runs a single uvicorn
+    worker, and a restart, deploy or sleep loses them. That's safe on Render's
+    free plan, where the old process has stopped before the new one starts; a
+    paid plan overlaps them.
+
+    Args:
+        job_id (int): The job.
+        hotel_id (int): Its hotel.
+        payload (Any): In-memory input the request handed over, e.g. a parsed
+            file.
+    """
     if payload is not None:
         _payloads[job_id] = payload
     _queues.setdefault(hotel_id, deque()).append(job_id)
@@ -53,12 +44,27 @@ async def enqueue(job_id: int, hotel_id: int, payload: Any = None) -> None:
 
 
 async def discard(job_id: int) -> None:
-    """Drop a cancelled job's in-memory input. Its id stays in the queue and
-    is skipped when reached."""
+    """Drops a cancelled job's in-memory input.
+
+    Its id stays in the queue and is skipped when reached.
+
+    Args:
+        job_id (int): The job.
+    """
     _payloads.pop(job_id, None)
 
 
 async def _drain(hotel_id: int) -> None:
+    """Runs a hotel's queued jobs one at a time until the queue is empty.
+
+    A job that can't be run at all, e.g. with the database down, is logged and
+    the queue moves on; `run_job` records every other failure itself. Nothing
+    awaits between the empty check and removing the runner, so an enqueue
+    either lands before the check or starts a new runner.
+
+    Args:
+        hotel_id (int): The hotel.
+    """
     queue = _queues[hotel_id]
     try:
         while queue:
@@ -66,19 +72,26 @@ async def _drain(hotel_id: int) -> None:
             try:
                 await run_job(job_id, _payloads.pop(job_id, None))
             except Exception:
-                # run_job records its own failures; this is the bookkeeping
-                # around it failing (the database down). Keep the queue moving.
                 log.exception("job %s could not be run", job_id)
     finally:
-        # No await between the empty check and here, so an enqueue can't slip
-        # in unseen: it either lands before the check or starts a new runner.
         del _runners[hotel_id]
         if not queue:
             del _queues[hotel_id]
 
 
 async def run_job(job_id: int, payload: Any = None) -> None:
-    """`payload` is in-memory input the request handed over (a parsed file)."""
+    """Runs one job, committing after every step.
+
+    With `get_session`, the one place that opens a session and commits: a job
+    outlives the request that queued it, and committing after every chunk
+    means a run that ends early keeps its finished work and records where to
+    resume. A job no longer queued, i.e. cancelled, is skipped.
+
+    Args:
+        job_id (int): The job.
+        payload (Any): In-memory input the request handed over, e.g. a parsed
+            file.
+    """
     async with async_session_factory() as session:
         started = await job_service.mark_running(session, job_id)
         await session.commit()
@@ -103,6 +116,7 @@ async def run_job(job_id: int, payload: Any = None) -> None:
 
 
 async def fail_interrupted_jobs() -> None:
+    """Fails the jobs a restart left queued or running, so they can be started again."""
     async with async_session_factory() as session:
         count = await job_service.fail_interrupted_jobs(session)
         await session.commit()
@@ -111,6 +125,11 @@ async def fail_interrupted_jobs() -> None:
 
 
 async def schedule_forever() -> None:
+    """Queues each hotel's routine jobs once they're due, checking every 15 minutes.
+
+    Runs with SCHEDULER_ENABLED; a failed check is logged and retried at the
+    next one.
+    """
     while True:
         try:
             async with async_session_factory() as session:

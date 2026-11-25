@@ -1,5 +1,3 @@
-"""App setup: routers, error handling, lifespan, and the API reference."""
-
 import asyncio
 import secrets
 from collections.abc import AsyncIterator
@@ -8,6 +6,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from scalar_fastapi import Theme, get_scalar_api_reference
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -30,8 +29,18 @@ from foresight.routes.errors import register_error_handlers
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    # Background jobs die with the process; anything left running is stale.
-    # Done before the scheduler starts, so it doesn't skip a job kind as busy.
+    """Fails stale jobs on startup, and runs the scheduler while the app runs.
+
+    Background jobs die with the process, so anything left running is stale.
+    That's done before the scheduler starts, so it doesn't skip a job kind as
+    busy.
+
+    Args:
+        _ (FastAPI): Unused.
+
+    Yields:
+        None: While the app serves.
+    """
     await worker.fail_interrupted_jobs()
     scheduler = (
         asyncio.create_task(worker.schedule_forever())
@@ -47,14 +56,11 @@ app = FastAPI(
     title=settings.app_name,
     description="AI revenue intelligence platform for boutique hotels",
     version="0.1.0",
-    # Use Scalar for the API reference instead of the built-in Swagger UI.
     docs_url=None,
     lifespan=lifespan,
 )
 
 register_error_handlers(app)
-
-# The session cookie
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret or secrets.token_urlsafe(32),
@@ -90,7 +96,12 @@ app.include_router(model.router, **login_required)
 
 
 @app.get("/docs", include_in_schema=False)
-async def scalar_docs():
+async def scalar_docs() -> HTMLResponse:
+    """Serves the Scalar API reference instead of the built-in Swagger UI.
+
+    Returns:
+        HTMLResponse: The reference page.
+    """
     return get_scalar_api_reference(
         openapi_url=app.openapi_url,
         title=app.title,
