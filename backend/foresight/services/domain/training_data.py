@@ -9,12 +9,12 @@ import numpy as np
 import pandas as pd
 
 from foresight.repository import booking as booking_repo
-from foresight.repository import feedback as feedback_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.services.domain.booking import BOOKING_ROW_COLUMNS, booking_rows
 from foresight.services.domain.city import local_date
-from foresight.services.domain.model_inputs import events_for, hotel_location
-from foresight.services.ml.features import FEATURES, build_features
+from foresight.services.domain.feedback import current_feedback
+from foresight.services.domain.inputs import build_inputs
+from foresight.services.ml.features import FEATURES
 
 if TYPE_CHECKING:
     from datetime import date
@@ -36,15 +36,13 @@ MAIN_RATE_PLAN = "BAR_RO"
 # night's sales (decision 0076).
 MANAGER_SHARE = 0.25
 
-_FEEDBACK_COLUMNS = ["id", "stay_date", "rate", "given_at"]
-
 
 @dataclass(frozen=True, slots=True)
 class TrainingData:
     """Booked rooms, one row per room per night, and the model's inputs for
     them, row for row (decision 0076). Oldest night first."""
 
-    nights: pd.DataFrame  # stay_date, booked_on, rate; one per row of x
+    rows: pd.DataFrame  # stay_date, booked_on, rate; one per row of x
     x: pd.DataFrame  # every input in FEATURES order
     y: pd.Series  # each room's rate per night before VAT (adr_nett)
     weights: np.ndarray  # 1 per booked room; manager rows more (0076)
@@ -79,32 +77,15 @@ async def training_data(
             room_type_code=MAIN_ROOM_CODE,
             rate_plan=MAIN_RATE_PLAN,
         )
-    # Decision 0070: a night the manager marked one-off teaches nothing.
     room_type = await main_room_type(session, hotel)
-    one_off = (
-        []
-        if room_type is None
-        else await feedback_repo.one_off_nights(
-            session, room_type.id, start=start, end=end
-        )
+    feedback = await current_feedback(
+        session, room_type.id if room_type else None, start=start, end=end
     )
-    marked = {r["stay_date"] for r in one_off}
-    keep = ~booked["stay_date"].isin(marked)
-    one_off_dropped = int(booked.loc[~keep, "stay_date"].nunique())
-    booked = booked.loc[keep].reset_index(drop=True)
-
-    days = sorted(set(booked["stay_date"]))
-    events = await events_for(session, hotel.city, days)
-    x = build_features(
-        booked,
-        events.frame,
-        events_fetched=events.fetched,
-        events_impacts=events.impacts,
-        hotel_location=hotel_location(hotel),
-        booked_on=booked["booked_on"],
-    )
+    booked, one_off_dropped = _drop_one_off(booked, feedback.one_off_nights)
+    inputs = await build_inputs(session, hotel, booked, booked_on=booked["booked_on"])
+    x = inputs.x
     return TrainingData(
-        nights=booked,
+        rows=booked,
         x=x[FEATURES],
         y=booked["rate"].astype(float),
         weights=np.ones(len(booked)),
@@ -138,40 +119,31 @@ async def with_manager_rows(
             night first, and how many manager rates were added.
     """
     room_type = await main_room_type(session, hotel)
-    rates = (
-        []
-        if room_type is None
-        else await feedback_repo.tuning_feedback(
-            session, room_type.id, start=start, end=end
-        )
+    feedback = await current_feedback(
+        session, room_type.id if room_type else None, start=start, end=end
     )
-    feedback = pd.DataFrame(rates, columns=pd.Index(_FEEDBACK_COLUMNS))
-    if feedback.empty:
+    rows = pd.DataFrame(
+        [
+            (f.stay_date, local_date(hotel.city, f.created_at), float(f.rate))
+            for f in feedback.training_rates
+        ],
+        columns=pd.Index(["stay_date", "booked_on", "rate"]),
+    )
+    if rows.empty:
         return data, 0
-    feedback["rate"] = pd.to_numeric(feedback["rate"], errors="coerce")
-    rows = feedback.assign(
-        booked_on=[local_date(hotel.city, t) for t in feedback["given_at"]]
-    )[["stay_date", "booked_on", "rate"]]
-    events = await events_for(session, hotel.city, sorted(set(rows["stay_date"])))
-    x_manager = build_features(
-        rows,
-        events.frame,
-        events_fetched=events.fetched,
-        events_impacts=events.impacts,
-        hotel_location=hotel_location(hotel),
-        booked_on=rows["booked_on"],
-    )[list(data.x.columns)]
+    inputs = await build_inputs(session, hotel, rows, booked_on=rows["booked_on"])
+    x_manager = inputs.x[list(data.x.columns)]
     # MANAGER_SHARE of the night's booked rooms, and at least 1, so a future
     # night with no bookings yet still counts.
-    rooms = data.nights.groupby("stay_date").size()
+    rooms = data.rows.groupby("stay_date").size()
     booked = rows["stay_date"].map(rooms).fillna(0).to_numpy(float)
     weights = np.maximum(MANAGER_SHARE * booked, 1.0)
 
     # Every row oldest night first, like the booked rooms.
-    nights = pd.concat([data.nights, rows], ignore_index=True)
-    order = nights["stay_date"].argsort(kind="stable").to_numpy()
+    combined = pd.concat([data.rows, rows], ignore_index=True)
+    order = combined["stay_date"].argsort(kind="stable").to_numpy()
     merged = TrainingData(
-        nights=nights.iloc[order].reset_index(drop=True),
+        rows=combined.iloc[order].reset_index(drop=True),
         x=pd.concat([data.x, x_manager], ignore_index=True)
         .iloc[order]
         .reset_index(drop=True),
@@ -240,3 +212,19 @@ def combine_identical_rows(
         total.to_numpy(),
         group,
     )
+
+
+def _drop_one_off(booked: pd.DataFrame, one_off: set[date]) -> tuple[pd.DataFrame, int]:
+    """Drops the booked rooms of nights the manager tagged one-off.
+
+    Args:
+        booked (pd.DataFrame): Booked rooms, with a stay_date column.
+        one_off (set[date]): The one-off nights.
+
+    Returns:
+        tuple[pd.DataFrame, int]: The rooms kept, and how many nights were
+            dropped.
+    """
+    keep = ~booked["stay_date"].isin(one_off)
+    dropped = int(booked.loc[~keep, "stay_date"].nunique())
+    return booked.loc[keep].reset_index(drop=True), dropped

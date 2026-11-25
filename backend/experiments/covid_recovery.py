@@ -34,7 +34,7 @@ async def load(end=DATA_END):
 
 
 data = await load()  # noqa: F704
-stay = pd.to_datetime(data.nights["stay_date"])
+stay = pd.to_datetime(data.rows["stay_date"])
 y = data.y.astype(float).reset_index(drop=True)
 
 
@@ -78,7 +78,7 @@ HOLIDAYS = set().union(*(irish_public_holidays(y) for y in range(2022, 2026)))
 BASELINE_COLUMNS = in_feature_order([*INPUT_GROUPS["calendar"], "is_public_holiday"])
 
 x = data.x.copy()
-x["is_public_holiday"] = data.nights["stay_date"].isin(HOLIDAYS).astype(float)
+x["is_public_holiday"] = data.rows["stay_date"].isin(HOLIDAYS).astype(float)
 recovering = (stay < RECOVERY_END).to_numpy()
 x["covid_recovery"] = recovering.astype(float)
 # Months since Jan 2022, flat from June 2022: a ramp instead of an on/off flag.
