@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from foresight.database.enums import Source
 from foresight.database.models.city import City
 from foresight.database.models.hotel import Hotel
-from foresight.repository.signals import event as event_repo
-from foresight.services.adapters import predicthq
-from foresight.services.domain import event as event_service
+from foresight.repository import event as event_repo
+from foresight.services.events import event as event_service
+from foresight.services.events import predicthq
 from foresight.services.ml.features import build_features
 
 EVENT_COLUMNS = [

@@ -13,10 +13,10 @@ from foresight.routes.helpers import (
     ResponseSchema,
     SessionDep,
 )
-from foresight.services.domain import hotel as hotel_service
-from foresight.services.domain import recommendation as recommendation_service
-from foresight.services.domain import user as user_service
 from foresight.services.errors import InvalidRequestError
+from foresight.services.hotels import hotel as hotel_service
+from foresight.services.recommendations import recommendation as recommendation_service
+from foresight.services.users import user as user_service
 
 router = APIRouter(tags=["Hotels"])
 

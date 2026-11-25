@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from foresight.config import settings
 from foresight.database.models.user import User
 from foresight.repository import user as user_repo
-from foresight.services.domain.hotel import get_hotel
 from foresight.services.errors import (
     ConflictError,
     ForbiddenError,
@@ -11,6 +10,7 @@ from foresight.services.errors import (
     NotFoundError,
     NotSignedInError,
 )
+from foresight.services.hotels.hotel import get_hotel
 
 
 def require_sign_in_configured() -> None:

@@ -9,13 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import JobKind
 from foresight.database.models.hotel import Hotel
+from foresight.repository import booking as booking_repo
 from foresight.repository.upsert import Outcome
+from foresight.services.bookings.guestline import cancellations, reservations
+from foresight.services.bookings.guestline.common import PARSE_ERRORS, Parsed
 from foresight.services.errors import InvalidRequestError
-from foresight.services.ingest import bookings
 
-type Parse = Callable[[bytes], tuple[list[dict[str, Any]], int, dict[str, Any]]]
+type Parse = Callable[[bytes], Parsed]
 type Save = Callable[
-    [AsyncSession, Hotel, Sequence[Mapping[str, Any]], Mapping[str, Any]],
+    [AsyncSession, Hotel, Sequence[Mapping[str, Any]]],
     Awaitable[dict[Outcome, int]],
 ]
 
@@ -40,7 +42,6 @@ class Report:
         date_field (str): The row field the export is filtered by.
         parse (Parse): Reads a file into rows.
         save (Save): Saves a chunk of rows.
-        errors (tuple[type[Exception], ...]): What a malformed file raises.
     """
 
     kind: JobKind
@@ -49,27 +50,60 @@ class Report:
     date_field: str
     parse: Parse
     save: Save
-    errors: tuple[type[Exception], ...]
+
+
+async def _save_reservations(
+    session: AsyncSession, hotel: Hotel, rows: Sequence[Mapping[str, Any]]
+) -> dict[Outcome, int]:
+    """Saves a chunk of bookings for a hotel; does not commit.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel.
+        rows (Sequence[Mapping[str, Any]]): Parsed bookings.
+
+    Returns:
+        dict[Outcome, int]: How many rows were new, updated and unchanged.
+    """
+    return await booking_repo.upsert_bookings(
+        session, [{**row, "hotel_id": hotel.id} for row in rows]
+    )
+
+
+async def _save_cancellations(
+    session: AsyncSession, hotel: Hotel, rows: Sequence[Mapping[str, Any]]
+) -> dict[Outcome, int]:
+    """Saves a chunk of cancellations for a hotel; does not commit.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel.
+        rows (Sequence[Mapping[str, Any]]): Parsed cancellations.
+
+    Returns:
+        dict[Outcome, int]: How many rows were new, updated and unchanged.
+    """
+    return await booking_repo.upsert_cancellations(
+        session, [{**row, "hotel_id": hotel.id} for row in rows]
+    )
 
 
 REPORTS: tuple[Report, ...] = (
     Report(
         JobKind.RESERVATIONS,
-        "Daily New Reservations",
-        bookings.RESERVATION_COLUMNS,
-        bookings.RESERVATION_DATE_FIELD,
-        bookings.parse_reservations,
-        bookings.save_reservations,
-        bookings.PARSE_ERRORS,
+        reservations.REPORT,
+        reservations.COLUMNS,
+        "booked_at",
+        reservations.parse,
+        _save_reservations,
     ),
     Report(
         JobKind.CANCELLATIONS,
-        "Cancellations",
-        bookings.CANCELLATION_COLUMNS,
-        bookings.CANCELLATION_DATE_FIELD,
-        bookings.parse_cancellations,
-        bookings.save_cancellations,
-        bookings.PARSE_ERRORS,
+        cancellations.REPORT,
+        cancellations.COLUMNS,
+        "cancelled_at",
+        cancellations.parse,
+        _save_cancellations,
     ),
 )
 FILE_KINDS = frozenset(report.kind for report in REPORTS)
@@ -83,14 +117,12 @@ class ParsedFile:
         name (str): The file's name.
         report (Report): Which report it is.
         rows (list[dict[str, Any]]): Its parsed rows.
-        extra (dict[str, Any]): What saving needs beyond the rows.
         params (dict[str, Any]): The upload record, stored on the job.
     """
 
     name: str
     report: Report
     rows: list[dict[str, Any]]
-    extra: dict[str, Any]
     params: dict[str, Any]
 
 
@@ -143,9 +175,10 @@ def _parse_file(name: str, content: bytes) -> ParsedFile:
     """
     report = _recognise(name, content)
     try:
-        rows, skipped, extra = report.parse(content)
-    except report.errors as exc:
+        parsed = report.parse(content)
+    except PARSE_ERRORS as exc:
         raise InvalidRequestError(f"could not import {name}: {exc}") from exc
+    rows, skipped = parsed.rows, parsed.skipped
     days = [_day(row[report.date_field]) for row in rows]
     params: dict[str, Any] = {
         "file": name,
@@ -155,7 +188,7 @@ def _parse_file(name: str, content: bytes) -> ParsedFile:
         "first_date": min(days).isoformat() if days else None,
         "last_date": max(days).isoformat() if days else None,
     }
-    return ParsedFile(name, report, rows, extra, params)
+    return ParsedFile(name, report, rows, params)
 
 
 def _recognise(name: str, content: bytes) -> Report:

@@ -14,8 +14,8 @@ from foresight.routes.helpers import (
     SessionDep,
     paginate,
 )
-from foresight.services import job as job_service
-from foresight.services.domain import freshness as freshness_service
+from foresight.services.jobs import freshness as freshness_service
+from foresight.services.jobs import job as job_service
 
 router = APIRouter(tags=["Jobs"])
 

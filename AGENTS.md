@@ -25,8 +25,8 @@ routes  →  services  →  repository  →  database
 
 - **routes** — HTTP layer: FastAPI routers and the `*Request`/`*Response`
   schemas each one uses.
-- **services** — business logic: `domain/`, `ingest/`, `adapters/`, `ml/`,
-  `job.py`.
+- **services** — business logic, one folder per feature: `hotels/`, `users/`,
+  `events/`, `bookings/`, `pricing/`, `recommendations/`, `jobs/`, plus `ml/`.
 - **repository** — data access; the only layer that talks to the ORM/session.
 - **database** — SQLAlchemy models, migrations, session/engine.
 
@@ -34,7 +34,8 @@ Rule: a layer may only call the layer directly below it. Routes never touch the
 ORM; services never build HTTP responses. Code lives in the installable package
 `backend/foresight/`.
 
-For a small slice to copy, follow `city.py` through all four layers.
+For a small slice to copy, follow `city.py` through all four layers
+(`services/hotels/city.py` in services).
 
 ## Commands (run from repo root)
 

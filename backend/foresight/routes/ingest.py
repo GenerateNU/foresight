@@ -17,7 +17,7 @@ from foresight.config import settings
 from foresight.routes.access import HotelId
 from foresight.routes.helpers import RequestSchema, SessionDep, example_body
 from foresight.routes.job import JobResponse
-from foresight.services import job as job_service
+from foresight.services.jobs import job as job_service
 
 router = APIRouter(tags=["Ingest"])
 

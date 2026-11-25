@@ -9,10 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.city import City
 from foresight.repository.upsert import Outcome
-from foresight.services.adapters import predicthq
-from foresight.services.adapters.predicthq import FetchResult, Market
-from foresight.services.domain.event import save_event
-from foresight.services.domain.window import Window
+from foresight.services.events import predicthq
+from foresight.services.events.event import save_event
+from foresight.services.events.predicthq import FetchResult, Market
+from foresight.services.events.window import Window
 
 log = logging.getLogger(__name__)
 

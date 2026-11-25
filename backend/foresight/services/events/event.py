@@ -6,14 +6,14 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import EventCategory, EventStatus, JobKind, Source
-from foresight.database.models.signals.event import Event
+from foresight.database.models.event import Event
+from foresight.repository import event as event_repo
 from foresight.repository import job as job_repo
-from foresight.repository.signals import event as event_repo
 from foresight.repository.upsert import Outcome
-from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.normalize import NormalizedEvent
-from foresight.services.domain.window import Window
 from foresight.services.errors import InvalidRequestError
+from foresight.services.events.normalize import NormalizedEvent
+from foresight.services.events.window import Window
+from foresight.services.hotels.hotel import get_hotel
 from foresight.services.ml.features import ATTENDED_CATEGORIES
 
 _PRECEDENCE = {Source.PREDICTHQ: 1}

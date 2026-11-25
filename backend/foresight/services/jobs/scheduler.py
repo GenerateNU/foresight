@@ -10,9 +10,9 @@ from foresight.database.enums import JobKind, JobStatus
 from foresight.database.models.hotel import Hotel
 from foresight.database.models.job import Job
 from foresight.repository import job as job_repo
-from foresight.services.domain.hotel import list_hotels
 from foresight.services.errors import DomainError
-from foresight.services.job import start_events_job, start_train_job
+from foresight.services.hotels.hotel import list_hotels
+from foresight.services.jobs.job import start_events_job, start_train_job
 
 log = logging.getLogger(__name__)
 

@@ -16,8 +16,8 @@ from foresight.routes.helpers import (
     paginate,
 )
 from foresight.routes.job import JobResponse
-from foresight.services import job as job_service
-from foresight.services.domain import model as model_service
+from foresight.services.jobs import job as job_service
+from foresight.services.pricing import model as model_service
 
 router = APIRouter(tags=["Models"])
 

@@ -9,11 +9,11 @@ from foresight.config import settings
 from foresight.database.enums import JobKind
 from foresight.database.models.hotel import Hotel
 from foresight.repository.upsert import Outcome
-from foresight.services.domain import model as model_service
-from foresight.services.domain import tuning as tuning_service
-from foresight.services.domain.window import Window
-from foresight.services.ingest import event as event_ingest
-from foresight.services.ingest import files as file_ingest
+from foresight.services.bookings import uploads as file_ingest
+from foresight.services.events import ingest as event_ingest
+from foresight.services.events.window import Window
+from foresight.services.pricing import model as model_service
+from foresight.services.pricing import tuning as tuning_service
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +104,7 @@ async def _file(
     total: dict[str, int] = {}
     done = 0
     for chunk in file_ingest.chunks(parsed.rows):
-        outcomes = await parsed.report.save(session, hotel, chunk, parsed.extra)
+        outcomes = await parsed.report.save(session, hotel, chunk)
         for name, n in _counts(outcomes).items():
             total[name] = total.get(name, 0) + n
         done += len(chunk)

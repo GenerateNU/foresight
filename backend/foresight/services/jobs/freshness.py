@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
 from foresight.repository import recommendation as recommendation_repo
-from foresight.services.domain.hotel import get_hotel
+from foresight.services.hotels.hotel import get_hotel
 
 KINDS = {
     "events": (JobKind.EVENTS, {"mode": "recent"}),

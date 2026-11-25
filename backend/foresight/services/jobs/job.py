@@ -9,15 +9,15 @@ from foresight.database.enums import JobKind, JobStatus
 from foresight.database.models.hotel import Hotel
 from foresight.database.models.job import Job
 from foresight.repository import job as job_repo
-from foresight.services.adapters.predicthq import PredictHQLimitError
-from foresight.services.domain import model as model_service
-from foresight.services.domain import tuning as tuning_service
-from foresight.services.domain.city import local_today
-from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.window import Window, resolve_window
+from foresight.services.bookings import uploads as file_ingest
 from foresight.services.errors import ConflictError, NotConfiguredError, NotFoundError
-from foresight.services.handlers import HANDLERS, Step
-from foresight.services.ingest import files as file_ingest
+from foresight.services.events.predicthq import PredictHQLimitError
+from foresight.services.events.window import Window, resolve_window
+from foresight.services.hotels.city import local_today
+from foresight.services.hotels.hotel import get_hotel
+from foresight.services.jobs.handlers import HANDLERS, Step
+from foresight.services.pricing import model as model_service
+from foresight.services.pricing import tuning as tuning_service
 
 FIRST_REFRESH_DAYS = 7
 _QUOTA_ERRORS = (PredictHQLimitError,)
