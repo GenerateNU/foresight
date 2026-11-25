@@ -526,7 +526,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
       model_repo.activate_pricing_model         unless activate=false
   progress = {model_id, version, metrics, ...}
 
-GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id=]
+GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…
   → recommendations/recommendation.get_recommendations             at most 90 nights
       model_repo.get_active_pricing_model       404 if none; artifact not loaded yet
       per night: build_features row (booked_on = today), keep the version's
@@ -721,7 +721,7 @@ earlier nights, and
 | POST | `/hotels/{id}/users` | `{email}`; links a colleague who has signed in; 204 |
 | GET | `/hotels/{id}/events` | paginated; withdrawn events hidden |
 | GET | `/hotels/{id}/recommendations?date=` or `?start=&end=` | a list, one per night (≤ 90); stores each night from today on, reusing it while its inputs hold |
-| POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)) |
+| POST | `/hotels/{id}/feedback` | adds feedback on a night, past or future; a change is a new version ([0043](decisions/0043-manager-feedback-is-versioned.md)); the room type comes from the snapshot |
 | GET | `/hotels/{id}/feedback?start=&end=` | current feedback per night (≤ 366); `include_history=true` adds earlier versions |
 | GET | `/hotels/{id}/freshness` | when each kind of data last succeeded (recommendations: last rate change), and the latest failure ([0039](decisions/0039-freshness-reports-dates-only.md)) |
 | POST | `/hotels/{id}/train` | job, 202; optional description, window, settings |

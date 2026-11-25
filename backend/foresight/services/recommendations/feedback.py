@@ -10,7 +10,7 @@ from foresight.database.models.feedback import Feedback
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import recommendation as recommendation_repo
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
-from foresight.services.hotels.hotel import get_hotel, get_room_type
+from foresight.services.hotels.hotel import get_hotel
 
 MAX_NIGHTS = 366
 
@@ -19,7 +19,6 @@ async def add_feedback(
     session: AsyncSession,
     hotel_id: int,
     *,
-    room_type_id: int,
     stay_date: date,
     rate: Decimal,
     reason_tags: list[FeedbackReasonTag],
@@ -27,52 +26,43 @@ async def add_feedback(
     snapshot_id: int,
     user_id: int | None = None,
 ) -> Feedback:
-    """Saves the next version of the feedback for a room type and night.
+    """Saves the next version of the feedback for a night.
 
     Feedback is only ever added: changing it adds the next version, and the
     highest version is the current one. The manager sends the rate they
-    chose; whether ours was too high or too low is worked out from it.
+    chose; whether ours was too high or too low is worked out from it. The
+    room type is the snapshot's: the one the model prices.
 
     Args:
         session (AsyncSession): The database session.
         hotel_id (int): The hotel.
-        room_type_id (int): The room type.
         stay_date (date): The night.
         rate (Decimal): The rate the manager chose, before VAT like the
             recommendation.
         reason_tags (list[FeedbackReasonTag]): Why; a repeated tag is kept
             once.
         reason_text (str | None): Why, in their words.
-        snapshot_id (int): The recommendation they saw, for the same room
-            type and night.
+        snapshot_id (int): The recommendation they saw, for the same night.
         user_id (int | None): Who gave it.
 
     Returns:
         Feedback: The new version.
 
     Raises:
-        NotFoundError: Unknown hotel, a room type that isn't the hotel's, or a
-            snapshot that isn't the hotel's.
-        InvalidRequestError: The snapshot is for another room type or night.
+        NotFoundError: Unknown hotel, or a snapshot that isn't the hotel's.
+        InvalidRequestError: The snapshot is for another night.
         ConflictError: Another version was saved at the same moment.
     """
     hotel = await get_hotel(session, hotel_id)
-    room_type = await get_room_type(session, room_type_id)
-    if room_type.hotel_id != hotel.id:
-        raise NotFoundError("Room type", room_type_id)
-
     snapshot = await recommendation_repo.get_snapshot(session, snapshot_id)
     if snapshot is None or snapshot.hotel_id != hotel.id:
         raise NotFoundError("Snapshot", snapshot_id)
-    if snapshot.room_type_id != room_type.id or snapshot.stay_date != stay_date:
-        raise InvalidRequestError(
-            f"snapshot {snapshot_id} is for another room type or night"
-        )
-
+    if snapshot.stay_date != stay_date:
+        raise InvalidRequestError(f"snapshot {snapshot_id} is for another night")
     feedback = await feedback_repo.create_feedback(
         session,
         hotel_id=hotel.id,
-        room_type_id=room_type.id,
+        room_type_id=snapshot.room_type_id,
         stay_date=stay_date,
         snapshot_id=snapshot_id,
         user_id=user_id,
@@ -93,7 +83,6 @@ async def list_feedback(
     *,
     start: date,
     end: date,
-    room_type_id: int | None = None,
     include_history: bool = False,
 ) -> Sequence[Feedback]:
     """Lists the current feedback for each night in a range.
@@ -103,7 +92,6 @@ async def list_feedback(
         hotel_id (int): The hotel.
         start (date): First night, inclusive.
         end (date): Last night, inclusive.
-        room_type_id (int | None): Only this room type; None for all.
         include_history (bool): Every version, not just the current one.
 
     Returns:
@@ -123,7 +111,6 @@ async def list_feedback(
         hotel_id,
         start=start,
         end=end,
-        room_type_id=room_type_id,
         include_history=include_history,
     )
 
