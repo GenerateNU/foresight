@@ -1,6 +1,3 @@
-"""What each kind of job does once it runs: one async generator per kind, each
-yielding a `Step` after every saved chunk."""
-
 from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -21,8 +18,16 @@ from foresight.services.ingest import files as file_ingest
 
 @dataclass(frozen=True, slots=True)
 class Step:
-    """One saved chunk: counts so far, and where to pick up if the run ends
-    now (None once nothing is left)."""
+    """One saved chunk of a job's work.
+
+    Each job kind's handler is an async generator yielding one after every
+    saved chunk; the worker commits at each.
+
+    Attributes:
+        progress (dict[str, Any]): Counts so far.
+        resume_from (date | None): Where to pick up if the run ends now;
+            None once nothing is left.
+    """
 
     progress: dict[str, Any]
     resume_from: date | None
@@ -36,6 +41,20 @@ type Handler = Callable[
 async def _events(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
+    """Runs an events job: the routine refresh, or a backfill month by month.
+
+    A backfill walks newest month first, so it resumes with the next, older
+    month's last night as `end`.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel, with its city loaded.
+        params (Mapping[str, Any]): The job's params.
+        _ (Any): Unused; every handler takes it.
+
+    Yields:
+        Step: After the refresh, or after each month.
+    """
     if params["mode"] == "recent":
         report = await event_ingest.ingest_recent(
             session,
@@ -52,7 +71,6 @@ async def _events(
         session, hotel.city, window, token=settings.predicthq_token
     ):
         done = months.index((first, last)) + 1
-        # Newest first: pick up with the next, older month as `end`.
         resume = months[done][1] if done < len(months) else None
         yield Step(_event_progress(report, (done, len(months))), resume)
 
@@ -63,8 +81,23 @@ async def _file(
     _: Mapping[str, Any],
     parsed: file_ingest.ParsedFile | None,
 ) -> AsyncIterator[Step]:
-    """Save an uploaded file's rows a chunk at a time. If it ends early, the
-    manager uploads the file again: saving is an upsert."""
+    """Saves an uploaded file's rows a chunk at a time.
+
+    If it ends early, the manager uploads the file again: saving is an
+    upsert.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel.
+        _ (Mapping[str, Any]): Unused; the file carries what's needed.
+        parsed (file_ingest.ParsedFile | None): The file, held in memory.
+
+    Yields:
+        Step: After each chunk.
+
+    Raises:
+        RuntimeError: The file didn't reach the worker.
+    """
     if parsed is None:
         raise RuntimeError("the uploaded file didn't reach the worker")
 
@@ -82,14 +115,30 @@ async def _file(
 async def _train(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
+    """Trains a new version.
+
+    Yields once before the fit: the worker commits at each step, which hands
+    the database connection back while the model fits, since a long fit
+    would otherwise outlast it.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel, with its city loaded.
+        params (Mapping[str, Any]): The job's params.
+        _ (Any): Unused; every handler takes it.
+
+    Yields:
+        Step: Before the fit, and once the version is saved.
+
+    Raises:
+        InvalidRequestError: Too few booked rooms to train on.
+    """
     prepared = await model_service.prepare_training(
         session,
         hotel,
         start=_date_or_none(params["start"]),
         end=_date_or_none(params["end"]),
     )
-    # The worker commits at each step, which hands the database connection
-    # back while the model fits: a long fit would otherwise outlast it.
     yield Step(
         {
             "stage": "fitting",
@@ -130,6 +179,21 @@ async def _train(
 async def _tune(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
+    """Tunes the active model with the manager's rates.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel, with its city loaded.
+        params (Mapping[str, Any]): The job's params.
+        _ (Any): Unused; every handler takes it.
+
+    Yields:
+        Step: Once, with the tune-up or why it was skipped.
+
+    Raises:
+        InvalidRequestError: No active model, or one that predates the main
+            room type.
+    """
     result = await tuning_service.tune(session, hotel, activate=params["activate"])
     version_row = result.version
     yield Step(
@@ -160,6 +224,16 @@ HANDLERS: dict[JobKind, Handler] = {
 def _event_progress(
     report: event_ingest.EventReport, months: tuple[int, int] | None
 ) -> dict[str, Any]:
+    """Records an events run's totals on its job.
+
+    Args:
+        report (event_ingest.EventReport): The running totals.
+        months (tuple[int, int] | None): Months done and in total, for a
+            backfill.
+
+    Returns:
+        dict[str, Any]: The job's progress.
+    """
     progress: dict[str, Any] = {
         "fetched": report.fetched,
         "rejected": report.rejected,
@@ -175,8 +249,24 @@ def _event_progress(
 
 
 def _date_or_none(value: str | None) -> date | None:
+    """Reads an optional ISO date.
+
+    Args:
+        value (str | None): The date.
+
+    Returns:
+        date | None: The date, or None.
+    """
     return None if value is None else date.fromisoformat(value)
 
 
 def _counts(outcomes: Mapping[Outcome, int]) -> dict[str, int]:
+    """Keys outcome counts by name, for JSON.
+
+    Args:
+        outcomes (Mapping[Outcome, int]): Counts by outcome.
+
+    Returns:
+        dict[str, int]: Counts by outcome name.
+    """
     return {outcome.value: n for outcome, n in outcomes.items()}

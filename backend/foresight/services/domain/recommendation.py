@@ -1,25 +1,3 @@
-"""Nightly rate recommendations from the hotel's active pricing model.
-
-Reads only what's already ingested; it never fetches. If data is missing for
-a night, the model gets an empty value (it learned an effect for that) rather
-than this call pulling the data in.
-
-Every price shown from today on is saved as a snapshot (decisions 0038, 0084):
-
-1. Load each night's inputs: the model's input row, the events on the night
-   and whether an events backfill covered it. Database reads only. Days booked
-   ahead are among them: the rate is what the night would sell for if booked
-   today, so a future night's inputs change daily (decision 0056).
-2. A night whose latest snapshot has the same model and inputs returns that
-   snapshot: the same model on the same inputs gives the same price. The rest
-   are scored together, in one batch, and each is saved as a new snapshot.
-
-Past nights are never saved after the fact: one with a snapshot returns its
-latest, as it was; one without is priced and returned unsaved.
-
-Returns domain dataclasses; the route maps them to its response schemas.
-"""
-
 import math
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
@@ -52,45 +30,75 @@ from foresight.services.domain.model import get_active_model, load_model
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.features import LEAD
 
-# One request scores its changed nights in one batch; this bounds the batch.
 MAX_NIGHTS = 90
 
 
 @dataclass(frozen=True, slots=True)
 class Recommendation:
-    """One night's rate, why, and what it was priced from."""
+    """One night's rate, why, and what it was priced from.
+
+    Attributes:
+        hotel_id (int): The hotel.
+        stay_date (date): The night.
+        room_type (str): The room type's name.
+        room_type_id (int): The room type.
+        lead_days (int | None): Days from today it was priced at; None on old
+            snapshots.
+        recommended_rate (Decimal): The rate, before VAT.
+        explanation (Explanation): Why.
+        model_id (int): The version that priced it.
+        events (list[NightEvent]): The events on the night, largest first.
+        events_source (str | None): "fetched" or "missing"; None on old
+            snapshots.
+        snapshot_id (int | None): None for a past night priced but not saved.
+        priced_at (datetime): When the model produced this rate.
+        manager_rate (Decimal | None): The rate the manager set; None if they
+            haven't. Read live, never stored in a snapshot, so it never
+            triggers a new one.
+    """
 
     hotel_id: int
     stay_date: date
     room_type: str
     room_type_id: int
-    lead_days: int | None  # days from today it was priced at; None on old snapshots
+    lead_days: int | None
     recommended_rate: Decimal
     explanation: Explanation
     model_id: int
-    events: list[NightEvent]  # the events on the night, largest first
-    events_source: str | None  # "fetched" or "missing"; None on older snapshots
-    snapshot_id: int | None  # None for a past night priced but not saved
-    priced_at: datetime  # when the model produced this rate
-    # The rate the manager set for the night; None if they haven't. Read live,
-    # never version_row in a snapshot, so it never triggers a new one (decision 0071).
+    events: list[NightEvent]
+    events_source: str | None
+    snapshot_id: int | None
+    priced_at: datetime
     manager_rate: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class _Night:
-    """A night's inputs, before any model runs."""
+    """A night's inputs, before any model runs.
+
+    Attributes:
+        stay_date (date): The night.
+        features (pd.DataFrame): The model's input, one row.
+        events (list[NightEvent]): The events on the night.
+        events_source (str): "fetched" or "missing".
+        inputs (dict[str, Any]): What's stored with the snapshot.
+    """
 
     stay_date: date
-    features: pd.DataFrame  # the model's input, one row
+    features: pd.DataFrame
     events: list[NightEvent]
-    events_source: str  # "fetched" or "missing"
-    inputs: dict[str, Any]  # what's version_row with the snapshot
+    events_source: str
+    inputs: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class _Scored:
-    """What the model said about one night."""
+    """What the model said about one night.
+
+    Attributes:
+        rate (Decimal): The rate, in cents.
+        explanation (Explanation): Why.
+    """
 
     rate: Decimal
     explanation: Explanation
@@ -104,10 +112,26 @@ async def get_recommendations(
     end: date,
     room_type_id: int | None = None,
 ) -> list[Recommendation]:
-    """The recommended rate for each night in [start, end], oldest first.
+    """Recommends a rate for each night in a range, from the active model.
 
-    Reuses a night's latest snapshot while its inputs are unchanged; otherwise
-    prices it and, from today on, saves a new snapshot.
+    Reads only what's already ingested; a night with missing data gets an
+    empty input, which the model learned an effect for. Days booked ahead are
+    an input: the rate is what the night would sell for if booked today, so a
+    future night's inputs change daily. A night whose latest snapshot has the
+    same model and inputs returns it, since that gives the same price; the
+    rest are scored in one batch and, from today on, saved as new snapshots.
+    Past nights are never saved after the fact.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+        room_type_id (int | None): The room type; None for the one the model
+            prices.
+
+    Returns:
+        list[Recommendation]: One per night, oldest first.
 
     Raises:
         NotFoundError: Unknown hotel, or no active model.
@@ -130,7 +154,6 @@ async def get_recommendations(
     scored = await _score(
         session, version_row, _to_price(nights, latest, version_row, today)
     )
-
     out = []
     for night in nights:
         result = scored.get(night.stay_date)
@@ -179,17 +202,27 @@ def _to_price(
     ]
 
 
-# --- inputs -----------------------------------------------------------------
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                          Inputs                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 async def _room_type(
     session: AsyncSession, version_row: PricingModel, room_type_id: int | None
 ) -> RoomType:
-    """The room type the active version prices (decision 0079).
+    """Gets the room type the active version prices.
+
+    Args:
+        session (AsyncSession): The database session.
+        version_row (PricingModel): The active version.
+        room_type_id (int | None): The room type asked for, if any.
+
+    Returns:
+        RoomType: The room type.
 
     Raises:
-        InvalidRequestError: The version predates 0079 and prices no room
-            type, or `room_type_id` is another room type.
+        InvalidRequestError: The version predates room types and prices
+            none, or `room_type_id` is another room type.
     """
     if version_row.room_type_id is None:
         raise InvalidRequestError(
@@ -202,7 +235,7 @@ async def _room_type(
             f"{version_row.room_type_id}"
         )
     room_type = await hotel_repo.get_room_type(session, version_row.room_type_id)
-    assert room_type is not None  # the foreign key cascades
+    assert room_type is not None
     return room_type
 
 
@@ -259,10 +292,17 @@ async def _load_nights(
 
 
 def _plain(value: Any) -> Any:
-    """A feature value as plain JSON: numpy scalars unwrapped, NaN as None."""
+    """Turns a feature value into plain JSON.
+
+    Args:
+        value (Any): The value, possibly a numpy scalar.
+
+    Returns:
+        Any: The value unwrapped; NaN as None.
+    """
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
-    if hasattr(value, "item"):  # numpy scalar
+    if hasattr(value, "item"):
         return _plain(value.item())
     if isinstance(value, bool | int | float):
         return value
@@ -270,14 +310,32 @@ def _plain(value: Any) -> Any:
 
 
 def _event_json(event: NightEvent) -> dict[str, Any]:
+    """Stores a night's event as JSON.
+
+    Args:
+        event (NightEvent): The event.
+
+    Returns:
+        dict[str, Any]: The JSON.
+    """
     return {**asdict(event), "category": event.category.value}
 
 
 def _event_from_json(data: dict[str, Any]) -> NightEvent:
+    """Reads a night's event stored by `_event_json`.
+
+    Args:
+        data (dict[str, Any]): The JSON.
+
+    Returns:
+        NightEvent: The event.
+    """
     return NightEvent(**{**data, "category": EventCategory(data["category"])})
 
 
-# --- scoring ----------------------------------------------------------------
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Scoring                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 async def _score(
@@ -285,16 +343,24 @@ async def _score(
     version_row: PricingModel,
     nights: list[_Night],
 ) -> dict[date, _Scored]:
-    """Run the model once over every night given. Loads the model only if
-    there is something to score."""
+    """Runs the model once over every night given.
+
+    Loads the model only if there is something to score.
+
+    Args:
+        session (AsyncSession): The database session.
+        version_row (PricingModel): The active version.
+        nights (list[_Night]): The nights to price.
+
+    Returns:
+        dict[date, _Scored]: Each night's rate and explanation.
+    """
     if not nights:
         return {}
     model = await load_model(session, version_row)
-
     x = pd.concat([n.features for n in nights], ignore_index=True)
     pred = model.predict(x)
     contributions = model.explain(x)
-
     return {
         night.stay_date: _Scored(
             rate=money(float(pred[i])),
@@ -306,7 +372,9 @@ async def _score(
     }
 
 
-# --- snapshots --------------------------------------------------------------
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                        Snapshots                         │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 async def _save(
@@ -317,7 +385,19 @@ async def _save(
     night: _Night,
     scored: _Scored,
 ) -> RecommendationSnapshot:
-    """Store a freshly priced night as a new snapshot."""
+    """Stores a freshly priced night as a new snapshot.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel.
+        room_type (RoomType): The room type.
+        version_row (PricingModel): The version that priced it.
+        night (_Night): The night and its inputs.
+        scored (_Scored): The rate and explanation.
+
+    Returns:
+        RecommendationSnapshot: The new snapshot.
+    """
     return await recommendation_repo.create_recommendation_snapshot(
         session,
         hotel_id=hotel.id,
@@ -333,8 +413,17 @@ async def _save(
 def _from_snapshot(
     snap: RecommendationSnapshot, hotel: Hotel, room_type: RoomType
 ) -> Recommendation:
-    """A version_row snapshot, read back as a recommendation."""
-    inputs = snap.inputs or {}  # empty on snapshots from before decision 0038
+    """Reads a stored snapshot back as a recommendation.
+
+    Args:
+        snap (RecommendationSnapshot): The snapshot; old ones have no inputs.
+        hotel (Hotel): The hotel.
+        room_type (RoomType): The room type.
+
+    Returns:
+        Recommendation: The recommendation.
+    """
+    inputs = snap.inputs or {}
     return Recommendation(
         hotel_id=hotel.id,
         stay_date=snap.stay_date,
@@ -358,7 +447,18 @@ def _unsaved(
     night: _Night,
     scored: _Scored,
 ) -> Recommendation:
-    """A past night priced now; returned but never version_row."""
+    """Builds the recommendation for a past night priced now but not stored.
+
+    Args:
+        hotel (Hotel): The hotel.
+        room_type (RoomType): The room type.
+        version_row (PricingModel): The version that priced it.
+        night (_Night): The night and its inputs.
+        scored (_Scored): The rate and explanation.
+
+    Returns:
+        Recommendation: The recommendation, without a snapshot.
+    """
     return Recommendation(
         hotel_id=hotel.id,
         stay_date=night.stay_date,
@@ -376,7 +476,13 @@ def _unsaved(
 
 
 def _lead_days(inputs: dict[str, Any]) -> int | None:
-    """The days ahead a night was priced at, from its version_row inputs; None on
-    snapshots from versions that didn't read them."""
+    """Reads the days ahead a night was priced at from its stored inputs.
+
+    Args:
+        inputs (dict[str, Any]): The snapshot's inputs.
+
+    Returns:
+        int | None: The days; None for versions that didn't read them.
+    """
     value = inputs.get("features", {}).get(LEAD)
     return None if value is None else int(value)

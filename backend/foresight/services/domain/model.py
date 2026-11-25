@@ -1,12 +1,3 @@
-"""Pricing models: train a new version for a hotel, and read the versions.
-
-Training only reads what's already ingested (bookings and events); it never
-fetches. Every run makes a new version, so earlier ones stay
-to compare against. Activation follows decision 0009: a new version is saved
-inactive and becomes the hotel's active one only once training succeeded,
-unless the caller asks to keep the current one serving.
-"""
-
 import asyncio
 import time
 from collections.abc import Sequence
@@ -38,28 +29,63 @@ from foresight.services.ml.ebm import EBMModel, TunedEBMModel
 from foresight.services.ml.resources import measure
 
 ALGORITHM = "ebm"
-# Fewest booked rooms to train on (decision 0076); EBM holds some back for its
-# own early stopping.
 MIN_TRAINING_ROWS = 120
-# What every version learns to predict, stored in its metrics as `target`: each
-# booked room's rate per night before VAT (decisions 0056, 0076).
 TARGET = "adr_nett"
 LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 
 @dataclass(frozen=True, slots=True)
 class TrainingResult:
+    """A training run's saved version and what it was trained on.
+
+    Attributes:
+        version (PricingModel): The saved version.
+        activated (bool): Whether it now serves the hotel.
+        seconds (float): How long the run took, loading included.
+        training_rows (int): Booked rooms plus manager rows.
+        training_nights (int): Distinct nights among them.
+    """
+
     version: PricingModel
     activated: bool
     seconds: float
-    training_rows: int  # booked rooms plus manager rows
-    training_nights: int  # distinct nights among them
+    training_rows: int
+    training_nights: int
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedTraining:
+    """Everything a fit needs, loaded and with feedback applied; no session.
+
+    Attributes:
+        data (TrainingData): Booked rooms plus manager rows.
+        feedback_nights (int): Manager rates added as rows.
+        began (float): `time.monotonic()` when loading started.
+    """
+
+    data: TrainingData
+    feedback_nights: int
+    began: float
+
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Training                         │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 async def check_trainable(
     session: AsyncSession, hotel_id: int, *, start: date | None, end: date | None
 ) -> Hotel:
-    """Fail fast, before a job is queued, if training can't run.
+    """Fails fast, before a job is queued, if training can't run.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date | None): First night to train on; None for the first.
+        end (date | None): Last night to train on; None for the last.
+
+    Returns:
+        Hotel: The hotel.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -83,24 +109,27 @@ async def check_trainable(
     return hotel
 
 
-@dataclass(frozen=True, slots=True)
-class PreparedTraining:
-    """Everything a fit needs, loaded and with feedback applied; no session."""
-
-    data: TrainingData  # booked rooms plus manager rows
-    feedback_nights: int  # manager rates added as rows
-    began: float  # time.monotonic() when loading started
-
-
 async def prepare_training(
     session: AsyncSession, hotel: Hotel, *, start: date | None, end: date | None
 ) -> PreparedTraining:
-    """Load the training rows and apply the manager's feedback.
+    """Loads the training rows and adds the manager's rates.
 
     The first of three steps (prepare, `fit`, `save_version`), so the caller
-    can release its database connection while the model fits.
+    can release its database connection while the model fits. Training only
+    reads what's already ingested; it never fetches. EBM holds some rows back
+    for its own early stopping, so it needs `MIN_TRAINING_ROWS` booked rooms.
 
-    Raises InvalidRequestError if too few rows are left to train on.
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel, with its city loaded.
+        start (date | None): First night to train on; None for the first.
+        end (date | None): Last night to train on; None for the last.
+
+    Returns:
+        PreparedTraining: The rows to fit on.
+
+    Raises:
+        InvalidRequestError: Too few booked rooms to train on.
     """
     began = time.monotonic()
     data = await training_data(session, hotel, start=start, end=end)
@@ -109,7 +138,6 @@ async def prepare_training(
             f"{len(data.rows)} booked rooms to train on; "
             f"need at least {MIN_TRAINING_ROWS}"
         )
-
     data, feedback_nights = await with_manager_rows(
         session, hotel, data, start=start, end=end
     )
@@ -119,10 +147,19 @@ async def prepare_training(
 async def fit(
     prepared: PreparedTraining, params: dict[str, Any]
 ) -> tuple[dict[str, Any], bytes]:
-    """Fit a model on every prepared row; returns its metrics and artifact.
+    """Fits a model on every prepared row.
 
     Needs no database. CPU-bound for seconds to minutes, so it runs in a
-    thread to keep the API answering.
+    thread to keep the API answering. Every version learns `TARGET`: each
+    booked room's rate per night before VAT.
+
+    Args:
+        prepared (PreparedTraining): The rows to fit on.
+        params (dict[str, Any]): Settings passed through to the EBM.
+
+    Returns:
+        tuple[dict[str, Any], bytes]: The version's metrics, and the
+            serialized model.
     """
     data = prepared.data
     metrics, artifact = await asyncio.to_thread(
@@ -148,6 +185,7 @@ async def save_version(
 ) -> TrainingResult:
     """Saves a fitted base model as a new version, active unless told not to.
 
+    Every run makes a new version, so earlier ones stay to compare against.
     Creates the main room type the first time. Does not commit.
 
     Args:
@@ -243,72 +281,49 @@ async def create_version(
     return active
 
 
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Versions                         │
+#          ╰──────────────────────────────────────────────────────────╯
+
+
 async def list_models(
     session: AsyncSession, hotel_id: int, *, limit: int, offset: int
 ) -> tuple[Sequence[PricingModel], int]:
+    """Lists a hotel's model versions, newest first.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        limit (int): Page size.
+        offset (int): Rows to skip.
+
+    Returns:
+        tuple[Sequence[PricingModel], int]: The page, and the total.
+
+    Raises:
+        NotFoundError: The hotel doesn't exist.
+    """
     await get_hotel(session, hotel_id)
     return await model_repo.list_models(session, hotel_id, limit=limit, offset=offset)
 
 
 async def get_model(session: AsyncSession, model_id: int) -> PricingModel:
-    """Raises NotFoundError for an unknown model."""
+    """Gets a model version, without its artifact.
+
+    Args:
+        session (AsyncSession): The database session.
+        model_id (int): The version.
+
+    Returns:
+        PricingModel: The version.
+
+    Raises:
+        NotFoundError: The version doesn't exist.
+    """
     version_row = await model_repo.get_model(session, model_id)
     if version_row is None:
         raise NotFoundError("Pricing model", model_id)
     return version_row
-
-
-async def load_model(session: AsyncSession, version_row: PricingModel) -> EBMModel:
-    """The version's trained model, ready to predict.
-
-    A tune-up's artifact holds only its correction, so its base version's
-    artifact is loaded too and joined to it (decision 0078).
-
-    Raises:
-        NotFoundError: The version or its base has no artifact.
-    """
-    model = EBMModel.from_bytes(await _artifact(session, version_row.id))
-    if version_row.base_model_id is None:
-        return model
-    if not isinstance(model, TunedEBMModel):
-        raise TypeError(f"model {version_row.id} has a base but isn't a tune-up")
-    base = EBMModel.from_bytes(await _artifact(session, version_row.base_model_id))
-    return model.attach_base(base)
-
-
-async def _artifact(session: AsyncSession, model_id: int) -> bytes:
-    artifact = await model_repo.get_artifact(session, model_id)
-    if artifact is None:
-        raise NotFoundError("Pricing model", model_id)
-    return artifact
-
-
-async def activate_model(session: AsyncSession, model_id: int) -> PricingModel:
-    """Make this version the one its hotel serves. Raises NotFoundError."""
-    await get_model(session, model_id)
-    version_row = await model_repo.activate_model(session, model_id)
-    assert version_row is not None
-    return version_row
-
-
-def _fit(
-    x: pd.DataFrame,
-    y: pd.Series,
-    weights: np.ndarray,
-    rows: pd.DataFrame,
-    params: dict[str, Any],
-) -> tuple[dict[str, Any], bytes]:
-    """Fit on every row and serialize (decision 0085). Returns the fit's time
-    and memory as metrics, and the artifact to store.
-
-    Rows the model can't tell apart are merged first (decision 0056), so booked
-    rooms fit in a fraction of the time. Accuracy isn't scored here: the
-    model has seen every row, so the backtest is where it's measured.
-    """
-    xc, yc, wc, _ = combine_identical_rows(x, y, weights, rows["stay_date"])
-    with measure() as cost:
-        model = EBMModel(**params).fit(xc, yc, sample_weight=wc)
-    return {**cost, "mean_rate": round(float(np.mean(y)), 2)}, model.to_bytes()
 
 
 async def get_active_model(session: AsyncSession, hotel_id: int) -> PricingModel:
@@ -328,3 +343,102 @@ async def get_active_model(session: AsyncSession, hotel_id: int) -> PricingModel
     if version_row is None:
         raise NotFoundError("Active pricing model for hotel", hotel_id)
     return version_row
+
+
+async def activate_model(session: AsyncSession, model_id: int) -> PricingModel:
+    """Makes a version the one its hotel serves.
+
+    Args:
+        session (AsyncSession): The database session.
+        model_id (int): The version.
+
+    Returns:
+        PricingModel: The version, now active.
+
+    Raises:
+        NotFoundError: The version doesn't exist.
+    """
+    await get_model(session, model_id)
+    version_row = await model_repo.activate_model(session, model_id)
+    assert version_row is not None
+    return version_row
+
+
+async def load_model(session: AsyncSession, version_row: PricingModel) -> EBMModel:
+    """Loads a version's trained model, ready to predict.
+
+    A tune-up's artifact holds only its correction, so its base version's
+    artifact is loaded too and joined to it.
+
+    Args:
+        session (AsyncSession): The database session.
+        version_row (PricingModel): The version.
+
+    Returns:
+        EBMModel: The trained model.
+
+    Raises:
+        NotFoundError: The version or its base has no artifact.
+        TypeError: The version has a base but isn't a tune-up.
+    """
+    model = EBMModel.from_bytes(await _artifact(session, version_row.id))
+    if version_row.base_model_id is None:
+        return model
+    if not isinstance(model, TunedEBMModel):
+        raise TypeError(f"model {version_row.id} has a base but isn't a tune-up")
+    base = EBMModel.from_bytes(await _artifact(session, version_row.base_model_id))
+    return model.attach_base(base)
+
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Helpers                          │
+#          ╰──────────────────────────────────────────────────────────╯
+
+
+async def _artifact(session: AsyncSession, model_id: int) -> bytes:
+    """Loads a version's serialized model.
+
+    Args:
+        session (AsyncSession): The database session.
+        model_id (int): The version.
+
+    Returns:
+        bytes: The artifact.
+
+    Raises:
+        NotFoundError: The version has no artifact.
+    """
+    artifact = await model_repo.get_artifact(session, model_id)
+    if artifact is None:
+        raise NotFoundError("Pricing model", model_id)
+    return artifact
+
+
+def _fit(
+    x: pd.DataFrame,
+    y: pd.Series,
+    weights: np.ndarray,
+    rows: pd.DataFrame,
+    params: dict[str, Any],
+) -> tuple[dict[str, Any], bytes]:
+    """Fits on every row and serializes the model.
+
+    Rows the model can't tell apart are merged first, so booked rooms fit in
+    a fraction of the time. Accuracy isn't scored here: the model has seen
+    every row, so the backtest is where it's measured.
+
+    Args:
+        x (pd.DataFrame): The inputs.
+        y (pd.Series): The rates.
+        weights (np.ndarray): Each row's sample weight.
+        rows (pd.DataFrame): The rows, with stay_date.
+        params (dict[str, Any]): Settings passed through to the EBM.
+
+    Returns:
+        tuple[dict[str, Any], bytes]: The fit's time and memory, plus the
+            mean rate, and the serialized model.
+    """
+    xc, yc, wc, _ = combine_identical_rows(x, y, weights, rows["stay_date"])
+    with measure() as cost:
+        model = EBMModel(**params).fit(xc, yc, sample_weight=wc)
+    return {**cost, "mean_rate": round(float(np.mean(y)), 2)}, model.to_bytes()

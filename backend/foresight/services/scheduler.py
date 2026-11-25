@@ -1,5 +1,3 @@
-"""The daily routine: which jobs are due for each hotel, and queueing them."""
-
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, time, timedelta
@@ -23,16 +21,21 @@ SCHEDULED = {"scheduled": True}
 
 
 async def start_due_jobs(session: AsyncSession) -> list[Job]:
-    """Queue every hotel's routine jobs that are due, in the order they run.
+    """Queues every hotel's routine jobs that are due, in the order they run.
 
-    Each is due once a day at SCHEDULE_HOUR, hotel time (`_due`). One that
-    can't start (already queued, not configured) is skipped until the next
-    check.
+    Events run first, so training learns from them; training runs only with
+    SCHEDULED_TRAINING on. Prices aren't saved ahead: the calendar prices on
+    request. Each job is due once a day at SCHEDULE_HOUR, hotel time (see
+    `_due`). One that can't start, e.g. already queued or not configured, is
+    skipped until the next check.
+
+    Args:
+        session (AsyncSession): The database session.
+
+    Returns:
+        list[Job]: The jobs queued.
     """
-    # (kind, how to start its scheduled run)
     routine: list[tuple[JobKind, Callable[[int], Awaitable[Job]]]]
-    # Events first, so training learns from them. Weather was removed (0081),
-    # and prices aren't saved ahead: the calendar prices on request (0084).
     routine = [
         (
             JobKind.EVENTS,
@@ -60,7 +63,6 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
             else []
         ),
     ]
-
     queued: list[Job] = []
     now = datetime.now(UTC)
     for hotel in await list_hotels(session):
@@ -77,14 +79,25 @@ async def start_due_jobs(session: AsyncSession) -> list[Job]:
 async def _due(
     session: AsyncSession, hotel: Hotel, kind: JobKind, now: datetime
 ) -> bool:
-    """Due once a day at SCHEDULE_HOUR, hotel time, or RETRY_AFTER a scheduled
-    run that failed. Only scheduled runs count, so a manual one doesn't move
-    it. A missed hour (server down or asleep) is caught up at the next check.
-    A run that stopped on a quota waits for the next day, like a success."""
+    """Says whether a hotel's routine job is due.
+
+    Due when no scheduled run has started since the latest SCHEDULE_HOUR that
+    has passed, hotel time, or RETRY_AFTER a scheduled run that failed. Only
+    scheduled runs count, so a manual one doesn't move it. A missed hour
+    (server down or asleep) is caught up at the next check. A run that
+    stopped on a quota waits for the next day, like a success.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel, with its city loaded.
+        kind (JobKind): The job.
+        now (datetime): The current time.
+
+    Returns:
+        bool: True if it should be queued now.
+    """
     tz = ZoneInfo(hotel.city.timezone)
     local_now = now.astimezone(tz)
-    # The latest scheduled time that has passed: today's, or yesterday's if
-    # today's hasn't come yet.
     slot = datetime.combine(local_now.date(), time(settings.schedule_hour), tzinfo=tz)
     if slot > local_now:
         slot -= timedelta(days=1)
@@ -93,5 +106,5 @@ async def _due(
     )
     if last is None or last.created_at < slot:
         return True
-    assert last.finished_at is not None  # the query only returns finished jobs
+    assert last.finished_at is not None
     return last.status == JobStatus.FAILED and last.finished_at + RETRY_AFTER <= now

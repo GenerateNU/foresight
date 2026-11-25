@@ -1,11 +1,3 @@
-"""Daily tune-up: correct the active model with the manager's rates, no full retrain.
-
-The active model is left as it is; a small EBM learns the gap between its
-predictions and the rates the manager chose. The correction is saved as a new
-version that points to its base. A tune-up always starts from the active
-model's base, so corrections are rebuilt each time, never stacked.
-"""
-
 import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
@@ -102,10 +94,14 @@ async def check_tunable(session: AsyncSession, hotel_id: int) -> Hotel:
 
 
 async def tune(session: AsyncSession, hotel: Hotel, *, activate: bool) -> TuneResult:
-    """Corrects the active model with the manager's current rates.
+    """Corrects the active model with the manager's current rates, no retrain.
 
-    Skips, saving nothing, if there are fewer than MIN_TUNE_NIGHTS rates. Does
-    not commit.
+    The active model is left as it is; a small EBM learns the gap between its
+    predictions and the rates the manager chose, and is saved as a new
+    version that points to its base. A tune-up always starts from the active
+    model's base, so corrections are rebuilt each time, never stacked. Skips,
+    saving nothing, if there are fewer than MIN_TUNE_NIGHTS rates. Does not
+    commit.
 
     Args:
         session (AsyncSession): The database session.

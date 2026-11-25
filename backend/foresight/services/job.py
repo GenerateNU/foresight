@@ -1,10 +1,3 @@
-"""Background jobs: start them, and their lifecycle.
-
-`start_*` validates up front so a bad request fails with 4xx instead of a
-queued job that fails later. The worker runs a job through `run` and commits
-at every step its handler yields (`services/handlers.py`).
-"""
-
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -38,9 +31,23 @@ async def start_events_job(
     end: date | None,
     scheduled: bool = False,
 ) -> Job:
-    """No dates: upcoming events PredictHQ revised since the last such run
-    (or the last week, the first time). Dates: every event in the window.
-    `scheduled` is for the scheduler's own runs.
+    """Queues an events job.
+
+    Every `start_*` checks up front, so a bad request fails with a 4xx
+    instead of a queued job that fails later. The worker runs a job through
+    `run`, committing at every step its handler yields.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date | None): First night of a backfill.
+        end (date | None): Last night of a backfill. With neither date, the
+            job fetches upcoming events PredictHQ revised since the last
+            such run, or in the last week the first time.
+        scheduled (bool): Whether the scheduler started it.
+
+    Returns:
+        Job: The queued job.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -68,9 +75,19 @@ async def start_events_job(
 async def start_file_jobs(
     session: AsyncSession, hotel_id: int, *, files: Sequence[tuple[str, bytes]]
 ) -> list[tuple[Job, file_ingest.ParsedFile]]:
-    """One job per file, in upload order. Every file is recognised and parsed
-    first, so one bad file queues nothing. Returns each job with its parsed
-    file, which the caller hands to the worker.
+    """Queues one job per uploaded file, in upload order.
+
+    Every file is recognised and parsed first, so one bad file queues
+    nothing.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        files (Sequence[tuple[str, bytes]]): Each file's name and content.
+
+    Returns:
+        list[tuple[Job, file_ingest.ParsedFile]]: Each job with its parsed
+            file, which the caller hands to the worker.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -93,8 +110,20 @@ async def start_train_job(
     ebm_params: dict[str, Any],
     scheduled: bool = False,
 ) -> Job:
-    """Train a new model version on what's already ingested. `scheduled` is
-    for the scheduler's own runs.
+    """Queues a job training a new version on what's already ingested.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        description (str | None): What this version tries.
+        start (date | None): First night to train on; None for the first.
+        end (date | None): Last night to train on; None for the last.
+        activate (bool): Whether the version starts serving.
+        ebm_params (dict[str, Any]): Settings passed through to the EBM.
+        scheduled (bool): Whether the scheduler started it.
+
+    Returns:
+        Job: The queued job.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -116,7 +145,15 @@ async def start_train_job(
 async def start_tune_job(
     session: AsyncSession, hotel_id: int, *, activate: bool
 ) -> Job:
-    """Correct the active model with the manager's rates (decision 0069).
+    """Queues a job correcting the active model with the manager's rates.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        activate (bool): Whether the tune-up starts serving.
+
+    Returns:
+        Job: The queued job.
 
     Raises:
         NotFoundError: Unknown hotel.
@@ -128,7 +165,18 @@ async def start_tune_job(
 
 
 async def get_job(session: AsyncSession, job_id: int) -> Job:
-    """Raises NotFoundError for an unknown job."""
+    """Gets a job.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+
+    Returns:
+        Job: The job.
+
+    Raises:
+        NotFoundError: The job doesn't exist.
+    """
     job = await job_repo.get_job(session, job_id)
     if job is None:
         raise NotFoundError("Job", job_id)
@@ -138,12 +186,33 @@ async def get_job(session: AsyncSession, job_id: int) -> Job:
 async def list_jobs(
     session: AsyncSession, hotel_id: int, *, limit: int, offset: int
 ) -> tuple[Sequence[Job], int]:
+    """Lists a hotel's jobs, newest first.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        limit (int): Page size.
+        offset (int): Rows to skip.
+
+    Returns:
+        tuple[Sequence[Job], int]: The page, and the total.
+
+    Raises:
+        NotFoundError: The hotel doesn't exist.
+    """
     await get_hotel(session, hotel_id)
     return await job_repo.list_jobs(session, hotel_id, limit=limit, offset=offset)
 
 
 async def cancel_job(session: AsyncSession, job_id: int) -> Job:
-    """Take a queued job out of the queue.
+    """Takes a queued job out of the queue.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+
+    Returns:
+        Job: The cancelled job.
 
     Raises:
         NotFoundError: Unknown job.
@@ -160,8 +229,23 @@ async def cancel_job(session: AsyncSession, job_id: int) -> Job:
 async def _queue(
     session: AsyncSession, hotel: Hotel, kind: JobKind, params: dict[str, Any]
 ) -> Job:
-    # Uploads stack up in the queue; a second events, training or tune-up
-    # run would only repeat the first (and spend API credits or training time).
+    """Queues a job, unless one of its kind is already unfinished.
+
+    Uploads stack up in the queue; a second events, training or tune-up run
+    would only repeat the first, and spend API credits or training time.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel.
+        kind (JobKind): The job.
+        params (dict[str, Any]): Its params.
+
+    Returns:
+        Job: The queued job.
+
+    Raises:
+        ConflictError: A job of this kind is already queued or running.
+    """
     if kind not in file_ingest.FILE_KINDS:
         running = await job_repo.find_unfinished_job(
             session, hotel_id=hotel.id, kind=kind
@@ -178,9 +262,16 @@ async def _queue(
 async def run(
     session: AsyncSession, job: Job, payload: Any = None
 ) -> AsyncIterator[Step]:
-    """Run the job's handler, yielding after each saved chunk.
+    """Runs the job's handler, yielding after each saved chunk.
 
-    `payload` is whatever the request handed over in memory (a parsed file).
+    Args:
+        session (AsyncSession): The database session.
+        job (Job): The job.
+        payload (Any): What the request handed over in memory, e.g. a parsed
+            file.
+
+    Yields:
+        Step: After each saved chunk.
     """
     hotel = await get_hotel(session, job.hotel_id)
     async for step in HANDLERS[job.kind](session, hotel, job.params, payload):
@@ -188,24 +279,52 @@ async def run(
 
 
 def initial_resume_from(job: Job) -> date | None:
-    """Where to pick up if the job ends before its first chunk is saved."""
+    """Says where to pick up if the job ends before its first chunk is saved.
+
+    Args:
+        job (Job): The job.
+
+    Returns:
+        date | None: A backfill's `end`; None for any other job.
+    """
     if job.params.get("mode") != "window":
         return None
     return Window.from_params(job.params).end
 
 
 async def mark_running(session: AsyncSession, job_id: int) -> bool:
-    """Start a queued job; False if it is no longer queued (cancelled)."""
+    """Starts a queued job.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+
+    Returns:
+        bool: False if it's no longer queued, e.g. cancelled.
+    """
     return await job_repo.start_queued_job(session, job_id, started_at=_now())
 
 
 async def record_progress(
     session: AsyncSession, job_id: int, progress: dict[str, Any]
 ) -> None:
+    """Records a job's progress.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+        progress (dict[str, Any]): Its counts so far.
+    """
     await job_repo.update_job(session, job_id, progress=progress)
 
 
 async def mark_succeeded(session: AsyncSession, job_id: int) -> None:
+    """Marks a job succeeded.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+    """
     await job_repo.update_job(
         session,
         job_id,
@@ -218,8 +337,16 @@ async def mark_succeeded(session: AsyncSession, job_id: int) -> None:
 async def mark_ended_early(
     session: AsyncSession, job_id: int, exc: Exception, resume_from: date | None
 ) -> None:
-    """Stopped on a quota or rate limit, failed on anything else. Either way
-    the saved chunks stay and `resume_from` says where to pick up."""
+    """Marks a job that ended early: stopped on a quota, else failed.
+
+    Either way the saved chunks stay.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+        exc (Exception): Why it ended.
+        resume_from (date | None): Where to pick up.
+    """
     stopped = isinstance(exc, _QUOTA_ERRORS)
     await job_repo.update_job(
         session,
@@ -232,21 +359,28 @@ async def mark_ended_early(
 
 
 async def fail_interrupted_jobs(session: AsyncSession) -> int:
-    """Jobs left queued or running by a restart can't continue; fail them."""
+    """Fails the jobs a restart left queued or running; they can't continue.
+
+    Args:
+        session (AsyncSession): The database session.
+
+    Returns:
+        int: How many were failed.
+    """
     return await job_repo.fail_unfinished_jobs(
         session, "interrupted by a server restart; start it again"
     )
 
 
-# --- handlers ---------------------------------------------------------------
-
-
-# --- helpers ----------------------------------------------------------------
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Helpers                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 def _now() -> datetime:
+    """Gives the current time.
+
+    Returns:
+        datetime: Now, in UTC.
+    """
     return datetime.now(UTC)

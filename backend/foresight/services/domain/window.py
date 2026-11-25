@@ -1,14 +1,3 @@
-"""The date window an events backfill covers, from the optional `start` and
-`end` given (decision 0087).
-
-Giving either date makes the run a backfill. `end` defaults to today and
-`start` to the hotel's first booked night. Every backfill walks newest month
-first, so a source that runs out of credits has saved the most recent part,
-and `resume_from` is always the `end` to send next.
-
-Giving neither isn't a window; each signal has its own routine refresh.
-"""
-
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -26,20 +15,49 @@ class InvalidWindowError(InvalidRequestError):
 
 @dataclass(frozen=True, slots=True)
 class Window:
+    """The nights an events backfill covers, inclusive.
+
+    Every backfill walks newest month first, so a source that runs out of
+    credits has saved the most recent part, and `resume_from` is always the
+    `end` to send next.
+
+    Attributes:
+        start (date): First night.
+        end (date): Last night.
+    """
+
     start: date
     end: date
 
     def as_params(self) -> dict[str, str]:
+        """Stores the window on a job.
+
+        Returns:
+            dict[str, str]: `start` and `end` as ISO dates.
+        """
         return {"start": self.start.isoformat(), "end": self.end.isoformat()}
 
     @classmethod
     def from_params(cls, params: Mapping[str, Any]) -> "Window":
+        """Reads a window stored by `as_params`.
+
+        Args:
+            params (Mapping[str, Any]): A job's params.
+
+        Returns:
+            Window: The window.
+        """
         return cls(
             date.fromisoformat(params["start"]), date.fromisoformat(params["end"])
         )
 
     def months(self) -> list[tuple[date, date]]:
-        """Calendar-month pieces, inclusive, newest first."""
+        """Splits the window into calendar months, newest first.
+
+        Returns:
+            list[tuple[date, date]]: Each month's first and last night in the
+                window, inclusive.
+        """
         pieces = []
         last = self.end
         while last >= self.start:
@@ -57,9 +75,20 @@ async def resolve_window(
     *,
     today: date,
 ) -> Window:
-    """`end` defaults to today, `start` to the hotel's first booked night.
+    """Fills in the dates a backfill request left out.
 
-    Only call with at least one date given.
+    Giving either date makes a run a backfill; only call with at least one.
+    Giving neither isn't a window: each signal has its own routine refresh.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date | None): First night; None for the first booked night.
+        end (date | None): Last night; None for today.
+        today (date): Today, in the hotel's city.
+
+    Returns:
+        Window: The window.
 
     Raises:
         InvalidWindowError: `start` is needed and no bookings are loaded, or

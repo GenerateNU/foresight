@@ -1,5 +1,3 @@
-"""Bookings: what each booked room paid, one row per night, for training."""
-
 from collections.abc import Iterator
 from datetime import date, timedelta
 
@@ -22,30 +20,30 @@ async def booking_rows(
     room_type_code: str,
     rate_plan: str,
 ) -> pd.DataFrame:
-    """What each booked room paid for each night it stayed, for training.
+    """Lists what each booked room paid for each night it stayed.
 
-    A booking covers one room for a whole stay. This splits it into one row per
-    night, so the model sees each night a room was sold, when it was booked,
-    and at what price (decision 0056).
+    A booking covers one room for a whole stay; this splits it into one row
+    per night, so the model sees each night a room was sold, when it was
+    booked, and at what price. Only bookings of the one room code and rate
+    plan the model prices count. A stay crossing either edge of the window
+    contributes only its nights inside it. Cancelled bookings, and free or
+    unpriced rooms, are left out.
 
-    Only bookings of one room code and rate plan, the product the model
-    prices (decision 0079).
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+        room_type_code (str): The room code priced.
+        rate_plan (str): The rate plan priced.
 
-    `start` and `end` are stay dates, inclusive: usually the training window.
-    A stay crossing either edge contributes only its nights inside the window;
-    when it was booked doesn't matter.
-
-    Columns:
-        stay_date: the night.
-        booked_on: the day the booking was made. One dated after its night
-            (late entries, no-shows) is kept; build_features gives it 0 days
-            ahead.
-        rate: the booking's nett rate per night, before VAT. Every night of a
-            stay gets the stay's average, so a weekend night in a longer stay
-            is blurred with its weekdays.
-
-    Cancelled bookings are left out, and so are free or unpriced rooms. Sorted
-    by stay_date. Empty if the hotel has no bookings in the window.
+    Returns:
+        pd.DataFrame: Sorted by stay_date, with columns `stay_date`;
+            `booked_on`, the day it was booked (one dated after its night,
+            like a late entry, is kept and counts as 0 days ahead); and
+            `rate`, the nett rate per night before VAT (every night of a stay
+            gets the stay's average, so a weekend night in a longer stay is
+            blurred with its weekdays). Empty without bookings.
     """
     bookings = await booking_repo.list_live_bookings(
         session,
@@ -71,6 +69,16 @@ async def booking_rows(
 
 
 def _nights(stay: Booking, start: date, end: date) -> Iterator[date]:
+    """Lists a stay's nights inside a window.
+
+    Args:
+        stay (Booking): The booking.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+
+    Yields:
+        date: Each night.
+    """
     night = max(stay.arrival, start)
     while night < stay.departure and night <= end:
         yield night

@@ -1,13 +1,3 @@
-"""The events the pricing model reads, loaded the same way for training and
-serving.
-
-Only reads what's already ingested; nothing here fetches from a source.
-Events follow decisions 0041 and 0055: the counted events
-(`event.counted_events`, the same rule as the events shown on a night), which
-nights an events backfill covered, and when PredictHQ first saw each event. On
-a night no backfill covered, the event features stay empty, not zero.
-"""
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -33,8 +23,6 @@ EVENT_COLUMNS = [
     "longitude",
 ]
 IMPACT_COLUMNS = ["impact_date", "guests", "first_seen"]
-# PredictHQ's accommodation impact reaches a few nights before and after an
-# event (up to 3 and 5 in Dublin), so events a week either side still count.
 _IMPACT_REACH = timedelta(days=7)
 
 NO_EVENTS = pd.DataFrame(columns=[*EVENT_COLUMNS, "accommodation_spend", "first_seen"])
@@ -43,20 +31,42 @@ NO_IMPACTS = pd.DataFrame(columns=IMPACT_COLUMNS)
 
 @dataclass(frozen=True, slots=True)
 class CityEvents:
-    """Events for `build_features`, the nights an events backfill covered, and
-    PredictHQ's expected hotel guests per night from those events."""
+    """The events data `build_features` reads for a city.
 
-    frame: pd.DataFrame  # EVENT_COLUMNS + accommodation_spend + first_seen
+    Attributes:
+        frame (pd.DataFrame): The counted events: EVENT_COLUMNS plus
+            accommodation_spend and first_seen.
+        fetched (set[date]): The nights an events backfill covered.
+        impacts (pd.DataFrame): PredictHQ's expected hotel guests:
+            IMPACT_COLUMNS, one row per event per night.
+    """
+
+    frame: pd.DataFrame
     fetched: set[date]
-    impacts: pd.DataFrame  # IMPACT_COLUMNS, one row per event per night
+    impacts: pd.DataFrame
 
 
 async def events_for(
     session: AsyncSession, city: City, days: Sequence[date]
 ) -> CityEvents:
-    """The counted events on any of `days`, and which of the days an events
-    backfill covered. Pass `fetched` to `build_features` as `events_fetched`
-    so uncovered nights get empty event features, not zeros."""
+    """Loads the events data for some nights, the same for training and serving.
+
+    Only reads what's already ingested. The counted events are the same rule
+    as the events shown on a night. PredictHQ's accommodation impact reaches
+    a few nights either side of an event (up to 3 before and 5 after in
+    Dublin), so events a week either side are loaded too. Unknown attendance
+    or rank becomes NaN, which `build_features` can sum. Pass `fetched` to
+    `build_features` as `events_fetched` so uncovered nights get empty event
+    features, not zeros.
+
+    Args:
+        session (AsyncSession): The database session.
+        city (City): The hotel's city.
+        days (Sequence[date]): The nights.
+
+    Returns:
+        CityEvents: The events, impacts and covered nights.
+    """
     if not days:
         return CityEvents(NO_EVENTS, set(), NO_IMPACTS)
     start, end = min(days), max(days)
@@ -80,9 +90,6 @@ async def events_for(
         ],
         columns=[*EVENT_COLUMNS, "accommodation_spend", "first_seen"],
     )
-
-    # Unknown attendance or rank is None; as floats they become NaN, which
-    # `build_features` can sum, rather than a column it can't.
     frame = frame.astype(
         {
             "expected_attendance": float,
@@ -104,7 +111,15 @@ async def events_for(
 
 
 def hotel_location(hotel: Hotel) -> tuple[float, float] | None:
-    """The hotel's (latitude, longitude), or None if either is missing."""
+    """Gives where the hotel is.
+
+    Args:
+        hotel (Hotel): The hotel.
+
+    Returns:
+        tuple[float, float] | None: Latitude and longitude, or None if either
+            is missing.
+    """
     if hotel.latitude is None or hotel.longitude is None:
         return None
     return hotel.latitude, hotel.longitude

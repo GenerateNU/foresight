@@ -1,10 +1,3 @@
-"""Uploaded hotel CSVs: work out which report each file is, parse it, save it.
-
-`REPORTS` is the one list of report kinds (decision 0052). A file is a kind
-when its header holds every column that kind needs; matching none or more
-than one is an error. Adding a report is an adapter plus one entry here.
-"""
-
 import csv
 import hashlib
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -26,19 +19,36 @@ type Save = Callable[
     Awaitable[dict[Outcome, int]],
 ]
 
-# Rows saved, and committed, per chunk.
 CHUNK_ROWS = 5_000
+
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Reports                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 @dataclass(frozen=True, slots=True)
 class Report:
+    """One kind of uploaded Guestline report.
+
+    A file is this kind when its header holds every one of `columns`.
+
+    Attributes:
+        kind (JobKind): The job that saves it.
+        name (str): As Guestline titles the report.
+        columns (Sequence[str]): The columns its header must hold.
+        date_field (str): The row field the export is filtered by.
+        parse (Parse): Reads a file into rows.
+        save (Save): Saves a chunk of rows.
+        errors (tuple[type[Exception], ...]): What a malformed file raises.
+    """
+
     kind: JobKind
-    name: str  # as Guestline titles the report
-    columns: Sequence[str]  # every one must be in the header
-    date_field: str  # the row field the export is filtered by
+    name: str
+    columns: Sequence[str]
+    date_field: str
     parse: Parse
     save: Save
-    # What a malformed file raises while parsing.
     errors: tuple[type[Exception], ...]
 
 
@@ -62,23 +72,41 @@ REPORTS: tuple[Report, ...] = (
         bookings.PARSE_ERRORS,
     ),
 )
-_BY_KIND = {report.kind: report for report in REPORTS}
-FILE_KINDS = frozenset(_BY_KIND)
+FILE_KINDS = frozenset(report.kind for report in REPORTS)
 
 
 @dataclass(frozen=True, slots=True)
 class ParsedFile:
-    """One uploaded file, parsed and held in memory until its job runs."""
+    """One uploaded file, parsed and held in memory until its job runs.
+
+    Attributes:
+        name (str): The file's name.
+        report (Report): Which report it is.
+        rows (list[dict[str, Any]]): Its parsed rows.
+        extra (dict[str, Any]): What saving needs beyond the rows.
+        params (dict[str, Any]): The upload record, stored on the job.
+    """
 
     name: str
     report: Report
     rows: list[dict[str, Any]]
-    extra: dict[str, Any]  # what saving needs beyond the rows
-    params: dict[str, Any]  # the upload record, stored on the job
+    extra: dict[str, Any]
+    params: dict[str, Any]
+
+
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Parsing                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 def parse_files(files: Sequence[tuple[str, bytes]]) -> list[ParsedFile]:
-    """Recognise and parse every file before anything is queued.
+    """Recognises and parses every file before anything is queued.
+
+    Args:
+        files (Sequence[tuple[str, bytes]]): Each file's name and content.
+
+    Returns:
+        list[ParsedFile]: The files, in upload order.
 
     Raises:
         InvalidRequestError: Naming the first file that matches no report,
@@ -88,31 +116,61 @@ def parse_files(files: Sequence[tuple[str, bytes]]) -> list[ParsedFile]:
 
 
 def chunks(rows: Sequence[Any]) -> list[Sequence[Any]]:
+    """Splits rows into chunks saved, and committed, one at a time.
+
+    Args:
+        rows (Sequence[Any]): The rows.
+
+    Returns:
+        list[Sequence[Any]]: Chunks of at most CHUNK_ROWS rows.
+    """
     return [rows[i : i + CHUNK_ROWS] for i in range(0, len(rows), CHUNK_ROWS)]
 
 
 def _parse_file(name: str, content: bytes) -> ParsedFile:
+    """Recognises and parses one file, and records what was uploaded.
+
+    Args:
+        name (str): The file's name.
+        content (bytes): Its content.
+
+    Returns:
+        ParsedFile: The parsed file.
+
+    Raises:
+        InvalidRequestError: It matches no report, more than one, or doesn't
+            parse.
+    """
     report = _recognise(name, content)
     try:
         rows, skipped, extra = report.parse(content)
     except report.errors as exc:
         raise InvalidRequestError(f"could not import {name}: {exc}") from exc
+    days = [_day(row[report.date_field]) for row in rows]
     params: dict[str, Any] = {
         "file": name,
         "sha256": hashlib.sha256(content).hexdigest(),
         "rows": len(rows),
         "skipped": skipped,
-        "first_date": None,
-        "last_date": None,
+        "first_date": min(days).isoformat() if days else None,
+        "last_date": max(days).isoformat() if days else None,
     }
-    days = [_day(row[report.date_field]) for row in rows]
-    if days:
-        params["first_date"] = min(days).isoformat()
-        params["last_date"] = max(days).isoformat()
     return ParsedFile(name, report, rows, extra, params)
 
 
 def _recognise(name: str, content: bytes) -> Report:
+    """Works out which report a file is from its header.
+
+    Args:
+        name (str): The file's name.
+        content (bytes): Its content.
+
+    Returns:
+        Report: The one report whose columns the header holds.
+
+    Raises:
+        InvalidRequestError: It matches no report, or more than one.
+    """
     header = set(_header(name, content))
     matches = [r for r in REPORTS if set(r.columns) <= header]
     if not matches:
@@ -125,8 +183,19 @@ def _recognise(name: str, content: bytes) -> Report:
 
 
 def _header(name: str, content: bytes) -> list[str]:
+    """Reads a CSV's header, dropping the byte-order mark Guestline adds.
+
+    Args:
+        name (str): The file's name.
+        content (bytes): Its content.
+
+    Returns:
+        list[str]: The column names.
+
+    Raises:
+        InvalidRequestError: It isn't readable as CSV.
+    """
     try:
-        # utf-8-sig drops the byte-order mark Guestline puts at the start.
         first = content.decode("utf-8-sig").splitlines()[:1]
         return [c.strip() for c in next(csv.reader(first), [])]
     except (UnicodeDecodeError, csv.Error) as exc:
@@ -134,4 +203,12 @@ def _header(name: str, content: bytes) -> list[str]:
 
 
 def _day(value: date | datetime) -> date:
+    """Takes the date of a date or a timestamp.
+
+    Args:
+        value (date | datetime): The value.
+
+    Returns:
+        date: Its date.
+    """
     return value.date() if isinstance(value, datetime) else value

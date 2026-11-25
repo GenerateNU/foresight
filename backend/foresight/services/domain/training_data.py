@@ -1,5 +1,3 @@
-"""Training rows: the main product's booked rooms, plus the manager's rates."""
-
 from dataclasses import dataclass
 from datetime import date
 
@@ -16,30 +14,28 @@ from foresight.services.domain.feedback import current_feedback
 from foresight.services.domain.inputs import build_inputs
 from foresight.services.ml.features import FEATURES
 
-# The one product the model prices (decision 0079): Guestline's DOUBLE room,
-# room only. Half of Beresford's room-nights are DOUBLE, and breakfast adds
-# about €27 a night, so mixing room types and plans blurs the price. Training
-# reads only these bookings; the room type is named after the code.
 MAIN_ROOM_CODE = "DOUBLE"
-
 MAIN_RATE_PLAN = "BAR_RO"
-
-# A manager rate is a booked-room row of its own weighing this share of the
-# night's booked rooms, and at least 1, so one rate isn't drowned out by the
-# night's sales (decision 0076).
 MANAGER_SHARE = 0.25
 
 
 @dataclass(frozen=True, slots=True)
 class TrainingData:
-    """Booked rooms, one row per room per night, and the model's inputs for
-    them, row for row (decision 0076). Oldest night first."""
+    """Booked rooms, one row per room per night, oldest night first.
 
-    rows: pd.DataFrame  # stay_date, booked_on, rate; one per row of x
-    x: pd.DataFrame  # every input in FEATURES order
-    y: pd.Series  # each room's rate per night before VAT (adr_nett)
-    weights: np.ndarray  # 1 per booked room; manager rows more (0076)
-    one_off_dropped: int  # nights left out as one-off (decision 0070)
+    Attributes:
+        rows (pd.DataFrame): stay_date, booked_on and rate; one per row of x.
+        x (pd.DataFrame): The model's inputs, in FEATURES order.
+        y (pd.Series): Each room's rate per night before VAT.
+        weights (np.ndarray): 1 per booked room; manager rows more.
+        one_off_dropped (int): Nights left out as one-off.
+    """
+
+    rows: pd.DataFrame
+    x: pd.DataFrame
+    y: pd.Series
+    weights: np.ndarray
+    one_off_dropped: int
 
 
 async def training_data(
@@ -49,13 +45,28 @@ async def training_data(
     start: date | None,
     end: date | None,
 ) -> TrainingData:
-    """The hotel's booked rooms on nights in [start, end] and their inputs.
+    """Loads the hotel's booked rooms in a range, with their inputs.
 
-    One row per booked room per night, from live bookings of the main product
-    alone (decisions 0076, 0079): a night's rows are its rooms sold, so how
-    full it was is already in how much it counts, and each room weighs 1. The
-    one place training data is prepared, so `train` and the backtest always
-    see the same inputs. Reads only; the room type may not exist yet.
+    One row per booked room per night, from live bookings of the one product
+    the model prices: Guestline's DOUBLE room, room only (`MAIN_ROOM_CODE`,
+    `MAIN_RATE_PLAN`). Half of Beresford's room-nights are DOUBLE, and
+    breakfast adds about €27 a night, so mixing room types and plans would
+    blur the price. A night's rows are its rooms sold, so how full it was is
+    already in how much it counts, and each room weighs 1. Nights the manager
+    tagged one-off are left out. The one place training data is prepared, so
+    `train` and the backtest see the same inputs. Reads only; the room type
+    may not exist yet.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel, with its city loaded.
+        start (date | None): First night, inclusive; None for the first
+            booked one.
+        end (date | None): Last night, inclusive; None for the last booked
+            one.
+
+    Returns:
+        TrainingData: The rows and their inputs.
     """
     loaded = await main_night_range(session, hotel)
     if loaded is None:
@@ -76,10 +87,9 @@ async def training_data(
     )
     booked, one_off_dropped = _drop_one_off(booked, feedback.one_off_nights)
     inputs = await build_inputs(session, hotel, booked, booked_on=booked["booked_on"])
-    x = inputs.x
     return TrainingData(
         rows=booked,
-        x=x[FEATURES],
+        x=inputs.x[FEATURES],
         y=booked["rate"].astype(float),
         weights=np.ones(len(booked)),
         one_off_dropped=one_off_dropped,
@@ -98,7 +108,9 @@ async def with_manager_rows(
 
     A manager rate is the price for booking that night on the day they set it,
     so it's a row booked that day, next to the night's real sales. It weighs
-    MANAGER_SHARE of the night's booked rooms, and at least 1.
+    MANAGER_SHARE of the night's booked rooms, so one rate isn't drowned out
+    by the night's sales, and at least 1, so a future night with no bookings
+    yet still counts.
 
     Args:
         session (AsyncSession): The database session.
@@ -126,13 +138,9 @@ async def with_manager_rows(
         return data, 0
     inputs = await build_inputs(session, hotel, rows, booked_on=rows["booked_on"])
     x_manager = inputs.x[list(data.x.columns)]
-    # MANAGER_SHARE of the night's booked rooms, and at least 1, so a future
-    # night with no bookings yet still counts.
     rooms = data.rows.groupby("stay_date").size()
     booked = rows["stay_date"].map(rooms).fillna(0).to_numpy(float)
     weights = np.maximum(MANAGER_SHARE * booked, 1.0)
-
-    # Every row oldest night first, like the booked rooms.
     combined = pd.concat([data.rows, rows], ignore_index=True)
     order = combined["stay_date"].argsort(kind="stable").to_numpy()
     merged = TrainingData(
@@ -150,15 +158,31 @@ async def with_manager_rows(
 
 
 async def main_room_type(session: AsyncSession, hotel: Hotel) -> RoomType | None:
-    """The room type the model prices (decision 0079), or None before the
-    hotel's first training run creates it."""
+    """Finds the room type the model prices, named after `MAIN_ROOM_CODE`.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel.
+
+    Returns:
+        RoomType | None: The room type, or None before the hotel's first
+            training run creates it.
+    """
     return await hotel_repo.find_room_type(session, hotel.id, MAIN_ROOM_CODE)
 
 
 async def main_night_range(
     session: AsyncSession, hotel: Hotel
 ) -> tuple[date, date] | None:
-    """The first and last night the main product's bookings cover."""
+    """Finds the first and last night the main product's bookings cover.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel.
+
+    Returns:
+        tuple[date, date] | None: The nights, or None without bookings.
+    """
     return await booking_repo.booked_night_range(
         session, hotel.id, room_type_code=MAIN_ROOM_CODE, rate_plan=MAIN_RATE_PLAN
     )
@@ -171,8 +195,8 @@ def combine_identical_rows(
 
     Booked rooms for one night that were booked on the same day have identical
     inputs. One row with their weighted mean rate and summed weight gives the
-    same squared-error fit as one row each, in a fraction of the time
-    (decision 0056). Nights are never merged with each other.
+    same squared-error fit as one row each, in a fraction of the time. Nights
+    are never merged with each other, and merged rows keep the input's order.
 
     Args:
         x (pd.DataFrame): The model's inputs, oldest first.
@@ -181,15 +205,14 @@ def combine_identical_rows(
         stay_date (pd.Series): Each row's night, aligned with x.
 
     Returns:
-        tuple: The merged rows' inputs, rates and weights, still oldest first,
-            and for each input row the position of the merged row it went into.
+        tuple[pd.DataFrame, pd.Series, np.ndarray, np.ndarray]: The merged
+            rows' inputs, rates and weights, still oldest first, and for each
+            input row the position of the merged row it went into.
     """
     keys = pd.concat(
         [pd.Series(stay_date.to_numpy(), index=x.index, name="_stay_date"), x],
         axis=1,
     )
-    # sort=False numbers groups in order of first appearance, so merged rows
-    # keep the input's time order.
     group = (
         keys.groupby(list(keys.columns), sort=False, dropna=False, observed=True)
         .ngroup()

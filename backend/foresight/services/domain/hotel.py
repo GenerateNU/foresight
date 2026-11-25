@@ -1,5 +1,3 @@
-"""Hotels and their room types."""
-
 from collections.abc import Sequence
 from typing import Any
 
@@ -21,8 +19,22 @@ async def create_hotel(
     latitude: float | None,
     longitude: float | None,
 ) -> Hotel:
-    """Raises NotFoundError for an unknown city, ConflictError if the city
-    already has a hotel with this name."""
+    """Creates a hotel.
+
+    Args:
+        session (AsyncSession): The database session.
+        name (str): The hotel's name, unique in its city.
+        city_id (int): Its city.
+        latitude (float | None): Where it is, if known.
+        longitude (float | None): Where it is, if known.
+
+    Returns:
+        Hotel: The new hotel.
+
+    Raises:
+        NotFoundError: The city doesn't exist.
+        ConflictError: The city already has a hotel with this name.
+    """
     city = await get_city(session, city_id)
     hotel = await hotel_repo.create_hotel(
         session,
@@ -45,8 +57,23 @@ async def create_hotel_for_user(
     latitude: float | None,
     longitude: float | None,
 ) -> Hotel:
-    """`create_hotel`, then link the creator so the hotel isn't unreachable.
-    Raises the same errors."""
+    """Creates a hotel and links its creator, so it isn't unreachable.
+
+    Args:
+        session (AsyncSession): The database session.
+        user (User): The creator.
+        name (str): The hotel's name, unique in its city.
+        city_id (int): Its city.
+        latitude (float | None): Where it is, if known.
+        longitude (float | None): Where it is, if known.
+
+    Returns:
+        Hotel: The new hotel.
+
+    Raises:
+        NotFoundError: The city doesn't exist.
+        ConflictError: The city already has a hotel with this name.
+    """
     hotel = await create_hotel(
         session,
         name=name,
@@ -59,7 +86,18 @@ async def create_hotel_for_user(
 
 
 async def get_hotel(session: AsyncSession, hotel_id: int) -> Hotel:
-    """The hotel with its city loaded. Raises NotFoundError for an unknown hotel."""
+    """Gets a hotel with its city loaded.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+
+    Returns:
+        Hotel: The hotel.
+
+    Raises:
+        NotFoundError: The hotel doesn't exist.
+    """
     hotel = await hotel_repo.get_hotel(session, hotel_id)
     if hotel is None:
         raise NotFoundError("Hotel", hotel_id)
@@ -69,7 +107,15 @@ async def get_hotel(session: AsyncSession, hotel_id: int) -> Hotel:
 async def update_hotel(
     session: AsyncSession, hotel_id: int, changes: dict[str, Any]
 ) -> Hotel:
-    """Change only the fields given.
+    """Changes only the fields given.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        changes (dict[str, Any]): New values by column name.
+
+    Returns:
+        Hotel: The updated hotel.
 
     Raises:
         NotFoundError: Unknown hotel, or unknown new city.
@@ -88,17 +134,45 @@ async def update_hotel(
 
 
 async def list_hotels(session: AsyncSession) -> Sequence[Hotel]:
+    """Lists every hotel.
+
+    Args:
+        session (AsyncSession): The database session.
+
+    Returns:
+        Sequence[Hotel]: The hotels.
+    """
     return await hotel_repo.list_hotels(session)
 
 
 async def list_hotels_for_user(session: AsyncSession, user_id: int) -> Sequence[Hotel]:
-    """The hotels this user works for, with their cities loaded. A user linked to
-    none gets an empty list; the caller has already established the user exists."""
+    """Lists the hotels a user works for, with their cities loaded.
+
+    The caller has already established that the user exists.
+
+    Args:
+        session (AsyncSession): The database session.
+        user_id (int): The user.
+
+    Returns:
+        Sequence[Hotel]: The hotels; empty for a user linked to none.
+    """
     return await hotel_repo.list_hotels_for_user(session, user_id)
 
 
 async def get_room_type(session: AsyncSession, room_type_id: int) -> RoomType:
-    """Raises NotFoundError for an unknown room type."""
+    """Gets a room type.
+
+    Args:
+        session (AsyncSession): The database session.
+        room_type_id (int): The room type.
+
+    Returns:
+        RoomType: The room type.
+
+    Raises:
+        NotFoundError: The room type doesn't exist.
+    """
     room_type = await hotel_repo.get_room_type(session, room_type_id)
     if room_type is None:
         raise NotFoundError("Room type", room_type_id)
