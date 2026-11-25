@@ -1,10 +1,3 @@
-"""Pricing models: train new versions, compare them, choose which one serves.
-
-Training runs as a job on data that's already ingested; it never fetches.
-Every run makes a new version, so earlier ones stay for comparison. Poll
-`GET /jobs/{id}` for the result; `progress.model_id` is the new version.
-"""
-
 from datetime import date, datetime
 from typing import Annotated, Any
 
@@ -80,6 +73,8 @@ class EBMSettings(RequestSchema):
 
 
 class TrainRequest(RequestSchema):
+    """What to train a new version on, and whether it serves."""
+
     description: str | None = Field(
         default=None,
         max_length=2000,
@@ -109,10 +104,6 @@ class TrainRequest(RequestSchema):
     )
 
 
-# One per use, shown as a picker in /docs. The first is the body built from
-# the fields (`example_body`), so it matches the schema and its defaults; the
-# others change one thing from it. Only the experiment sets settings: they
-# change what training does, so the fields carry no example.
 _FULL = example_body(TrainRequest)
 _TRAIN_EXAMPLES: dict[str, Any] = {
     "window": {"summary": "New model on a window", "value": _FULL},
@@ -128,6 +119,8 @@ _TRAIN_EXAMPLES: dict[str, Any] = {
 
 
 class PricingModelResponse(ResponseSchema):
+    """A model version: what it was trained on and whether it serves."""
+
     id: int = Field(description="The model's id")
     hotel_id: int = Field(description="The hotel it prices")
     version: int = Field(description="Counts up per hotel, from 1")
@@ -137,7 +130,7 @@ class PricingModelResponse(ResponseSchema):
     )
     base_model_id: int | None = Field(
         description="For a tune-up, the version it corrects; null for a full "
-        "training run (decision 0078)"
+        "training run"
     )
     description: str | None = Field(
         description="What this version tries, as given; null if none"
@@ -151,7 +144,7 @@ class PricingModelResponse(ResponseSchema):
         "target (`adr_nett`), training_rows, training_nights, feedback_nights, "
         "one_off_nights, mean_rate (EUR), train_seconds, peak_memory_mb and "
         "added_memory_mb. Accuracy isn't stored: the model trains on every row, "
-        "so `just backtest` measures it (decision 0085). A tune-up holds "
+        "so `just backtest` measures it. A tune-up holds "
         "tune_nights, untouched_nights and mean_correction instead. Older "
         "versions may hold holdout scores (mae, rmse, coverage...)"
     )
@@ -179,13 +172,30 @@ async def train_model(
     tasks: BackgroundTasks,
     data: Annotated[TrainRequest | None, Body(openapi_examples=_TRAIN_EXAMPLES)] = None,
 ) -> JobResponse:
-    """Train a new version on the hotel's ingested data: its bookings (one row
-    per booked room per night, with days booked ahead) if it has bookings and a
-    single room type; otherwise its nightly performance. Events count either
-    way.
+    """Train a new version on the hotel's ingested data.
 
-    Ingest first; this never fetches. Fails fast (422) if no nights are
-    loaded in the window.
+    It learns from the DOUBLE room-only bookings, one row per booked room per
+    night with days booked ahead, plus the events and the manager's rates.
+
+    Ingest first; this never fetches. Every run makes a new version, so
+    earlier ones stay for comparison. Returns 202 with the job; poll
+    `GET /jobs/{id}`, whose `progress.model_id` is the new version. Fails fast
+    (422) if no nights are loaded in the window.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        tasks (BackgroundTasks): Queues the job after the response.
+        data (TrainRequest | None): What to train on; None for every loaded
+            night.
+
+    Returns:
+        JobResponse: The queued job.
+
+    Raises:
+        InvalidRequestError: Nothing to train on, or start after end.
+        ConflictError: A training job is already queued or running.
     """
     data = data or TrainRequest()
     job = await job_service.start_train_job(
@@ -221,6 +231,20 @@ async def tune_model(
     model's rates and the manager's, and the two are saved as a new version.
     Skipped, saving nothing, with too few manager rates; the job's progress
     says why. 422 if the hotel has no active model.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        tasks (BackgroundTasks): Queues the job after the response.
+        activate (bool): Serve the tune-up once it's saved.
+
+    Returns:
+        JobResponse: The queued job.
+
+    Raises:
+        InvalidRequestError: The hotel has no active model.
+        ConflictError: A tune-up is already queued or running.
     """
     job = await job_service.start_tune_job(session, hotel_id, activate=activate)
     tasks.add_task(worker.enqueue, job.id, job.hotel_id)
@@ -233,7 +257,17 @@ async def tune_model(
 async def list_models(
     hotel_id: HotelId, session: SessionDep, page: PageDep
 ) -> PageResponse[PricingModelResponse]:
-    """Every version for the hotel, newest first, to compare metrics."""
+    """Every version for the hotel, newest first, to compare metrics.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        page (PageDep): Which page.
+
+    Returns:
+        PageResponse[PricingModelResponse]: The page.
+    """
     models, total = await model_service.list_models(
         session, hotel_id, limit=page.limit, offset=page.offset
     )
@@ -242,7 +276,16 @@ async def list_models(
 
 @router.get("/models/{model_id}", response_model=PricingModelResponse)
 async def get_model(model_id: ModelId, session: SessionDep) -> PricingModelResponse:
-    """One version: what it was trained on and how it scored."""
+    """One version: what it was trained on and how it scored.
+
+    \f
+    Args:
+        model_id (ModelId): The version.
+        session (SessionDep): The database session.
+
+    Returns:
+        PricingModelResponse: The version.
+    """
     return PricingModelResponse.model_validate(
         await model_service.get_model(session, model_id)
     )
@@ -252,7 +295,16 @@ async def get_model(model_id: ModelId, session: SessionDep) -> PricingModelRespo
 async def activate_model(
     model_id: ModelId, session: SessionDep
 ) -> PricingModelResponse:
-    """Serve this version for its hotel; the previous one stops serving."""
+    """Serve this version for its hotel; the previous one stops serving.
+
+    \f
+    Args:
+        model_id (ModelId): The version.
+        session (SessionDep): The database session.
+
+    Returns:
+        PricingModelResponse: The version, now active.
+    """
     return PricingModelResponse.model_validate(
         await model_service.activate_model(session, model_id)
     )

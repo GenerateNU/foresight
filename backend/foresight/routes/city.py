@@ -1,6 +1,3 @@
-"""Cities: the markets hotels sit in. Events are kept per
-city and shared by its hotels."""
-
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -18,7 +15,6 @@ router = APIRouter(tags=["Cities"])
 #          │                         Schemas                          │
 #          ╰──────────────────────────────────────────────────────────╯
 
-# Field settings shared by the create and update bodies.
 _NAME: dict[str, Any] = {
     "max_length": 120,
     "description": "The city's name; unique once normalized",
@@ -50,6 +46,17 @@ _LONGITUDE: dict[str, Any] = {
 
 
 def _check_zone(value: str | None) -> str | None:
+    """Checks a timezone is a known IANA name.
+
+    Args:
+        value (str | None): The timezone.
+
+    Returns:
+        str | None: The timezone.
+
+    Raises:
+        ValueError: It isn't known.
+    """
     if value is not None:
         try:
             ZoneInfo(value)
@@ -59,6 +66,8 @@ def _check_zone(value: str | None) -> str | None:
 
 
 class CityRequest(RequestSchema):
+    """A new city: a market hotels sit in, whose events its hotels share."""
+
     name: str = Field(**_NAME)
     country: str | None = Field(default=None, **_COUNTRY)
     timezone: str = Field(**_TIMEZONE)
@@ -82,13 +91,25 @@ class CityUpdateRequest(RequestSchema):
     @field_validator("name", "timezone", "latitude", "longitude")
     @classmethod
     def _not_null(cls, value: object) -> object:
-        # Required columns: omitting them leaves them alone, null can't clear them.
+        """Rejects null for a required column; leaving it out leaves it alone.
+
+        Args:
+            value (object): The value sent.
+
+        Returns:
+            object: The value.
+
+        Raises:
+            ValueError: It's null.
+        """
         if value is None:
             raise ValueError("cannot be null")
         return value
 
 
 class CityResponse(ResponseSchema):
+    """A city: a market hotels sit in, whose events its hotels share."""
+
     id: int = Field(description="The city's id")
     name: str = Field(description="The city's name")
     slug: str = Field(description="Normalized name; unique")
@@ -110,21 +131,53 @@ CityId = Annotated[int, Path(description="The city's id", examples=[1])]
     "/cities", response_model=CityResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_city(data: CityRequest, session: SessionDep) -> CityResponse:
-    """Add a city. Names are unique once normalized ("Example" = "example")."""
+    """Add a city. Names are unique once normalized ("Example" = "example").
+
+    \f
+    Args:
+        data (CityRequest): The city.
+        session (SessionDep): The database session.
+
+    Returns:
+        CityResponse: The new city.
+
+    Raises:
+        ConflictError: A city with the same normalized name exists.
+    """
     city = await city_service.create_city(session, **data.model_dump())
     return CityResponse.model_validate(city)
 
 
 @router.get("/cities", response_model=list[CityResponse])
 async def list_cities(session: SessionDep) -> list[CityResponse]:
-    """Every city, by name."""
+    """Every city, by name.
+
+    \f
+    Args:
+        session (SessionDep): The database session.
+
+    Returns:
+        list[CityResponse]: The cities.
+    """
     cities = await city_service.list_cities(session)
     return [CityResponse.model_validate(city) for city in cities]
 
 
 @router.get("/cities/{city_id}", response_model=CityResponse)
 async def get_city(city_id: CityId, session: SessionDep) -> CityResponse:
-    """One city."""
+    """One city.
+
+    \f
+    Args:
+        city_id (CityId): The city.
+        session (SessionDep): The database session.
+
+    Returns:
+        CityResponse: The city.
+
+    Raises:
+        NotFoundError: The city doesn't exist.
+    """
     return CityResponse.model_validate(await city_service.get_city(session, city_id))
 
 
@@ -132,8 +185,23 @@ async def get_city(city_id: CityId, session: SessionDep) -> CityResponse:
 async def update_city(
     city_id: EditableCityId, data: CityUpdateRequest, session: SessionDep
 ) -> CityResponse:
-    """Change the fields sent; omitted fields are left alone. Only people linked
-    to a hotel in the city can: every hotel there shares it."""
+    """Change the fields sent; omitted fields are left alone.
+
+    Only people linked to a hotel in the city can: every hotel there shares
+    it.
+
+    \f
+    Args:
+        city_id (EditableCityId): The city.
+        data (CityUpdateRequest): The changes.
+        session (SessionDep): The database session.
+
+    Returns:
+        CityResponse: The updated city.
+
+    Raises:
+        ConflictError: The new name normalizes to another city's.
+    """
     city = await city_service.update_city(
         session, city_id, data.model_dump(exclude_unset=True)
     )

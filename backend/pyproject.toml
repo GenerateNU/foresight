@@ -68,6 +68,11 @@ select = [
 # really can be anything.
 ignore = ["D100", "D104", "ANN401"]
 
+[tool.ruff.lint.per-file-ignores]
+# Endpoint docstrings put Args/Returns after a form feed (\f), which FastAPI
+# cuts from /docs.
+"foresight/routes/*" = ["D301"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

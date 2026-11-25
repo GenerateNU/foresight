@@ -1,5 +1,3 @@
-"""The manager's feedback on a night's rate: add it, change it, list it."""
-
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
@@ -21,8 +19,11 @@ router = APIRouter(tags=["Feedback"])
 
 
 class FeedbackRequest(RequestSchema):
-    """Sending feedback for a night that already has some adds a new version;
-    the earlier ones are kept."""
+    """The rate the manager chose for a night.
+
+    Sending feedback for a night that already has some adds a new version;
+    the earlier ones are kept.
+    """
 
     room_type_id: int = Field(
         description="The `room_type_id` /hotels/{id}/recommendations returned",
@@ -58,6 +59,8 @@ class FeedbackRequest(RequestSchema):
 
 
 class FeedbackResponse(ResponseSchema):
+    """One version of the manager's feedback on a night's rate."""
+
     id: int = Field(description="The feedback's id")
     hotel_id: int = Field(description="The hotel it belongs to")
     room_type_id: int = Field(description="The room type it is about")
@@ -105,6 +108,21 @@ async def add_feedback(
     version, and the highest version is the current one. 404 for an unknown
     hotel, or a room type or snapshot that isn't the hotel's; 422 for a missing
     rate or snapshot, a rate of 0 or less, or a snapshot from another night.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        data (FeedbackRequest): The feedback.
+        session (SessionDep): The database session.
+        user (CurrentUserDep): Who gave it.
+
+    Returns:
+        FeedbackResponse: The new version.
+
+    Raises:
+        NotFoundError: A room type or snapshot that isn't the hotel's.
+        InvalidRequestError: The snapshot is for another night.
+        ConflictError: Another version was saved at the same moment.
     """
     feedback = await feedback_service.add_feedback(
         session, hotel_id, user_id=user.id, **data.model_dump()
@@ -141,8 +159,25 @@ async def list_feedback(
         ),
     ] = False,
 ) -> list[FeedbackResponse]:
-    """The current feedback for each night from `start` to `end`, oldest night
-    first. Nights with none are left out."""
+    """The current feedback for each night from `start` to `end`.
+
+    Oldest night first; nights with none are left out.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+        room_type_id (int | None): Only this room type.
+        include_history (bool): Every version, not just the current one.
+
+    Returns:
+        list[FeedbackResponse]: The feedback.
+
+    Raises:
+        InvalidRequestError: `end` before `start`, or too many nights.
+    """
     feedback = await feedback_service.list_feedback(
         session,
         hotel_id,

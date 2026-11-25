@@ -1,14 +1,3 @@
-"""Signing in with Google, the session it starts, and who is signed in.
-
-Google's authorization-code flow runs through Authlib, which keeps the flow's
-state and nonce in the signed session cookie and verifies Google's ID token. The
-OAuth client lives here rather than in `services/` because it reads and writes
-the HTTP session; the service only gets plain values (decision 0040).
-
-Nothing else requires a session yet: `CurrentUserDep` is what routes use once
-they do.
-"""
-
 from authlib.common.errors import AuthlibBaseError
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, HTTPException, Request, status
@@ -30,20 +19,21 @@ oauth.register(
     name="google",
     client_id=settings.google_client_id,
     client_secret=settings.google_client_secret,
-    # Where Google's endpoints, issuer and signing keys come from.
     server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
     client_kwargs={"scope": "openid email profile", "code_challenge_method": "S256"},
 )
 
-# Google documents both spellings of its issuer; Authlib alone would accept only
-# the one in its discovery document.
 _GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"]
 
 
-# Schemas
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                         Schemas                          │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 class MeResponse(ResponseSchema):
+    """The signed-in user and the hotels they work for."""
+
     id: int = Field(description="The user's id")
     email: str = Field(description="The email Google last reported for the account")
     name: str | None = Field(description="Their name on Google; null if it has none")
@@ -52,7 +42,9 @@ class MeResponse(ResponseSchema):
     )
 
 
-# Endpoints
+#          ╭──────────────────────────────────────────────────────────╮
+#          │                        Endpoints                         │
+#          ╰──────────────────────────────────────────────────────────╯
 
 
 @router.get(
@@ -62,7 +54,23 @@ class MeResponse(ResponseSchema):
     responses={503: {"description": "Google sign-in isn't configured on the server"}},
 )
 async def google_login(request: Request) -> RedirectResponse:
-    """Send the browser to Google to sign in. Open it as a page, not a fetch."""
+    """Send the browser to Google to sign in. Open it as a page, not a fetch.
+
+    Google's authorization-code flow runs through Authlib, which keeps the
+    flow's state and nonce in the signed session cookie. The OAuth client
+    lives in routes because it reads and writes the HTTP session; the service
+    only gets plain values.
+
+    \f
+    Args:
+        request (Request): The request, with its session.
+
+    Returns:
+        RedirectResponse: To Google.
+
+    Raises:
+        NotConfiguredError: Google sign-in isn't configured.
+    """
     user_service.require_sign_in_configured()
     return await oauth.google.authorize_redirect(
         request, settings.google_redirect_uri, prompt="select_account"
@@ -80,19 +88,41 @@ async def google_login(request: Request) -> RedirectResponse:
     },
 )
 async def google_callback(request: Request, session: SessionDep) -> RedirectResponse:
-    """Where Google sends the browser back. Checks the state and Google's ID
-    token, finds or creates the user, starts the session and redirects to the
-    frontend."""
+    """Where Google sends the browser back after sign-in.
+
+    Checks the state and Google's ID token, finds or creates the user, starts
+    the session and redirects to the frontend.
+
+    Google documents two spellings of its issuer, and both are accepted;
+    Authlib alone would accept only the one in its discovery document. The
+    session is cleared before the user is stored, dropping the flow's state
+    and anything a previous session held, so a pre-login cookie never becomes
+    a signed-in one.
+
+    \f
+    Args:
+        request (Request): The request, with its session.
+        session (SessionDep): The database session.
+
+    Returns:
+        RedirectResponse: To the frontend.
+
+    Raises:
+        HTTPException: 400 if Google refused, or the state or ID token is
+            invalid.
+        ForbiddenError: Google hasn't verified the account's email.
+        NotConfiguredError: Google sign-in isn't configured.
+    """
     user_service.require_sign_in_configured()
     try:
         token = await oauth.google.authorize_access_token(
             request, claims_options={"iss": {"values": _GOOGLE_ISSUERS}}
         )
-    except AuthlibBaseError as exc:  # bad or missing state, or Google said no
+    except AuthlibBaseError as exc:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, f"Google sign-in failed: {exc.error}"
         ) from exc
-    except JoseError as exc:  # the ID token's signature or claims are wrong
+    except JoseError as exc:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Google sign-in failed: invalid ID token"
         ) from exc
@@ -110,8 +140,6 @@ async def google_callback(request: Request, session: SessionDep) -> RedirectResp
         email_verified=claims.get("email_verified") in (True, "true"),
         name=claims.get("name"),
     )
-    # Start a fresh session: drops the flow's leftover state and anything a
-    # previous session held, so a pre-login cookie never becomes a signed-in one.
     request.session.clear()
     request.session["user_id"] = user.id
     return RedirectResponse(settings.frontend_url, status.HTTP_302_FOUND)
@@ -119,7 +147,12 @@ async def google_callback(request: Request, session: SessionDep) -> RedirectResp
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request) -> None:
-    """End the session. Signing out when not signed in is not an error."""
+    """End the session. Signing out when not signed in is not an error.
+
+    \f
+    Args:
+        request (Request): The request, with its session.
+    """
     request.session.clear()
 
 
@@ -129,7 +162,16 @@ async def logout(request: Request) -> None:
     responses={401: {"description": "Not signed in, or the session has expired"}},
 )
 async def me(user: CurrentUserDep, session: SessionDep) -> MeResponse:
-    """The signed-in user and the hotels they work for."""
+    """The signed-in user and the hotels they work for.
+
+    \f
+    Args:
+        user (CurrentUserDep): The signed-in user.
+        session (SessionDep): The database session.
+
+    Returns:
+        MeResponse: The user and their hotels.
+    """
     hotels = await hotel_service.list_hotels_for_user(session, user.id)
     return MeResponse(
         id=user.id,

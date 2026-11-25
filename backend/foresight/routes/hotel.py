@@ -1,5 +1,3 @@
-"""Hotels, their room types, and recommendations."""
-
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any
@@ -27,7 +25,6 @@ router = APIRouter(tags=["Hotels"])
 #          │                         Schemas                          │
 #          ╰──────────────────────────────────────────────────────────╯
 
-# Field settings shared by the create and update bodies.
 _HOTEL_NAME: dict[str, Any] = {
     "max_length": 200,
     "description": "The hotel's name; unique within its city",
@@ -52,6 +49,8 @@ _LONGITUDE: dict[str, Any] = {
 
 
 class HotelRequest(RequestSchema):
+    """A new hotel."""
+
     name: str = Field(**_HOTEL_NAME)
     city_id: int = Field(**_CITY_ID)
     latitude: float | None = Field(default=None, **_LATITUDE)
@@ -69,13 +68,25 @@ class HotelUpdateRequest(RequestSchema):
     @field_validator("name", "city_id")
     @classmethod
     def _not_null(cls, value: object) -> object:
-        # Required columns: omitting them leaves them alone, null can't clear them.
+        """Rejects null for a required column; leaving it out leaves it alone.
+
+        Args:
+            value (object): The value sent.
+
+        Returns:
+            object: The value.
+
+        Raises:
+            ValueError: It's null.
+        """
         if value is None:
             raise ValueError("cannot be null")
         return value
 
 
 class HotelResponse(ResponseSchema):
+    """A hotel, with its city."""
+
     id: int = Field(description="The hotel's id")
     name: str = Field(description="The hotel's name")
     city: CityResponse = Field(description="The city the hotel sits in")
@@ -84,6 +95,8 @@ class HotelResponse(ResponseSchema):
 
 
 class LinkUserRequest(RequestSchema):
+    """The colleague to give access to."""
+
     email: str = Field(
         max_length=320,
         description="The Google email of someone who has signed in at least once",
@@ -102,6 +115,8 @@ class FactorResponse(ResponseSchema):
 
 
 class ExplanationResponse(ResponseSchema):
+    """Why a night's rate is what it is."""
+
     summary: str = Field(description="The rate and its biggest factor, in words")
     baseline: Decimal = Field(description="The model's rate before any factor, EUR")
     factors: list[FactorResponse] = Field(description="Largest first")
@@ -129,6 +144,8 @@ class NightEventResponse(ResponseSchema):
 
 
 class RecommendationResponse(ResponseSchema):
+    """One night's recommended rate, why, and what it was priced from."""
+
     hotel_id: int = Field(description="The hotel priced")
     stay_date: date = Field(description="The night priced, local to the city")
     room_type: str = Field(description="The room type priced")
@@ -139,7 +156,7 @@ class RecommendationResponse(ResponseSchema):
         "Null on snapshots from versions that didn't read it"
     )
     recommended_rate: Decimal = Field(
-        description="The rate to list, in EUR, before VAT (decision 0076)"
+        description="The rate to list, in EUR, before VAT"
     )
     explanation: ExplanationResponse = Field(description="Why the rate is what it is")
     model_id: int = Field(description="The model version that priced it")
@@ -174,7 +191,7 @@ RecommendRoomType = Annotated[
     int | None,
     Query(
         description="The room type to price; omit for the one the active "
-        "model prices. Any other is a 422 (decision 0079)",
+        "model prices. Any other is a 422",
         examples=[1],
     ),
 ]
@@ -191,7 +208,21 @@ RecommendRoomType = Annotated[
 async def create_hotel(
     data: HotelRequest, user: CurrentUserDep, session: SessionDep
 ) -> HotelResponse:
-    """Add a hotel to a city, and link yourself to it. Names are unique per city."""
+    """Add a hotel to a city, and link yourself to it. Names are unique per city.
+
+    \f
+    Args:
+        data (HotelRequest): The hotel.
+        user (CurrentUserDep): The creator.
+        session (SessionDep): The database session.
+
+    Returns:
+        HotelResponse: The new hotel.
+
+    Raises:
+        NotFoundError: The city doesn't exist.
+        ConflictError: The city already has a hotel with this name.
+    """
     hotel = await hotel_service.create_hotel_for_user(
         session, user, **data.model_dump()
     )
@@ -200,14 +231,32 @@ async def create_hotel(
 
 @router.get("/hotels", response_model=list[HotelResponse])
 async def list_hotels(user: CurrentUserDep, session: SessionDep) -> list[HotelResponse]:
-    """The hotels you're linked to, oldest first; empty if you have none."""
+    """The hotels you're linked to, oldest first; empty if you have none.
+
+    \f
+    Args:
+        user (CurrentUserDep): The signed-in user.
+        session (SessionDep): The database session.
+
+    Returns:
+        list[HotelResponse]: The hotels.
+    """
     hotels = await hotel_service.list_hotels_for_user(session, user.id)
     return [HotelResponse.model_validate(hotel) for hotel in hotels]
 
 
 @router.get("/hotels/{hotel_id}", response_model=HotelResponse)
 async def get_hotel(hotel_id: HotelId, session: SessionDep) -> HotelResponse:
-    """One hotel, with its city."""
+    """One hotel, with its city.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+
+    Returns:
+        HotelResponse: The hotel.
+    """
     return HotelResponse.model_validate(
         await hotel_service.get_hotel(session, hotel_id)
     )
@@ -217,7 +266,21 @@ async def get_hotel(hotel_id: HotelId, session: SessionDep) -> HotelResponse:
 async def update_hotel(
     hotel_id: HotelId, data: HotelUpdateRequest, session: SessionDep
 ) -> HotelResponse:
-    """Change the fields sent; omitted fields are left alone."""
+    """Change the fields sent; omitted fields are left alone.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        data (HotelUpdateRequest): The changes.
+        session (SessionDep): The database session.
+
+    Returns:
+        HotelResponse: The updated hotel.
+
+    Raises:
+        NotFoundError: The new city doesn't exist.
+        ConflictError: The new name and city match another hotel.
+    """
     hotel = await hotel_service.update_hotel(
         session, hotel_id, data.model_dump(exclude_unset=True)
     )
@@ -228,8 +291,20 @@ async def update_hotel(
 async def link_user(
     hotel_id: HotelId, data: LinkUserRequest, session: SessionDep
 ) -> None:
-    """Give a colleague access to this hotel, by the email of their Google
-    account. They must have signed in once. Linking twice changes nothing."""
+    """Give a colleague access to this hotel, by their Google account's email.
+
+    They must have signed in once. Linking twice changes nothing.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        data (LinkUserRequest): Their email.
+        session (SessionDep): The database session.
+
+    Raises:
+        NotFoundError: Nobody with this email has signed in.
+        ConflictError: Several users share the email.
+    """
     await user_service.link_user_by_email(session, hotel_id=hotel_id, email=data.email)
 
 
@@ -240,7 +315,6 @@ async def link_user(
 async def get_recommendations(
     hotel_id: HotelId,
     session: SessionDep,
-    # Named `stay_date` in code because `date` is the type; the query key stays `date`.
     stay_date: Annotated[
         date | None,
         Query(
@@ -264,8 +338,9 @@ async def get_recommendations(
     ] = None,
     room_type_id: RecommendRoomType = None,
 ) -> list[RecommendationResponse]:
-    """The active model's rate for each night, oldest first, with its
-    explanation and events. At most 90 nights.
+    """The active model's rate for each night, with its explanation and events.
+
+    Oldest first; at most 90 nights.
 
     Each price shown from today on is stored as a snapshot. A night whose model
     and inputs (events, days booked ahead) match its latest snapshot returns
@@ -274,6 +349,25 @@ async def get_recommendations(
     it's shown. Past nights are never stored after the fact: one with a
     snapshot returns it as it was, one without is priced and returned unsaved.
     404 if the hotel has no active model.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        stay_date (date | None): One night; the query key is `date`, but
+            that name is taken by the type.
+        start (date | None): First night, inclusive.
+        end (date | None): Last night, inclusive; None for `start` alone.
+        room_type_id (RecommendRoomType): The room type; None for the one the
+            model prices.
+
+    Returns:
+        list[RecommendationResponse]: One per night.
+
+    Raises:
+        InvalidRequestError: Both `date` and a range, neither, a bad range,
+            or another room type.
+        NotFoundError: The hotel has no active model.
     """
     if stay_date is not None and (start is not None or end is not None):
         raise InvalidRequestError("send `date`, or `start` and `end`, not both")

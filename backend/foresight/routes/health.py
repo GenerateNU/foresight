@@ -1,5 +1,3 @@
-"""Liveness check."""
-
 from typing import Literal
 
 from fastapi import APIRouter
@@ -16,6 +14,8 @@ router = APIRouter(tags=["Health"])
 
 
 class HealthResponse(ResponseSchema):
+    """Whether the API is serving."""
+
     status: Literal["ok"] = Field(description="Always ok while the API is serving")
 
 
@@ -26,5 +26,13 @@ class HealthResponse(ResponseSchema):
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
-    """Returns ok while the API is serving requests."""
+    """Returns ok while the API is serving requests.
+
+    \f
+    Args:
+
+
+    Returns:
+        HealthResponse: Always ok.
+    """
     return HealthResponse(status="ok")

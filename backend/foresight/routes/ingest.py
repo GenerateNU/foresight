@@ -1,19 +1,3 @@
-"""Ingest: pull a signal in, or load uploaded files, as background jobs.
-
-Each POST validates and queues its job (one per file for uploads), returns 202,
-and the job joins the back of the hotel's queue after the response: a hotel's
-jobs run one at a time, oldest first. Poll `GET /jobs/{id}` (routes/job.py)
-for status and progress.
-
-Dates (events): send neither for the routine refresh, or either to backfill a
-window. `end` defaults to today and `start` to the hotel's first booked night.
-A backfill walks newest month first, so the most recent events are saved
-first (decision 0087).
-
-If a job stops or fails part-way, `resume_from` says where to pick up: send it
-as `end` again, with the same `start`.
-"""
-
 from datetime import date
 from typing import Annotated, Any
 
@@ -61,9 +45,6 @@ class IngestRequest(RequestSchema):
     )
 
 
-# One per mode, shown as a picker in /docs. The first is the body built from
-# the fields (`example_body`), so it matches the schema; the others are cut
-# down from it. The empty refresh body goes last.
 _FULL = example_body(IngestRequest)
 _DATE_EXAMPLES: dict[str, Any] = {
     "window": {
@@ -103,7 +84,26 @@ async def ingest_events(
     """PredictHQ events within 10km of the city centre.
 
     No dates: upcoming events revised since the last such run (the last week,
-    the first time). Dates: every event in the window, a month at a time.
+    the first time). Dates: every event in the window, a month at a time,
+    newest first; `end` defaults to today and `start` to the hotel's first
+    booked night. Returns 202 with the job, which joins the back of the
+    hotel's queue; poll `GET /jobs/{id}`. If it stops part-way, send its
+    `resume_from` as `end` again, with the same `start`.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        tasks (BackgroundTasks): Queues the job after the response.
+        data (IngestBody): The window; none for the routine refresh.
+
+    Returns:
+        JobResponse: The queued job.
+
+    Raises:
+        NotConfiguredError: PREDICTHQ_TOKEN isn't set.
+        InvalidWindowError: The window doesn't resolve.
+        ConflictError: An events job is already queued or running.
     """
     data = data or IngestRequest()
     job = await job_service.start_events_job(
@@ -136,6 +136,22 @@ async def ingest_files(
     Every file is recognised and parsed before anything is queued, so a file
     that matches no report, matches more than one, or doesn't parse is a 422
     naming it, and nothing is queued. Re-uploading a file changes nothing.
+
+    \f
+    Args:
+        hotel_id (HotelId): The hotel.
+        session (SessionDep): The database session.
+        tasks (BackgroundTasks): Queues the jobs after the response, once the
+            session has committed them.
+        files (list[UploadFile]): The Guestline exports.
+
+    Returns:
+        list[JobResponse]: One queued job per file.
+
+    Raises:
+        HTTPException: 413 for too many files, or a file over the size limit.
+        InvalidRequestError: A file matches no report, more than one, or
+            doesn't parse.
     """
     if len(files) > settings.upload_max_files:
         raise HTTPException(
@@ -146,14 +162,23 @@ async def ingest_files(
         (f.filename or f"file {i}", await _read_capped(f)) for i, f in enumerate(files)
     ]
     queued = await job_service.start_file_jobs(session, hotel_id, files=contents)
-    # Added after the response, by which time get_session has committed the rows.
     for job, parsed in queued:
         tasks.add_task(worker.enqueue, job.id, job.hotel_id, parsed)
     return [JobResponse.model_validate(job) for job, _ in queued]
 
 
 async def _read_capped(upload: UploadFile) -> bytes:
-    """The file's bytes; 413 if it is over the size limit."""
+    """Reads an uploaded file, up to the size limit.
+
+    Args:
+        upload (UploadFile): The file.
+
+    Returns:
+        bytes: Its content.
+
+    Raises:
+        HTTPException: 413 if it's over the limit.
+    """
     limit = settings.upload_max_file_mb * 1024 * 1024
     content = await upload.read(limit + 1)
     if len(content) > limit:

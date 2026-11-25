@@ -232,7 +232,10 @@ HTTP schemas live in the route module that uses them
   own "cannot be null" check and its own `start`/`end` parameters.
 - PATCH bodies use `model_dump(exclude_unset=True)`: omitted fields are left
   alone, `null` clears an optional field and is a 422 on a required one.
-- Derived values (occupancy, ADR, RevPAR) are `@computed_field`s, never stored.
+- A schema class has a one-line docstring and no `Attributes:`; its fields'
+  descriptions document it. An endpoint's docstring puts `Args:`/`Returns:`/
+  `Raises:` after a form feed (`\f`), so `/docs` shows only the summary
+  ([0088](decisions/0088-one-docstring-style.md)).
 
 Lists that grow without bound take `?limit=&offset=` (default 50, max 200) and
 return `{"items", "total", "limit", "offset"}`: events,
