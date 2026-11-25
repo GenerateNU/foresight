@@ -20,6 +20,7 @@ from foresight.database.enums import Source
 from foresight.repository.signals import event as event_repo
 from foresight.services.adapters import predicthq
 from foresight.services.domain import event as event_service
+from foresight.services.ml.features import build_features
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -115,3 +116,48 @@ def hotel_location(hotel: Hotel) -> tuple[float, float] | None:
     if hotel.latitude is None or hotel.longitude is None:
         return None
     return hotel.latitude, hotel.longitude
+
+
+@dataclass(frozen=True, slots=True)
+class ModelInputs:
+    """The model's inputs for some rows, and which nights had event data.
+
+    Attributes:
+        x (pd.DataFrame): Every input in FEATURES order, one row per input row.
+        events_fetched (set[date]): The nights an events backfill covered.
+    """
+
+    x: pd.DataFrame
+    events_fetched: set[date]
+
+
+async def build_inputs(
+    session: AsyncSession,
+    hotel: Hotel,
+    rows: pd.DataFrame,
+    *,
+    booked_on: pd.Series | date,
+) -> ModelInputs:
+    """Builds the model's inputs for each row, the same way everywhere.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel, with its city loaded.
+        rows (pd.DataFrame): One row per night or booked room, with a
+            stay_date column.
+        booked_on (pd.Series | date): When each row was booked, aligned with
+            `rows`, or one date for every row.
+
+    Returns:
+        ModelInputs: The inputs, indexed like `rows`.
+    """
+    events = await events_for(session, hotel.city, sorted(set(rows["stay_date"])))
+    x = build_features(
+        rows,
+        events.frame,
+        events_fetched=events.fetched,
+        events_impacts=events.impacts,
+        hotel_location=hotel_location(hotel),
+        booked_on=booked_on,
+    )
+    return ModelInputs(x, events.fetched)

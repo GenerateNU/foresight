@@ -154,16 +154,17 @@ def _event_features(
     dates: pd.DatetimeIndex,
     hotel_location: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
-    """Summarizes the events happening on each date.
-
-    A multi-day event counts on every night from its start to its end date.
+    """Summarizes the attended events happening on each date.
 
     Args:
-        events (pd.DataFrame): See build_features.
+        events (pd.DataFrame): See `build_features`.
         dates (pd.DatetimeIndex): The nights to summarize.
+        hotel_location (tuple[float, float] | None): The hotel's latitude and
+            longitude; None leaves the distance to big events empty.
 
     Returns:
-        pd.DataFrame: Event totals, indexed by date.
+        pd.DataFrame: Event totals, one row per date; zero where no event
+            counts, and no distance without a big event.
     """
     result = pd.DataFrame(
         {
@@ -175,10 +176,29 @@ def _event_features(
         },
         index=dates,
     )
-    if events.empty:
+    attended = _attended_by_night(events, dates)
+    if attended.empty:
         return result
+    totals = _nightly_totals(attended, hotel_location)
+    result.loc[totals.index, totals.columns] = totals
+    return result
 
-    # str() turns EventCategory members into their values, e.g. "concerts".
+
+def _attended_by_night(events: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
+    """Spreads each attended event over its nights, keeping those in `dates`.
+
+    A multi-day event counts on every night from its start to its end date,
+    and only on nights after PredictHQ first saw it.
+
+    Args:
+        events (pd.DataFrame): See `build_features`.
+        dates (pd.DatetimeIndex): The nights to keep.
+
+    Returns:
+        pd.DataFrame: One row per event per night, with a `date` column.
+    """
+    if events.empty:
+        return events.assign(date=pd.Series(dtype="datetime64[ns]"))
     expanded = events.assign(
         category=events["category"].astype(str),
         date=[
@@ -190,31 +210,39 @@ def _event_features(
     ).explode("date")
     expanded = expanded.loc[expanded["date"].isin(dates.to_list())]
     expanded = expanded.loc[_known_before(expanded, expanded["date"])]
+    return expanded.loc[expanded["category"].isin(ATTENDED_CATEGORIES)]
 
-    attended = expanded.loc[expanded["category"].isin(ATTENDED_CATEGORIES)]
-    if not attended.empty:
-        big = attended["accommodation_spend"] >= BIG_EVENT_SPEND
-        attended = attended.assign(
-            big_event_km=_km_from(
-                hotel_location, attended["latitude"], attended["longitude"]
-            ).where(big)
-        )
-        totals = attended.groupby("date").agg(
-            event_count=("category", "size"),
-            event_attendance=("expected_attendance", "sum"),
-            event_rank_max=("local_rank", "max"),
-            big_event_count=(
-                "accommodation_spend",
-                lambda x: int((x >= BIG_EVENT_SPEND).sum()),
-            ),
-            nearest_big_event_km=("big_event_km", "min"),
-        )
-        # The distance stays empty without a big event: 0 km would mean next door.
-        totals = totals.fillna(
-            {c: 0 for c in totals.columns if c != "nearest_big_event_km"}
-        )
-        result.loc[totals.index, totals.columns] = totals
-    return result
+
+def _nightly_totals(
+    attended: pd.DataFrame, hotel_location: tuple[float, float] | None
+) -> pd.DataFrame:
+    """Totals the attended events on each night.
+
+    Args:
+        attended (pd.DataFrame): One row per event per night, from
+            `_attended_by_night`.
+        hotel_location (tuple[float, float] | None): The hotel's latitude and
+            longitude.
+
+    Returns:
+        pd.DataFrame: Count, attendance, top rank, big events and the nearest
+            big event's distance, one row per night with an event.
+    """
+    big = attended["accommodation_spend"] >= BIG_EVENT_SPEND
+    attended = attended.assign(
+        big=big,
+        big_event_km=_km_from(
+            hotel_location, attended["latitude"], attended["longitude"]
+        ).where(big),
+    )
+    totals = attended.groupby("date").agg(
+        event_count=("category", "size"),
+        event_attendance=("expected_attendance", "sum"),
+        event_rank_max=("local_rank", "max"),
+        big_event_count=("big", "sum"),
+        nearest_big_event_km=("big_event_km", "min"),
+    )
+    return totals.fillna({c: 0 for c in totals.columns if c != "nearest_big_event_km"})
 
 
 def _km_from(

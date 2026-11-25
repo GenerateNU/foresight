@@ -134,10 +134,10 @@ async def load_backtest(
     # Yesterday in the hotel's timezone, like every other "today".
     yesterday = local_today(hotel.city) - timedelta(days=1)
     data = await training_data(session, hotel, start=start, end=yesterday)
-    if data.nights.empty:
+    if data.rows.empty:
         raise InvalidRequestError("no priced nights to backtest")
-    cutoff = data.nights["stay_date"].max() - timedelta(days=test_days)
-    seen = (data.nights["stay_date"] <= cutoff).to_numpy()
+    cutoff = data.rows["stay_date"].max() - timedelta(days=test_days)
+    seen = (data.rows["stay_date"] <= cutoff).to_numpy()
     if not seen.any():
         raise InvalidRequestError(
             f"no nights before the cutoff {cutoff}; use a smaller --test-days"
@@ -195,7 +195,7 @@ async def _fit_predict(
 async def _fit_seen(data: TrainingData, seen: np.ndarray, x: pd.DataFrame) -> EBMModel:
     """An EBM fit on the `seen` rows of `x`, weighted and merged as training is."""
     xc, yc, wc, _ = combine_identical_rows(
-        x[seen], data.y[seen], data.weights[seen], data.nights.loc[seen, "stay_date"]
+        x[seen], data.y[seen], data.weights[seen], data.rows.loc[seen, "stay_date"]
     )
     model = EBMModel()
     # CPU-bound for seconds; a thread keeps the event loop free.
@@ -213,7 +213,7 @@ def _limit_event_history(
     only in how much event history the model learned from.
     """
     start = split.cutoff - timedelta(days=event_days)
-    old = (split.data.nights["stay_date"] <= start).to_numpy()
+    old = (split.data.rows["stay_date"] <= start).to_numpy()
     columns = [c for c in INPUT_GROUPS["events"] if c in x.columns]
     x = x.copy()
     x.loc[old, columns] = float("nan")
@@ -232,8 +232,8 @@ def _test_rows(
     average booked rate and scored against every booked room on the test
     night, as the model is (decision 0076).
     """
-    nights, seen = split.data.nights, split.seen
-    targets = nights.loc[~seen]
+    rows, seen = split.data.rows, split.seen
+    targets = rows.loc[~seen]
     result = pd.DataFrame(
         {
             "stay_date": targets["stay_date"],
@@ -245,7 +245,7 @@ def _test_rows(
     if baselines:
         # Baselines see only nights up to the cutoff, as the model did.
         history = (
-            nights.loc[seen]
+            rows.loc[seen]
             .assign(rate=split.data.y[seen])
             .groupby("stay_date", as_index=False)["rate"]
             .mean()

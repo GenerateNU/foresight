@@ -55,7 +55,7 @@ LIBS = ("interpret-core", "scikit-learn", "numpy", "pandas", "joblib")
 
 @dataclass(frozen=True, slots=True)
 class TrainingResult:
-    model: PricingModel
+    version: PricingModel
     activated: bool
     seconds: float
     training_rows: int  # booked rooms plus manager rows
@@ -110,10 +110,10 @@ async def prepare_training(
     """
     began = time.monotonic()
     data = await training_data(session, hotel, start=start, end=end)
-    nights = data.nights
-    if len(nights) < MIN_TRAINING_ROWS:
+    if len(data.rows) < MIN_TRAINING_ROWS:
         raise InvalidRequestError(
-            f"{len(nights)} booked rooms to train on; need at least {MIN_TRAINING_ROWS}"
+            f"{len(data.rows)} booked rooms to train on; "
+            f"need at least {MIN_TRAINING_ROWS}"
         )
 
     data, feedback_nights = await with_manager_rows(
@@ -132,11 +132,11 @@ async def fit(
     """
     data = prepared.data
     metrics, artifact = await asyncio.to_thread(
-        _fit, data.x, data.y, data.weights, data.nights, params
+        _fit, data.x, data.y, data.weights, data.rows, params
     )
     metrics["target"] = TARGET
-    metrics["training_rows"] = len(data.nights)
-    metrics["training_nights"] = int(data.nights["stay_date"].nunique())
+    metrics["training_rows"] = len(data.rows)
+    metrics["training_nights"] = int(data.rows["stay_date"].nunique())
     metrics["feedback_nights"] = prepared.feedback_nights
     metrics["one_off_nights"] = data.one_off_dropped
     return metrics, artifact
@@ -152,14 +152,27 @@ async def save_version(
     description: str | None,
     activate: bool,
 ) -> TrainingResult:
-    """Save the fitted model as a new version, and activate it unless told not
-    to. Creates the main room type the first time (decision 0079). Does not
-    commit."""
-    nights = prepared.data.nights
+    """Saves a fitted base model as a new version, active unless told not to.
+
+    Creates the main room type the first time. Does not commit.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel (Hotel): The hotel trained.
+        prepared (PreparedTraining): The rows it was fit on.
+        metrics (dict[str, Any]): What `fit` returned.
+        artifact (bytes): The serialized model.
+        description (str | None): What this version tries.
+        activate (bool): Whether it starts serving.
+
+    Returns:
+        TrainingResult: The saved version and what it was trained on.
+    """
+    rows = prepared.data.rows
     room_type = await hotel_repo.get_or_create_room_type(
         session, hotel_id=hotel.id, name=MAIN_ROOM_CODE
     )
-    saved = await model_repo.create_model(
+    version_row = await create_version(
         session,
         hotel_id=hotel.id,
         algorithm=ALGORITHM,
@@ -167,22 +180,73 @@ async def save_version(
         artifact=artifact,
         features=list(prepared.data.x.columns),
         metrics=metrics,
-        lib_versions={lib: version(lib) for lib in LIBS},
-        data_start=nights["stay_date"].min(),
-        data_end=nights["stay_date"].max(),
+        data_start=rows["stay_date"].min(),
+        data_end=rows["stay_date"].max(),
         room_type_id=room_type.id,
+        activate=activate,
     )
-    if activate:
-        activated = await model_repo.activate_model(session, saved.id)
-        assert activated is not None  # saved just above, in this transaction
-        saved = activated
     return TrainingResult(
-        saved,
+        version_row,
         activate,
         round(time.monotonic() - prepared.began, 1),
-        len(nights),
+        len(rows),
         metrics["training_nights"],
     )
+
+
+async def create_version(
+    session: AsyncSession,
+    *,
+    hotel_id: int,
+    algorithm: str,
+    description: str | None,
+    artifact: bytes,
+    features: list[str],
+    metrics: dict[str, Any],
+    data_start: date,
+    data_end: date,
+    room_type_id: int,
+    activate: bool,
+    base_model_id: int | None = None,
+) -> PricingModel:
+    """Saves a model version, base or tune-up, and activates it if asked.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        algorithm (str): `ebm` or `ebm-tuned`.
+        description (str | None): What this version tries.
+        artifact (bytes): The serialized model.
+        features (list[str]): Its input columns, in order.
+        metrics (dict[str, Any]): What it was trained on and what it cost.
+        data_start (date): First night trained on.
+        data_end (date): Last night trained on.
+        room_type_id (int): The room type it prices.
+        activate (bool): Whether it starts serving.
+        base_model_id (int | None): For a tune-up, the version it corrects.
+
+    Returns:
+        PricingModel: The saved version.
+    """
+    version_row = await model_repo.create_model(
+        session,
+        hotel_id=hotel_id,
+        algorithm=algorithm,
+        description=description,
+        artifact=artifact,
+        features=features,
+        metrics=metrics,
+        lib_versions={lib: version(lib) for lib in LIBS},
+        data_start=data_start,
+        data_end=data_end,
+        room_type_id=room_type_id,
+        base_model_id=base_model_id,
+    )
+    if not activate:
+        return version_row
+    active = await model_repo.activate_model(session, version_row.id)
+    assert active is not None
+    return active
 
 
 async def list_models(
@@ -194,13 +258,13 @@ async def list_models(
 
 async def get_model(session: AsyncSession, model_id: int) -> PricingModel:
     """Raises NotFoundError for an unknown model."""
-    model = await model_repo.get_model(session, model_id)
-    if model is None:
+    version_row = await model_repo.get_model(session, model_id)
+    if version_row is None:
         raise NotFoundError("Pricing model", model_id)
-    return model
+    return version_row
 
 
-async def load_model(session: AsyncSession, stored: PricingModel) -> EBMModel:
+async def load_model(session: AsyncSession, version_row: PricingModel) -> EBMModel:
     """The version's trained model, ready to predict.
 
     A tune-up's artifact holds only its correction, so its base version's
@@ -209,12 +273,12 @@ async def load_model(session: AsyncSession, stored: PricingModel) -> EBMModel:
     Raises:
         NotFoundError: The version or its base has no artifact.
     """
-    model = EBMModel.from_bytes(await _artifact(session, stored.id))
-    if stored.base_model_id is None:
+    model = EBMModel.from_bytes(await _artifact(session, version_row.id))
+    if version_row.base_model_id is None:
         return model
     if not isinstance(model, TunedEBMModel):
-        raise TypeError(f"pricing model {stored.id} has a base but isn't a tune-up")
-    base = EBMModel.from_bytes(await _artifact(session, stored.base_model_id))
+        raise TypeError(f"model {version_row.id} has a base but isn't a tune-up")
+    base = EBMModel.from_bytes(await _artifact(session, version_row.base_model_id))
     return model.attach_base(base)
 
 
@@ -228,16 +292,16 @@ async def _artifact(session: AsyncSession, model_id: int) -> bytes:
 async def activate_model(session: AsyncSession, model_id: int) -> PricingModel:
     """Make this version the one its hotel serves. Raises NotFoundError."""
     await get_model(session, model_id)
-    model = await model_repo.activate_model(session, model_id)
-    assert model is not None
-    return model
+    version_row = await model_repo.activate_model(session, model_id)
+    assert version_row is not None
+    return version_row
 
 
 def _fit(
     x: pd.DataFrame,
     y: pd.Series,
     weights: np.ndarray,
-    nights: pd.DataFrame,
+    rows: pd.DataFrame,
     params: dict[str, Any],
 ) -> tuple[dict[str, Any], bytes]:
     """Fit on every row and serialize (decision 0085). Returns the fit's time
@@ -247,7 +311,26 @@ def _fit(
     rooms fit in a fraction of the time. Accuracy isn't scored here: the
     model has seen every row, so the backtest is where it's measured.
     """
-    xc, yc, wc, _ = combine_identical_rows(x, y, weights, nights["stay_date"])
+    xc, yc, wc, _ = combine_identical_rows(x, y, weights, rows["stay_date"])
     with measure() as cost:
         model = EBMModel(**params).fit(xc, yc, sample_weight=wc)
     return {**cost, "mean_rate": round(float(np.mean(y)), 2)}, model.to_bytes()
+
+
+async def get_active_model(session: AsyncSession, hotel_id: int) -> PricingModel:
+    """Gets the version serving the hotel.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+
+    Returns:
+        PricingModel: The active version, without its artifact.
+
+    Raises:
+        NotFoundError: The hotel has no active model.
+    """
+    version_row = await model_repo.get_active_model(session, hotel_id)
+    if version_row is None:
+        raise NotFoundError("Active pricing model for hotel", hotel_id)
+    return version_row

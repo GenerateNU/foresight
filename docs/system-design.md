@@ -161,6 +161,8 @@ DomainError
 
 - Every `get_x(id)` in a service raises `NotFoundError`; nothing returns None
   to a route.
+- A service function that takes a `hotel_id` loads the hotel first, so an
+  unknown hotel is a 404 before anything else runs.
 - The repository returns None for a missing row or a duplicate insert. The
   service decides that it is an error.
 - Every error body is `{"detail": "..."}`.
@@ -502,12 +504,12 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
         domain/booking.booking_rows             one row per booked room per night, from
                                                 DOUBLE BAR_RO bookings alone: rate = adr_nett,
                                                 weight 1 (0076, 0079)
-        feedback_repo.one_off_nights            drop the rooms of nights tagged one-off (0070)
-        domain/model_inputs.events_for          counted events, backfilled nights, first seen
+        feedback.current_feedback            drop the rooms of nights tagged one-off (0070)
+        domain/inputs.build_inputs          counted events, backfilled nights, first seen
         ml/features.build_features              calendar + holidays + events + lead_days from booked_on
                                                 (0055, 0056, 0067); holidays from the
                                                 library alone (0083)
-      feedback_repo.tuning_feedback             current version per night with a rate, before or after
+      feedback.current_feedback             current version per night with a rate, before or after
       each manager rate is a row of its own, booked the day they saw the recommendation;
                     weight 25% of the night's rooms, at least 1 (0071, 0076)
   progress = {stage: fitting}; commit           frees the connection during the fit (0056)
@@ -531,7 +533,7 @@ GET /hotels/7/recommendations?date=2026-10-24 | ?start=…&end=…[&room_type_id
       same model and same inputs as the latest snapshot → return it (0084)
       otherwise → load the model once, score every such night in one batch,
                   store a new snapshot (from today on; past nights aren't stored)
-      feedback_repo.manager_rates               the manager's rate per night, read live (0071)
+      feedback.current_feedback               the manager's rate per night, read live (0071)
   ← one per night: rate, manager_rate, lead_days, factors in €
 ```
 

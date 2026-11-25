@@ -35,8 +35,10 @@ async def require_job(session: AsyncSession, user: User, job_id: int) -> None:
 
 async def require_model(session: AsyncSession, user: User, model_id: int) -> None:
     """Raises NotFoundError unless the model is one of the user's hotels'."""
-    model = await model_repo.get_model(session, model_id)
-    if model is None or not await user_repo.has_hotel(session, user.id, model.hotel_id):
+    version_row = await model_repo.get_model(session, model_id)
+    if version_row is None or not await user_repo.has_hotel(
+        session, user.id, version_row.hotel_id
+    ):
         raise NotFoundError("Pricing model", model_id)
 
 

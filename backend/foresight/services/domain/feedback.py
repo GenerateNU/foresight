@@ -8,8 +8,10 @@ about right is worked out from it (decision 0068).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from foresight.database.enums import FeedbackReasonTag
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain.hotel import get_hotel, get_room_type
@@ -22,7 +24,6 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from foresight.database.enums import FeedbackReasonTag
     from foresight.database.models.feedback import Feedback
 
 MAX_NIGHTS = 366
@@ -113,3 +114,74 @@ async def list_feedback(
         room_type_id=room_type_id,
         include_history=include_history,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentFeedback:
+    """The current version of each night's feedback for one room type.
+
+    Attributes:
+        rows (list[Feedback]): One row per night, oldest night first.
+    """
+
+    rows: list[Feedback]
+
+    @property
+    def one_off_nights(self) -> set[date]:
+        """The nights the manager tagged one-off, which teach the model nothing.
+
+        Returns:
+            set[date]: The one-off nights.
+        """
+        return {
+            f.stay_date for f in self.rows if FeedbackReasonTag.ONE_OFF in f.reason_tags
+        }
+
+    @property
+    def manager_rates(self) -> dict[date, Decimal]:
+        """The rate the manager set for each night that has one.
+
+        Returns:
+            dict[date, Decimal]: Each night's rate.
+        """
+        return {f.stay_date: f.rate for f in self.rows if f.rate is not None}
+
+    @property
+    def training_rates(self) -> list[Feedback]:
+        """The rates a retrain or a tune-up learns from: every night with a
+        rate that isn't one-off.
+
+        Returns:
+            list[Feedback]: The feedback rows, oldest night first.
+        """
+        one_off = self.one_off_nights
+        return [
+            f for f in self.rows if f.rate is not None and f.stay_date not in one_off
+        ]
+
+
+async def current_feedback(
+    session: AsyncSession,
+    room_type_id: int | None,
+    *,
+    start: date | None = None,
+    end: date | None = None,
+) -> CurrentFeedback:
+    """Loads the current version of each night's feedback for a room type.
+
+    Args:
+        session (AsyncSession): The database session.
+        room_type_id (int | None): The room type; None, before training has
+            created it, gives no feedback.
+        start (date | None): First night, inclusive; None for no limit.
+        end (date | None): Last night, inclusive; None for no limit.
+
+    Returns:
+        CurrentFeedback: The current feedback.
+    """
+    if room_type_id is None:
+        return CurrentFeedback([])
+    rows = await feedback_repo.current_feedback(
+        session, room_type_id, start=start, end=end
+    )
+    return CurrentFeedback(list(rows))

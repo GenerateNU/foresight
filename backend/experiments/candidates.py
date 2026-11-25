@@ -326,9 +326,9 @@ async def build_candidates() -> Candidates:
     data, bookings, cancellations, curves = await load()
 
     # January 2022 goes from every arm, lag sources included.
-    stay_all = pd.to_datetime(data.nights["stay_date"])
+    stay_all = pd.to_datetime(data.rows["stay_date"])
     keep = ~((stay_all >= DROPPED[0]) & (stay_all <= DROPPED[1])).to_numpy()
-    nights = data.nights[keep].reset_index(drop=True)
+    nights = data.rows[keep].reset_index(drop=True)
     stay = pd.to_datetime(nights["stay_date"])
     y = data.y[keep].astype(float).reset_index(drop=True)
     weights = np.asarray(data.weights)[keep]

@@ -38,8 +38,8 @@ async def load(end=DATA_END):
 # Load the training data and display basic information about it
 # %%
 data = await load()  # noqa: F704
-dates = data.nights["stay_date"]
-print(f"{len(data.nights)} priced nights, {dates.min()} to {dates.max()}")
+dates = data.rows["stay_date"]
+print(f"{len(data.rows)} priced nights, {dates.min()} to {dates.max()}")
 
 
 # Irish public holidays for the years 2022 to 2025 are calculated and added to
@@ -75,7 +75,7 @@ HOLIDAYS = set().union(*(irish_public_holidays(y) for y in range(2022, 2026)))
 
 # Add the public holiday flag to the training data
 x = data.x.copy()
-x["is_public_holiday"] = data.nights["stay_date"].isin(HOLIDAYS).astype(float)
+x["is_public_holiday"] = data.rows["stay_date"].isin(HOLIDAYS).astype(float)
 print(f"{int(x['is_public_holiday'].sum())} holiday nights flagged")
 
 
@@ -92,7 +92,7 @@ def run_fold(train, test, data=data, x=x, columns=BASELINE_COLUMNS):
     scores = score(data.y[test], predicted)
     nights = pd.DataFrame(
         {
-            "stay_date": data.nights.loc[test, "stay_date"],
+            "stay_date": data.rows.loc[test, "stay_date"],
             "actual": data.y[test],
             "predicted": predicted,
         }
@@ -105,8 +105,8 @@ def run_fold(train, test, data=data, x=x, columns=BASELINE_COLUMNS):
 check = await load(end=date.today() - timedelta(days=1))  # noqa: F704
 calendar = in_feature_order(INPUT_GROUPS["calendar"])
 
-cutoff = check.nights["stay_date"].max() - timedelta(days=30)
-seen = (check.nights["stay_date"] <= cutoff).to_numpy()
+cutoff = check.rows["stay_date"].max() - timedelta(days=30)
+seen = (check.rows["stay_date"] <= cutoff).to_numpy()
 
 check_scores, _ = run_fold(seen, ~seen, data=check, x=check.x, columns=calendar)
 print(f"{(~seen).sum()} test nights, MAE {check_scores['mae']:.2f}")
@@ -115,7 +115,7 @@ print(f"RMSE {check_scores['rmse']:.2f}")
 
 # %%
 # Year test: train on 2022-2024, test on all of 2025.
-stay = data.nights["stay_date"]
+stay = data.rows["stay_date"]
 # drop January 2022 as not all features have that data
 not_jan_2022 = ~((stay >= date(2022, 1, 1)) & (stay <= date(2022, 1, 31))).to_numpy()
 train = (stay < date(2025, 1, 1)).to_numpy() & not_jan_2022

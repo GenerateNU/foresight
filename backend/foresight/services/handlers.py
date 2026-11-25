@@ -98,7 +98,7 @@ async def _train(
     yield Step(
         {
             "stage": "fitting",
-            "training_rows": len(prepared.data.nights),
+            "training_rows": len(prepared.data.rows),
             "target": model_service.TARGET,
         },
         None,
@@ -113,19 +113,19 @@ async def _train(
         description=params["description"],
         activate=params["activate"],
     )
-    model = result.model
+    version_row = result.version
     yield Step(
         {
-            "model_id": model.id,
-            "version": model.version,
+            "model_id": version_row.id,
+            "version": version_row.version,
             "activated": result.activated,
             "seconds": result.seconds,
             "training_rows": result.training_rows,
             "training_nights": result.training_nights,
-            "target": model.metrics.get("target"),
-            "feedback_nights": model.metrics.get("feedback_nights"),
+            "target": version_row.metrics.get("target"),
+            "feedback_nights": version_row.metrics.get("feedback_nights"),
             "metrics": {
-                k: model.metrics[k] for k in ("train_seconds", "peak_memory_mb")
+                k: version_row.metrics[k] for k in ("train_seconds", "peak_memory_mb")
             },
         },
         None,
@@ -136,18 +136,18 @@ async def _tune(
     session: AsyncSession, hotel: Hotel, params: Mapping[str, Any], _: Any
 ) -> AsyncIterator[Step]:
     result = await tuning_service.tune(session, hotel, activate=params["activate"])
-    model = result.model
+    version_row = result.version
     yield Step(
         {
-            "model_id": None if model is None else model.id,
-            "version": None if model is None else model.version,
+            "model_id": None if version_row is None else version_row.id,
+            "version": None if version_row is None else version_row.version,
             "activated": result.activated,
             "nights_used": result.nights_used,
             "untouched_used": result.untouched_used,
             "skipped": result.skipped,
             "mean_correction": None
-            if model is None
-            else model.metrics["mean_correction"],
+            if version_row is None
+            else version_row.metrics["mean_correction"],
         },
         None,
     )

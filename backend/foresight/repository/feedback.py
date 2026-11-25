@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from foresight.database.enums import FeedbackReasonTag
 from foresight.database.models.feedback import Feedback
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
     from datetime import date
     from decimal import Decimal
 
+    from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from foresight.database.enums import FeedbackReasonTag
 
 
 async def create_feedback(
@@ -74,10 +76,19 @@ async def list_feedback(
     room_type_id: int | None,
     include_history: bool,
 ) -> Sequence[Feedback]:
-    """Feedback for the nights in [start, end], oldest night first.
+    """Lists the hotel's feedback for nights in a window, oldest night first.
 
-    Only the current (highest) version of each room type's night, unless
-    `include_history`, which also returns the earlier versions, oldest first.
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+        room_type_id (int | None): Only this room type; None for all.
+        include_history (bool): Also return earlier versions, oldest first;
+            otherwise only each night's current version.
+
+    Returns:
+        Sequence[Feedback]: The feedback rows.
     """
     stmt = select(Feedback).where(
         Feedback.hotel_id == hotel_id, Feedback.stay_date.between(start, end)
@@ -89,106 +100,46 @@ async def list_feedback(
             Feedback.stay_date, Feedback.room_type_id, Feedback.version
         )
     else:
-        stmt = stmt.distinct(Feedback.stay_date, Feedback.room_type_id).order_by(
-            Feedback.stay_date, Feedback.room_type_id, Feedback.version.desc()
-        )
+        stmt = _current_versions(stmt)
     return (await session.scalars(stmt)).all()
 
 
-async def tuning_feedback(
-    session: AsyncSession,
-    room_type_id: int,
-    *,
-    start: date | None = None,
-    end: date | None = None,
-) -> Sequence[Mapping[str, Any]]:
-    """The manager's rates a tune-up or a full retrain learns from.
-
-    One row per room type and night. Takes each night's current (highest)
-    version, given before or after the night, and keeps it if it has a rate
-    (decisions 0069 and 0071) and isn't
-    tagged ONE_OFF (decision 0070). Rows carry id, stay_date, rate (nett where
-    the version was, decision 0076) and given_at: when the manager set the rate
-    (decision 0084). Oldest night first.
-    Only the one room type; `start` and `end` limit the nights.
-    """
-    current = select(Feedback).where(Feedback.room_type_id == room_type_id)
-    if start is not None:
-        current = current.where(Feedback.stay_date >= start)
-    if end is not None:
-        current = current.where(Feedback.stay_date <= end)
-    current = (
-        current.distinct(Feedback.room_type_id, Feedback.stay_date)
-        .order_by(Feedback.room_type_id, Feedback.stay_date, Feedback.version.desc())
-        .subquery()
-    )
-    stmt = (
-        select(
-            current.c.id,
-            current.c.stay_date,
-            current.c.rate,
-            current.c.created_at.label("given_at"),
-        )
-        .where(
-            current.c.rate.is_not(None),
-            ~current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]),
-        )
-        .order_by(current.c.stay_date)
-    )
-    return (await session.execute(stmt)).mappings().all()
-
-
-async def one_off_nights(
+async def current_feedback(
     session: AsyncSession,
     room_type_id: int,
     *,
     start: date | None,
     end: date | None,
-) -> Sequence[Mapping[str, Any]]:
-    """The nights the manager marked as one-off, which training leaves out.
+) -> Sequence[Feedback]:
+    """Lists the current version of each night's feedback for a room type.
 
-    A room type's night is one-off when its current (highest) version of
-    feedback carries the ONE_OFF tag, given before or after the night
-    (decision 0070). Only the one room type. Rows carry stay_date.
+    Args:
+        session (AsyncSession): The database session.
+        room_type_id (int): The room type.
+        start (date | None): First night, inclusive; None for no limit.
+        end (date | None): Last night, inclusive; None for no limit.
+
+    Returns:
+        Sequence[Feedback]: One row per night, oldest night first.
     """
-    current = select(Feedback).where(Feedback.room_type_id == room_type_id)
+    stmt = select(Feedback).where(Feedback.room_type_id == room_type_id)
     if start is not None:
-        current = current.where(Feedback.stay_date >= start)
+        stmt = stmt.where(Feedback.stay_date >= start)
     if end is not None:
-        current = current.where(Feedback.stay_date <= end)
-    current = (
-        current.distinct(Feedback.room_type_id, Feedback.stay_date)
-        .order_by(Feedback.room_type_id, Feedback.stay_date, Feedback.version.desc())
-        .subquery()
-    )
-    stmt = (
-        select(current.c.stay_date)
-        .where(current.c.reason_tags.contains([FeedbackReasonTag.ONE_OFF]))
-        .order_by(current.c.stay_date)
-    )
-    return (await session.execute(stmt)).mappings().all()
+        stmt = stmt.where(Feedback.stay_date <= end)
+    return (await session.scalars(_current_versions(stmt))).all()
 
 
-async def manager_rates(
-    session: AsyncSession, room_type_id: int, *, start: date, end: date
-) -> dict[date, Decimal]:
-    """The rate the manager has set for each night in [start, end], if any.
+def _current_versions(stmt: Select[tuple[Feedback]]) -> Select[tuple[Feedback]]:
+    """Keeps only the highest version of each room type's night.
 
-    Takes each night's current (highest) version and keeps it if it has a rate,
-    so a night whose latest version has no rate has none (decision 0071).
+    Args:
+        stmt (Select[tuple[Feedback]]): A query over feedback.
+
+    Returns:
+        Select[tuple[Feedback]]: The query, keeping each night's current
+            version, oldest night first.
     """
-    current = (
-        select(Feedback.stay_date, Feedback.rate)
-        .where(
-            Feedback.room_type_id == room_type_id,
-            Feedback.stay_date >= start,
-            Feedback.stay_date <= end,
-        )
-        .distinct(Feedback.stay_date)
-        .order_by(Feedback.stay_date, Feedback.version.desc())
-        .subquery()
+    return stmt.distinct(Feedback.stay_date, Feedback.room_type_id).order_by(
+        Feedback.stay_date, Feedback.room_type_id, Feedback.version.desc()
     )
-    rows = await session.execute(
-        select(current.c.stay_date, current.c.rate).where(current.c.rate.is_not(None))
-    )
-    return {day: rate for day, rate in rows}
