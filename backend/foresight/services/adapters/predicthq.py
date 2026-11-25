@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from foresight.database.enums import DatePrecision, EventCategory, EventStatus, Source
-from foresight.services.adapters.normalize import (
+from foresight.services.domain.normalize import (
     NormalizedEvent,
     coords_from_geojson,
     to_local_date,

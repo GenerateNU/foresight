@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from foresight.repository import city as city_repo
-from foresight.services.adapters.normalize import slugify_city
+from foresight.services.domain.normalize import slugify_city
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
 
 if TYPE_CHECKING:

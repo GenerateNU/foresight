@@ -15,7 +15,7 @@ class City(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120))  # "Dublin"
-    # Normalized name (`services/adapters/normalize.slugify_city`). Unique, so
+    # Normalized name (`services/domain/normalize.slugify_city`). Unique, so
     # "Dublin" and "dublin " can't become two markets. Also part of every
     # event's dedupe key.
     slug: Mapped[str] = mapped_column(String(120), unique=True)

@@ -18,7 +18,7 @@ from matplotlib.patches import Patch
 from foresight.database.session import async_session_factory
 from foresight.services.domain.backtest import in_feature_order, score
 from foresight.services.domain.hotel import get_hotel
-from foresight.services.domain.model import training_data
+from foresight.services.domain.training_data import training_data
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import INPUT_GROUPS
 

@@ -105,7 +105,6 @@ One line per file: what it's for. For how the pieces fit together, see
 |---|---|
 | `features.py` | `FEATURES` (calendar, holidays, events, days ahead) and `build_features` |
 | `ebm.py` | The EBM pricing model: fit, explain, save/load; the tune-up's base + correction |
-| `weighting.py` | Drops unpriced rooms; merges rows the model can't tell apart |
 | `baselines.py` | Simple rules the model must beat (last year, recent weekdays) |
 | `resources.py` | Measures a fit's time and peak memory |
 
