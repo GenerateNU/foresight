@@ -9,7 +9,7 @@ One line per file: what it's for. For how the pieces fit together, see
 |---|---|
 | `README.md` | Project intro and setup steps |
 | `AGENTS.md` | Rules for AI coding agents: layers, commands, conventions |
-| `justfile` | Dev commands: `just dev`, `migrate`, `test`, `lint`, `backtest`, `tuning-backtest`… |
+| `justfile` | Dev commands: `just dev`, `migrate`, `test`, `lint`, `backtest`… |
 | `docker-compose.yml` | Local stack: Postgres, migrations, backend |
 | `docker-compose.neon.yml` | Overlay that points the stack at Neon instead of local Postgres |
 | `neon.ts`, `package.json`, `package-lock.json`, `.neon` | Neon CLI config and project link (used by `neon env pull`) |
@@ -38,7 +38,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `main.py` | Builds the FastAPI app: routers, session/CORS middleware, error handlers, `/docs` |
 | `config.py` | All settings (pydantic-settings), read from `.env` |
 | `worker.py` | One in-memory job queue per hotel; runs jobs one at a time, commits after each chunk |
-| `cli.py` | Operator commands: `link-user`, `backtest` (+ plot), `tuning-backtest` |
+| `cli.py` | Operator commands: `link-user`, `backtest` |
 
 ## routes/ — HTTP layer
 
