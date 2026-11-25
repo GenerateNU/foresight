@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from foresight.repository import booking as booking_repo
-from foresight.services.ml.weighting import training_mask
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -84,3 +84,19 @@ def _nights(stay: Booking, start: date, end: date) -> Iterator[date]:
     while night < stay.departure and night <= end:
         yield night
         night += timedelta(days=1)
+
+
+def training_mask(rate: pd.Series) -> np.ndarray:
+    """Marks which nights can be used for training.
+
+    Free or staff rooms (rate of 0 or less) and nights with no listed rate say
+    nothing about pricing, so they're left out entirely rather than weighted.
+
+    Args:
+        rate (pd.Series): Price listed each night.
+
+    Returns:
+        np.ndarray: True for each night to train on.
+    """
+    rate = rate.to_numpy(float)
+    return ~np.isnan(rate) & (rate > 0)

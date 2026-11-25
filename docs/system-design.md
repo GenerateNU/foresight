@@ -97,15 +97,18 @@ backend/foresight/
   services/
     errors.py              NotFound / Conflict / InvalidRequest / NotConfigured /
                            NotSignedIn / Forbidden
-    job.py                 job kinds, validation, handlers, lifecycle
-    domain/                booking, city, hotel, user, event,
-                           pricing_model, recommendation, feedback, freshness
-    ingest/                event, window; files (report kinds, header
-                           recognition), bookings
-    adapters/              predicthq, normalize
+    job.py                 starting jobs and their lifecycle
+    handlers.py            what each kind of job does once it runs
+    scheduler.py           the daily routine
+    domain/                booking, city, hotel, user, event, normalize, window,
+                           model, training_data, tuning, backtest,
+                           recommendation, explanation, feedback, freshness
+    ingest/                event; files (report kinds, header recognition),
+                           bookings
+    adapters/              predicthq
       hotel/               one per CSV report: reservations, cancellations;
                            common (shared reading)
-    ml/                    base, ebm, features, holidays, weighting, baselines
+    ml/                    ebm, features, holidays, baselines, resources
   repository/
     upsert.py pagination.py
     booking.py city.py hotel.py job.py model.py recommendation.py feedback.py
@@ -509,7 +512,7 @@ POST /hotels/7/train {"description": "...", "settings": {...}}     → job, 202
                     weight 25% of the night's rooms, at least 1 (0071, 0076)
   progress = {stage: fitting}; commit           frees the connection during the fit (0056)
   → domain/model.fit                    no database
-      ml/weighting.combine_identical_rows       same night, same inputs → one weighted row
+      training_data.combine_identical_rows      same night, same inputs → one weighted row
       EBMModel.fit in a thread                  one fit on every row; no holdout, no range (0085)
         ml/resources.measure                    the fit's time and peak memory into metrics (0046)
   → domain/model.save_version

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from foresight.database.models.signals.event import Event
-    from foresight.services.adapters.normalize import NormalizedEvent
+    from foresight.services.domain.normalize import NormalizedEvent
 
 # How much each source is trusted; a new source gets a rank here.
 _PRECEDENCE = {Source.PREDICTHQ: 1}
