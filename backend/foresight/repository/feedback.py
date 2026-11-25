@@ -1,5 +1,3 @@
-"""Data access for `feedback`: the manager's view of a night, one row per version."""
-
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
@@ -24,11 +22,24 @@ async def create_feedback(
     reason_tags: list[FeedbackReasonTag],
     reason_text: str | None,
 ) -> Feedback | None:
-    """Add the next version of a night's feedback. Never updates a row.
+    """Adds the next version of a night's feedback; never updates a row.
 
-    The version is worked out in the insert itself. None if another version
-    with the same number was added at the same moment, so nothing is lost
-    silently; the caller can ask for it to be sent again.
+    The version is worked out in the insert itself.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        room_type_id (int): The room type.
+        stay_date (date): The night.
+        snapshot_id (int | None): The recommendation the manager saw.
+        user_id (int | None): Who gave it.
+        rate (Decimal | None): The rate the manager chose, before VAT.
+        reason_tags (list[FeedbackReasonTag]): Why, from a fixed list.
+        reason_text (str | None): Why, in the manager's words.
+
+    Returns:
+        Feedback | None: The new version, or None if another version with the
+            same number was added at the same moment.
     """
     next_version = (
         select(func.coalesce(func.max(Feedback.version), 0) + 1)

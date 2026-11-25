@@ -1,5 +1,3 @@
-"""Data access for `jobs`."""
-
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
@@ -18,6 +16,17 @@ _UNFINISHED = (JobStatus.QUEUED, JobStatus.RUNNING)
 async def create_job(
     session: AsyncSession, *, hotel_id: int, kind: JobKind, params: dict[str, Any]
 ) -> Job:
+    """Queues a job.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        kind (JobKind): What it does.
+        params (dict[str, Any]): Its inputs, as resolved.
+
+    Returns:
+        Job: The new job, queued.
+    """
     job = Job(hotel_id=hotel_id, kind=kind, params=params, progress={})
     session.add(job)
     await session.flush()
@@ -26,25 +35,60 @@ async def create_job(
 
 
 async def get_job(session: AsyncSession, job_id: int) -> Job | None:
+    """Gets a job.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+
+    Returns:
+        Job | None: The job, or None if it doesn't exist.
+    """
     return await session.get(Job, job_id)
 
 
 async def list_jobs(
     session: AsyncSession, hotel_id: int, *, limit: int, offset: int
 ) -> tuple[Sequence[Job], int]:
-    """Newest first."""
+    """Lists one page of the hotel's jobs, newest first.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        limit (int): Most jobs to return.
+        offset (int): Jobs to skip.
+
+    Returns:
+        tuple[Sequence[Job], int]: The page, and how many jobs there are.
+    """
     stmt = select(Job).where(Job.hotel_id == hotel_id).order_by(Job.id.desc())
     return await fetch_page(session, stmt, limit=limit, offset=offset)
 
 
 async def update_job(session: AsyncSession, job_id: int, **values: Any) -> None:
+    """Changes a job's columns.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+        **values (Any): The columns to change.
+    """
     await session.execute(update(Job).where(Job.id == job_id).values(**values))
 
 
 async def start_queued_job(
     session: AsyncSession, job_id: int, *, started_at: datetime
 ) -> bool:
-    """Mark a queued job running; False if it isn't queued any more."""
+    """Marks a queued job running.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+        started_at (datetime): When it started.
+
+    Returns:
+        bool: False if it isn't queued any more.
+    """
     result = await session.execute(
         update(Job)
         .where(Job.id == job_id, Job.status == JobStatus.QUEUED)
@@ -54,7 +98,15 @@ async def start_queued_job(
 
 
 async def cancel_queued_job(session: AsyncSession, job_id: int) -> bool:
-    """Mark a queued job cancelled; False if it isn't queued (or doesn't exist)."""
+    """Marks a queued job cancelled.
+
+    Args:
+        session (AsyncSession): The database session.
+        job_id (int): The job.
+
+    Returns:
+        bool: False if it isn't queued, or doesn't exist.
+    """
     result = await session.execute(
         update(Job)
         .where(Job.id == job_id, Job.status == JobStatus.QUEUED)
@@ -64,7 +116,15 @@ async def cancel_queued_job(session: AsyncSession, job_id: int) -> bool:
 
 
 async def fail_unfinished_jobs(session: AsyncSession, error: str) -> int:
-    """Mark every queued or running job failed; returns how many."""
+    """Marks every queued or running job failed.
+
+    Args:
+        session (AsyncSession): The database session.
+        error (str): Why they failed.
+
+    Returns:
+        int: How many jobs were failed.
+    """
     result = await session.execute(
         update(Job)
         .where(Job.status.in_(_UNFINISHED))
@@ -76,7 +136,16 @@ async def fail_unfinished_jobs(session: AsyncSession, error: str) -> int:
 async def find_unfinished_job(
     session: AsyncSession, *, hotel_id: int, kind: JobKind
 ) -> Job | None:
-    """A queued or running job of this kind for the hotel, if any."""
+    """Finds a queued or running job of a kind for the hotel.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        kind (JobKind): The kind.
+
+    Returns:
+        Job | None: The job, or None if there isn't one.
+    """
     return await session.scalar(
         select(Job).where(
             Job.hotel_id == hotel_id,
@@ -89,8 +158,17 @@ async def find_unfinished_job(
 async def last_succeeded_start(
     session: AsyncSession, *, hotel_id: int, kind: JobKind, params: dict[str, Any]
 ) -> datetime | None:
-    """When the newest succeeded job of this kind whose params contain
-    `params` started, if any."""
+    """Finds when the newest succeeded job of a kind started.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        kind (JobKind): The kind.
+        params (dict[str, Any]): Params the job's must contain.
+
+    Returns:
+        datetime | None: When it started, or None if none succeeded.
+    """
     return await session.scalar(
         select(func.max(Job.started_at)).where(
             Job.hotel_id == hotel_id,
@@ -109,8 +187,18 @@ async def latest_finished_job(
     params: dict[str, Any],
     status: JobStatus | None = None,
 ) -> Job | None:
-    """The newest finished job of this kind whose params contain `params`.
-    A cancelled job never ran, so it isn't counted."""
+    """Finds the newest finished job of a kind; a cancelled job never ran.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        kind (JobKind): The kind.
+        params (dict[str, Any]): Params the job's must contain.
+        status (JobStatus | None): Only this status; None for any.
+
+    Returns:
+        Job | None: The job, or None if there isn't one.
+    """
     stmt = select(Job).where(
         Job.hotel_id == hotel_id,
         Job.kind == kind,
@@ -130,8 +218,17 @@ async def list_finished_jobs_in_city(
     kind: JobKind,
     params: dict[str, Any],
 ) -> Sequence[Job]:
-    """Finished jobs of this kind, for any hotel in the city, whose params
-    contain `params`. Oldest first."""
+    """Lists finished jobs of a kind for any hotel in a city, oldest first.
+
+    Args:
+        session (AsyncSession): The database session.
+        city_id (int): The city.
+        kind (JobKind): The kind.
+        params (dict[str, Any]): Params the jobs' must contain.
+
+    Returns:
+        Sequence[Job]: The jobs.
+    """
     result = await session.scalars(
         select(Job)
         .join(Hotel, Job.hotel_id == Hotel.id)
