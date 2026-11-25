@@ -1,5 +1,3 @@
-"""Data access for `pricing_models`: trained model versions per hotel."""
-
 from collections.abc import Sequence
 from datetime import date
 from typing import Any
@@ -27,12 +25,26 @@ async def create_model(
     room_type_id: int,
     base_model_id: int | None = None,
 ) -> PricingModel:
-    """Save a new, inactive model as the hotel's next version.
+    """Saves a model as the hotel's next version, inactive.
 
-    Call `activate_model` afterwards to start serving it. A tune-up
-    passes `base_model_id`, the version it corrects (decision 0078).
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        algorithm (str): `ebm` or `ebm-tuned`.
+        description (str | None): What this version tries.
+        artifact (bytes): The serialized model.
+        features (list[str]): Its input columns, in order.
+        metrics (dict[str, Any]): What it trained on and what it cost.
+        lib_versions (dict[str, str]): Library versions, to load the artifact.
+        data_start (date): First night trained on.
+        data_end (date): Last night trained on.
+        room_type_id (int): The room type it prices.
+        base_model_id (int | None): For a tune-up, the version it corrects.
+
+    Returns:
+        PricingModel: The saved version.
     """
-    model = PricingModel(
+    version_row = PricingModel(
         hotel_id=hotel_id,
         version=await _next_version(session, hotel_id),
         algorithm=algorithm,
@@ -47,26 +59,43 @@ async def create_model(
         base_model_id=base_model_id,
         is_active=False,
     )
-    session.add(model)
+    session.add(version_row)
     await session.flush()
-    await session.refresh(model)
-    return model
+    await session.refresh(version_row)
+    return version_row
 
 
-async def get_model(
-    session: AsyncSession, model_id: int, *, with_artifact: bool = False
-) -> PricingModel | None:
-    """One model. The artifact (megabytes) is only loaded if asked for."""
-    stmt = select(PricingModel).where(PricingModel.id == model_id)
-    if not with_artifact:
-        stmt = stmt.options(defer(PricingModel.artifact))
-    return await session.scalar(stmt)
+async def get_model(session: AsyncSession, model_id: int) -> PricingModel | None:
+    """Gets a version without its artifact.
+
+    Args:
+        session (AsyncSession): The database session.
+        model_id (int): The version.
+
+    Returns:
+        PricingModel | None: The version, or None if it doesn't exist.
+    """
+    return await session.scalar(
+        select(PricingModel)
+        .options(defer(PricingModel.artifact))
+        .where(PricingModel.id == model_id)
+    )
 
 
 async def list_models(
     session: AsyncSession, hotel_id: int, *, limit: int, offset: int
 ) -> tuple[Sequence[PricingModel], int]:
-    """The hotel's models, newest version first, without their artifacts."""
+    """Lists one page of the hotel's versions, newest first, without artifacts.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        limit (int): Most versions to return.
+        offset (int): Versions to skip.
+
+    Returns:
+        tuple[Sequence[PricingModel], int]: The page, and how many there are.
+    """
     stmt = (
         select(PricingModel)
         .options(defer(PricingModel.artifact))
@@ -77,8 +106,15 @@ async def list_models(
 
 
 async def get_active_model(session: AsyncSession, hotel_id: int) -> PricingModel | None:
-    """The model currently serving the hotel, if any, without its artifact;
-    `get_artifact` loads that when the model has to run."""
+    """Gets the version serving the hotel, without its artifact.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+
+    Returns:
+        PricingModel | None: The active version, or None if there isn't one.
+    """
     return await session.scalar(
         select(PricingModel)
         .options(defer(PricingModel.artifact))
@@ -87,41 +123,63 @@ async def get_active_model(session: AsyncSession, hotel_id: int) -> PricingModel
 
 
 async def get_artifact(session: AsyncSession, model_id: int) -> bytes | None:
-    """The model's serialized artifact (megabytes), or None if it doesn't exist."""
+    """Gets a version's serialized model.
+
+    Args:
+        session (AsyncSession): The database session.
+        model_id (int): The version.
+
+    Returns:
+        bytes | None: The artifact, or None if the version doesn't exist.
+    """
     return await session.scalar(
         select(PricingModel.artifact).where(PricingModel.id == model_id)
     )
 
 
 async def activate_model(session: AsyncSession, model_id: int) -> PricingModel | None:
-    """Make this model the hotel's active one, deactivating any other.
+    """Makes a version its hotel's active one, deactivating any other.
 
     Both writes land in the caller's transaction, so once it commits the hotel
-    is never left with zero or two active models. Returns None if the model
-    doesn't exist.
-    """
-    model = await get_model(session, model_id)
-    if model is None:
-        return None
+    never has zero or two active versions. The other is deactivated first,
+    since a partial unique index allows one active row per hotel.
 
-    # Deactivate first: the partial unique index allows one active row.
+    Args:
+        session (AsyncSession): The database session.
+        model_id (int): The version.
+
+    Returns:
+        PricingModel | None: The version, or None if it doesn't exist.
+    """
+    version_row = await get_model(session, model_id)
+    if version_row is None:
+        return None
     await session.execute(
         update(PricingModel)
         .where(
-            PricingModel.hotel_id == model.hotel_id,
+            PricingModel.hotel_id == version_row.hotel_id,
             PricingModel.is_active,
-            PricingModel.id != model.id,
+            PricingModel.id != version_row.id,
         )
         .values(is_active=False)
     )
     await session.flush()
-    model.is_active = True
+    version_row.is_active = True
     await session.flush()
-    await session.refresh(model)
-    return model
+    await session.refresh(version_row)
+    return version_row
 
 
 async def _next_version(session: AsyncSession, hotel_id: int) -> int:
+    """Works out the hotel's next version number.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+
+    Returns:
+        int: One more than its highest version, or 1.
+    """
     current = await session.scalar(
         select(func.coalesce(func.max(PricingModel.version), 0)).where(
             PricingModel.hotel_id == hotel_id

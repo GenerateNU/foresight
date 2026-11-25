@@ -1,5 +1,3 @@
-"""Data access for `recommendation_snapshots`: every rate recommended, per night."""
-
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
@@ -22,7 +20,21 @@ async def create_recommendation_snapshot(
     factors: dict[str, Any],
     inputs: dict[str, Any],
 ) -> RecommendationSnapshot:
-    """Add a snapshot: one night's rate, as priced now. Never updates a row."""
+    """Adds a snapshot of one night's rate as shown now; never updates a row.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+        room_type_id (int): The room type.
+        stay_date (date): The night.
+        model_id (int): The version that priced it.
+        rate (Decimal): The rate, before VAT.
+        factors (dict[str, Any]): The explanation, as JSON.
+        inputs (dict[str, Any]): What the model read, as JSON.
+
+    Returns:
+        RecommendationSnapshot: The new snapshot.
+    """
     snapshot = RecommendationSnapshot(
         hotel_id=hotel_id,
         room_type_id=room_type_id,
@@ -38,10 +50,39 @@ async def create_recommendation_snapshot(
     return snapshot
 
 
+async def get_snapshot(
+    session: AsyncSession, snapshot_id: int
+) -> RecommendationSnapshot | None:
+    """Gets a snapshot.
+
+    Args:
+        session (AsyncSession): The database session.
+        snapshot_id (int): The snapshot.
+
+    Returns:
+        RecommendationSnapshot | None: The snapshot, or None if it doesn't
+            exist.
+    """
+    return await session.get(RecommendationSnapshot, snapshot_id)
+
+
 async def latest_snapshots(
     session: AsyncSession, room_type_id: int, *, start: date, end: date
 ) -> dict[date, RecommendationSnapshot]:
-    """The newest snapshot for each night in [start, end] that has one."""
+    """Gets the newest snapshot of each night in a window that has one.
+
+    The id breaks ties between snapshots saved in one transaction, which share
+    `created_at`.
+
+    Args:
+        session (AsyncSession): The database session.
+        room_type_id (int): The room type.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+
+    Returns:
+        dict[date, RecommendationSnapshot]: Each night's newest snapshot.
+    """
     stmt = (
         select(RecommendationSnapshot)
         .distinct(RecommendationSnapshot.stay_date)
@@ -49,7 +90,6 @@ async def latest_snapshots(
             RecommendationSnapshot.room_type_id == room_type_id,
             RecommendationSnapshot.stay_date.between(start, end),
         )
-        # The id breaks ties: rows saved in one transaction share `created_at`.
         .order_by(
             RecommendationSnapshot.stay_date,
             RecommendationSnapshot.created_at.desc(),
@@ -62,10 +102,17 @@ async def latest_snapshots(
 async def snapshotted_nights(
     session: AsyncSession, room_type_id: int, *, start: date, end: date
 ) -> Sequence[Mapping[str, Any]]:
-    """Each night in [start, end] the room type has a snapshot for.
+    """Lists each night in a window that has a snapshot, from its newest one.
 
-    One row per night, from its latest snapshot: stay_date, shown_at (when
-    the snapshot was made) and rate (the rate it showed), oldest night first.
+    Args:
+        session (AsyncSession): The database session.
+        room_type_id (int): The room type.
+        start (date): First night, inclusive.
+        end (date): Last night, inclusive.
+
+    Returns:
+        Sequence[Mapping[str, Any]]: One row per night, oldest first, with
+            stay_date, shown_at (when the snapshot was made) and rate.
     """
     stmt = (
         select(
@@ -78,7 +125,6 @@ async def snapshotted_nights(
             RecommendationSnapshot.room_type_id == room_type_id,
             RecommendationSnapshot.stay_date.between(start, end),
         )
-        # The id breaks ties: rows saved in one transaction share `created_at`.
         .order_by(
             RecommendationSnapshot.stay_date,
             RecommendationSnapshot.created_at.desc(),
@@ -89,15 +135,17 @@ async def snapshotted_nights(
 
 
 async def latest_snapshot_at(session: AsyncSession, hotel_id: int) -> datetime | None:
-    """When the hotel's newest snapshot was saved, or None if it has none."""
+    """Finds when the hotel's newest snapshot was saved.
+
+    Args:
+        session (AsyncSession): The database session.
+        hotel_id (int): The hotel.
+
+    Returns:
+        datetime | None: When, or None if it has none.
+    """
     return await session.scalar(
         select(func.max(RecommendationSnapshot.created_at)).where(
             RecommendationSnapshot.hotel_id == hotel_id
         )
     )
-
-
-async def get_snapshot(
-    session: AsyncSession, snapshot_id: int
-) -> RecommendationSnapshot | None:
-    return await session.get(RecommendationSnapshot, snapshot_id)

@@ -1,7 +1,5 @@
 """Users, and which hotels they work for."""
 
-from collections.abc import Sequence
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.config import settings
@@ -15,18 +13,6 @@ from foresight.services.errors import (
     NotFoundError,
     NotSignedInError,
 )
-
-
-async def create_user(
-    session: AsyncSession, *, google_id: str, email: str, name: str | None
-) -> User:
-    """Raises ConflictError if this Google account already has a user."""
-    user = await user_repo.create_user(
-        session, google_id=google_id, email=email, name=name
-    )
-    if user is None:
-        raise ConflictError(f"A user already exists for Google account {google_id!r}")
-    return user
 
 
 def require_sign_in_configured() -> None:
@@ -108,10 +94,18 @@ async def get_user_by_email(session: AsyncSession, email: str) -> User:
 async def link_user_to_hotel(
     session: AsyncSession, *, user_id: int, hotel_id: int
 ) -> bool:
-    """Link a user to a hotel. True if the link is new, False if it already
-    existed; linking twice is not an error.
+    """Links a user to a hotel; linking twice is not an error.
 
-    Raises NotFoundError for an unknown user or hotel.
+    Args:
+        session (AsyncSession): The database session.
+        user_id (int): The user.
+        hotel_id (int): The hotel.
+
+    Returns:
+        bool: True if the link is new, False if it already existed.
+
+    Raises:
+        NotFoundError: Unknown user or hotel.
     """
     await get_user(session, user_id)
     await get_hotel(session, hotel_id)
@@ -129,9 +123,3 @@ async def link_user_by_email(
     """
     user = await get_user_by_email(session, email)
     return await link_user_to_hotel(session, user_id=user.id, hotel_id=hotel_id)
-
-
-async def list_hotel_ids(session: AsyncSession, user_id: int) -> Sequence[int]:
-    """The hotels a user is linked to. Raises NotFoundError for an unknown user."""
-    await get_user(session, user_id)
-    return await user_repo.list_hotel_ids(session, user_id)
