@@ -10,20 +10,21 @@ so the backtest scores the model that would ship.
 `run_backtest` scores one set of inputs; compare sets by running it once per set.
 """
 
-from __future__ import annotations
-
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.services.domain.city import local_today
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.domain.training_data import (
+    TrainingData,
     combine_identical_rows,
     training_data,
 )
@@ -31,13 +32,6 @@ from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.baselines import recent_weekday_mean, same_weekday_last_year
 from foresight.services.ml.ebm import EBMModel
 from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.services.domain.training_data import TrainingData
 
 # Baselines the model is compared with: column in `nights` -> label.
 BASELINES = {

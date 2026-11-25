@@ -4,12 +4,11 @@ One client for both the recent-revisions sync and the date-range backfill;
 they differ only in query parameters.
 """
 
-from __future__ import annotations
-
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 
@@ -19,9 +18,6 @@ from foresight.services.domain.normalize import (
     coords_from_geojson,
     to_local_date,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 log = logging.getLogger(__name__)
 

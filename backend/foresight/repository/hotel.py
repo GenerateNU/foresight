@@ -4,22 +4,17 @@
 (loaders). Hotels are always returned with their `city` loaded.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from foresight.database.models.hotel import Hotel, RoomType
 from foresight.database.models.user import UserHotel
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def get_hotel(session: AsyncSession, hotel_id: int) -> Hotel | None:

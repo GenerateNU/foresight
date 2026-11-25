@@ -5,31 +5,26 @@ when its header holds every column that kind needs; matching none or more
 than one is an error. Adding a report is an adapter plus one entry here.
 """
 
-from __future__ import annotations
-
 import csv
 import hashlib
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import JobKind
+from foresight.database.models.hotel import Hotel
+from foresight.repository.upsert import Outcome
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ingest import bookings
 
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping, Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel
-    from foresight.repository.upsert import Outcome
-
-    type Parse = Callable[[bytes], tuple[list[dict[str, Any]], int, dict[str, Any]]]
-    type Save = Callable[
-        [AsyncSession, Hotel, Sequence[Mapping[str, Any]], Mapping[str, Any]],
-        Awaitable[dict[Outcome, int]],
-    ]
+type Parse = Callable[[bytes], tuple[list[dict[str, Any]], int, dict[str, Any]]]
+type Save = Callable[
+    [AsyncSession, Hotel, Sequence[Mapping[str, Any]], Mapping[str, Any]],
+    Awaitable[dict[Outcome, int]],
+]
 
 # Rows saved, and committed, per chunk.
 CHUNK_ROWS = 5_000

@@ -1,23 +1,15 @@
 """Data access for `feedback`: the manager's view of a night, one row per version."""
 
-from __future__ import annotations
+from collections.abc import Sequence
+from datetime import date
+from decimal import Decimal
 
-from typing import TYPE_CHECKING
-
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.enums import FeedbackReasonTag
 from foresight.database.models.feedback import Feedback
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import date
-    from decimal import Decimal
-
-    from sqlalchemy import Select
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.enums import FeedbackReasonTag
 
 
 async def create_feedback(

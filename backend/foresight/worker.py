@@ -21,8 +21,6 @@ be started again. That's safe on Render's free plan, where the old process has
 stopped before the new one starts; a paid plan overlaps them (decision 0077).
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from collections import deque

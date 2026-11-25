@@ -9,19 +9,15 @@ and `resume_from` is always the `end` to send next.
 Giving neither isn't a window; each signal has its own routine refresh.
 """
 
-from __future__ import annotations
-
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.repository import booking as booking_repo
 from foresight.services.errors import InvalidRequestError
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class InvalidWindowError(InvalidRequestError):
@@ -37,7 +33,7 @@ class Window:
         return {"start": self.start.isoformat(), "end": self.end.isoformat()}
 
     @classmethod
-    def from_params(cls, params: Mapping[str, Any]) -> Window:
+    def from_params(cls, params: Mapping[str, Any]) -> "Window":
         return cls(
             date.fromisoformat(params["start"]), date.fromisoformat(params["end"])
         )

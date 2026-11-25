@@ -1,15 +1,10 @@
 """Offset pagination shared by every `list_*` function."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import Select, func, select
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def fetch_page[T](

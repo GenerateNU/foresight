@@ -5,19 +5,13 @@ the same NotFoundError whether the thing doesn't exist or belongs to someone
 else, so a 404 never reveals which ids are real.
 """
 
-from __future__ import annotations
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from typing import TYPE_CHECKING
-
+from foresight.database.models.user import User
 from foresight.repository import job as job_repo
 from foresight.repository import model as model_repo
 from foresight.repository import user as user_repo
 from foresight.services.errors import NotFoundError
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.user import User
 
 
 async def require_hotel(session: AsyncSession, user: User, hotel_id: int) -> None:

@@ -6,25 +6,19 @@ The manager sends the rate they chose; whether ours was too high, too low or
 about right is worked out from it (decision 0068).
 """
 
-from __future__ import annotations
-
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import date
+from decimal import Decimal
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import FeedbackReasonTag
+from foresight.database.models.feedback import Feedback
 from foresight.repository import feedback as feedback_repo
 from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain.hotel import get_hotel, get_room_type
 from foresight.services.errors import ConflictError, InvalidRequestError, NotFoundError
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import date
-    from decimal import Decimal
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.feedback import Feedback
 
 MAX_NIGHTS = 366
 

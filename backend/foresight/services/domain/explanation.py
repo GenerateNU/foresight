@@ -1,7 +1,5 @@
 """Why a night's rate is what it is: the model's terms, in words and euros."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, cast

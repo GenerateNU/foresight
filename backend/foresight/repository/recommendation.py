@@ -1,19 +1,14 @@
 """Data access for `recommendation_snapshots`: every rate recommended, per night."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, Sequence
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.recommendation import RecommendationSnapshot
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-    from datetime import date, datetime
-    from decimal import Decimal
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def create_recommendation_snapshot(

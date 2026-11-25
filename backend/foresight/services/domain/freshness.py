@@ -5,20 +5,15 @@ routine refreshes count for events: a backfill of last year doesn't
 make upcoming rates fresh. Whether a date is too old is for the reader to judge.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import datetime
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import JobKind, JobStatus
 from foresight.repository import job as job_repo
 from foresight.repository import recommendation as recommendation_repo
 from foresight.services.domain.hotel import get_hotel
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 # name: (job kind, params a run must have)
 KINDS = {

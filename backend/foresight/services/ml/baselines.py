@@ -9,8 +9,6 @@ need no rate), and return one prediction per target row, indexed like
 `targets`. A night with no history to draw on gets NaN.
 """
 
-from __future__ import annotations
-
 from datetime import date, timedelta
 
 import pandas as pd

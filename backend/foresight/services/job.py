@@ -5,13 +5,16 @@ queued job that fails later. The worker runs a job through `run` and commits
 at every step its handler yields (`services/handlers.py`).
 """
 
-from __future__ import annotations
+from collections.abc import AsyncIterator, Sequence
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.config import settings
 from foresight.database.enums import JobKind, JobStatus
+from foresight.database.models.hotel import Hotel
+from foresight.database.models.job import Job
 from foresight.repository import job as job_repo
 from foresight.services.adapters.predicthq import PredictHQLimitError
 from foresight.services.domain import model as model_service
@@ -22,15 +25,6 @@ from foresight.services.domain.window import Window, resolve_window
 from foresight.services.errors import ConflictError, NotConfiguredError, NotFoundError
 from foresight.services.handlers import HANDLERS, Step
 from foresight.services.ingest import files as file_ingest
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
-    from datetime import date
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel
-    from foresight.database.models.job import Job
 
 FIRST_REFRESH_DAYS = 7
 _QUOTA_ERRORS = (PredictHQLimitError,)

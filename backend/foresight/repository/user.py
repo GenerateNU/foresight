@@ -6,20 +6,14 @@ that exists. `link_hotel` is idempotent: it reports whether it added a link or o
 already there.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.hotel import Hotel
 from foresight.database.models.user import User, UserHotel
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def create_user(

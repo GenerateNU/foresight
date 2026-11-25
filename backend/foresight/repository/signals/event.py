@@ -4,24 +4,27 @@ Plain reads and writes only. Deciding which sighting's values an event row
 carries is business logic and lives in `services/event.py`.
 """
 
-from __future__ import annotations
+from collections.abc import Collection, Mapping, Sequence
+from datetime import date, datetime
+from typing import Any
 
-from typing import TYPE_CHECKING, Any
-
-from sqlalchemy import and_, delete, func, literal_column, not_, or_, select, update
+from sqlalchemy import (
+    Row,
+    and_,
+    delete,
+    func,
+    literal_column,
+    not_,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.enums import EventCategory, EventStatus, Source
 from foresight.database.models.signals.event import Event, EventObservation
 from foresight.repository.pagination import fetch_page
-
-if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping, Sequence
-    from datetime import date, datetime
-
-    from sqlalchemy import Row
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.enums import EventCategory, EventStatus, Source
 
 _EVENTS = Event.__table__
 _OBSERVATIONS = EventObservation.__table__

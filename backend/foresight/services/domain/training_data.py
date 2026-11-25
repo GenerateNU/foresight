@@ -1,13 +1,13 @@
 """Training rows: the main product's booked rooms, plus the manager's rates."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import date
 
 import numpy as np
 import pandas as pd
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.models.hotel import Hotel, RoomType
 from foresight.repository import booking as booking_repo
 from foresight.repository import hotel as hotel_repo
 from foresight.services.domain.booking import BOOKING_ROW_COLUMNS, booking_rows
@@ -15,13 +15,6 @@ from foresight.services.domain.city import local_date
 from foresight.services.domain.feedback import current_feedback
 from foresight.services.domain.inputs import build_inputs
 from foresight.services.ml.features import FEATURES
-
-if TYPE_CHECKING:
-    from datetime import date
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel, RoomType
 
 # The one product the model prices (decision 0079): Guestline's DOUBLE room,
 # room only. Half of Beresford's room-nights are DOUBLE, and breakfast adds

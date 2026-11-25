@@ -7,8 +7,6 @@ from PredictHQ (decision 0083). School holidays aren't in the library, so the
 model doesn't read them.
 """
 
-from __future__ import annotations
-
 from datetime import date, timedelta
 
 import holidays

@@ -1,14 +1,10 @@
 """A hotel and its room types."""
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from foresight.database.base import Base
-
-if TYPE_CHECKING:
-    from foresight.database.models.city import City
+from foresight.database.models.city import City
 
 
 class Hotel(Base):

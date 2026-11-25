@@ -4,20 +4,15 @@
 another city's.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.models.city import City
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def create_city(session: AsyncSession, **values: Any) -> City | None:

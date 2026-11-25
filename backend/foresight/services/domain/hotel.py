@@ -1,21 +1,16 @@
 """Hotels and their room types."""
 
-from __future__ import annotations
+from collections.abc import Sequence
+from typing import Any
 
-from typing import TYPE_CHECKING, Any
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from foresight.database.models.hotel import Hotel, RoomType
+from foresight.database.models.user import User
 from foresight.repository import hotel as hotel_repo
 from foresight.repository import user as user_repo
 from foresight.services.domain.city import get_city
 from foresight.services.errors import ConflictError, NotFoundError
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.hotel import Hotel, RoomType
-    from foresight.database.models.user import User
 
 
 async def create_hotel(

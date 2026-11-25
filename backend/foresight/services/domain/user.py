@@ -1,10 +1,11 @@
 """Users, and which hotels they work for."""
 
-from __future__ import annotations
+from collections.abc import Sequence
 
-from typing import TYPE_CHECKING
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.config import settings
+from foresight.database.models.user import User
 from foresight.repository import user as user_repo
 from foresight.services.domain.hotel import get_hotel
 from foresight.services.errors import (
@@ -14,13 +15,6 @@ from foresight.services.errors import (
     NotFoundError,
     NotSignedInError,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.user import User
 
 
 async def create_user(

@@ -5,29 +5,22 @@ more than once. Each record is kept as an observation, and the `events` row
 carries the values of whichever sighting ranks highest (see `_rank`).
 """
 
-from __future__ import annotations
-
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from datetime import UTC, date, datetime, timedelta
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from foresight.database.enums import EventCategory, EventStatus, JobKind, Source
+from foresight.database.models.signals.event import Event
 from foresight.repository import job as job_repo
 from foresight.repository.signals import event as event_repo
 from foresight.repository.upsert import Outcome
 from foresight.services.domain.hotel import get_hotel
+from foresight.services.domain.normalize import NormalizedEvent
 from foresight.services.domain.window import Window
 from foresight.services.errors import InvalidRequestError
 from foresight.services.ml.features import ATTENDED_CATEGORIES
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import date
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from foresight.database.models.signals.event import Event
-    from foresight.services.domain.normalize import NormalizedEvent
 
 # How much each source is trusted; a new source gets a rank here.
 _PRECEDENCE = {Source.PREDICTHQ: 1}
