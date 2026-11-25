@@ -72,6 +72,8 @@ ignore = ["D100", "D104", "ANN401"]
 # Endpoint docstrings put Args/Returns after a form feed (\f), which FastAPI
 # cuts from /docs.
 "foresight/routes/*" = ["D301"]
+# Research scripts, not the app: no docstring or annotation rules.
+"experiments/*" = ["D", "ANN"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

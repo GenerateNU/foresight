@@ -1,11 +1,3 @@
-"""Operator commands, run through `just` (see the justfile).
-
-For jobs that can't wait for the app to offer them. Like `worker.run_job`, a
-command opens its own session and commits, once, when it succeeds; everything it
-does goes through `services/`. A `DomainError` is printed and exits 1, with
-nothing committed. `backtest` only reads, so it never commits.
-"""
-
 import argparse
 import asyncio
 import sys
@@ -21,6 +13,20 @@ from foresight.services.ml.features import FEATURES, INPUT_GROUPS, LEAD
 
 
 async def link_user(email: str, hotel_id: int) -> None:
+    """Links a user to a hotel by email, and commits.
+
+    Operator commands run through `just`. Like `worker.run_job`, each opens its
+    own session and commits once, when it succeeds; a `DomainError` is printed
+    and exits 1 with nothing committed.
+
+    Args:
+        email (str): The user's email, as Google reports it.
+        hotel_id (int): The hotel.
+
+    Raises:
+        NotFoundError: Unknown user or hotel.
+        ConflictError: Several users share the email.
+    """
     async with async_session_factory() as session:
         user = await user_service.get_user_by_email(session, email)
         linked = await user_service.link_user_to_hotel(
@@ -41,7 +47,23 @@ async def backtest(
     event_days: int | None,
     start: date | None,
 ) -> None:
-    # Load, then let the connection go: a long fit would outlast it.
+    """Scores the model on the hotel's newest nights and prints the result.
+
+    Only reads, so it never commits. The session closes before the fit: a long
+    fit would outlast the connection.
+
+    Args:
+        hotel_id (int): The hotel.
+        test_days (int): Recent nights to predict.
+        baselines (bool): Also score the baselines.
+        inputs (list[str] | None): The features to train on; None for all.
+        event_days (int | None): Event history to keep; None for all.
+        start (date | None): Leave out earlier nights.
+
+    Raises:
+        NotFoundError: The hotel doesn't exist.
+        InvalidRequestError: No nights on one side of the cutoff.
+    """
     async with async_session_factory() as session:
         split = await backtest_service.load_backtest(
             session, hotel_id, test_days=test_days, start=start
@@ -69,12 +91,18 @@ async def backtest(
         print(_baseline_table(result.baselines, len(rows)))
 
 
-# Days-ahead buckets for the backtest's error breakdown: (label, low, high).
 _LEAD_BUCKETS = [("0-7", 0, 7), ("8-30", 8, 30), ("31-90", 31, 90), ("91+", 91, None)]
 
 
 def _lead_table(rows: pd.DataFrame) -> str:
-    """The model's MAE on booked rooms, by how far ahead they were booked."""
+    """Breaks the model's MAE on booked rooms down by days booked ahead.
+
+    Args:
+        rows (pd.DataFrame): The test rows.
+
+    Returns:
+        str: The table, one line per bucket in `_LEAD_BUCKETS`.
+    """
     lines = [f"{'Days ahead':<11} {'Rooms':>6} {'MAE':>9}"]
     error = (rows["actual"] - rows["predicted"]).abs()
     for label, low, high in _LEAD_BUCKETS:
@@ -88,7 +116,14 @@ def _lead_table(rows: pd.DataFrame) -> str:
 
 
 def _describe_inputs(inputs: list[str]) -> str:
-    """Inputs named by group where a whole group is in, e.g. "calendar, event_count"."""
+    """Names inputs by group where a whole group is in, e.g. "calendar, event_count".
+
+    Args:
+        inputs (list[str]): The inputs.
+
+    Returns:
+        str: Their description.
+    """
     chosen, parts = set(inputs), []
     for group, columns in INPUT_GROUPS.items():
         if set(columns) <= chosen:
@@ -99,10 +134,16 @@ def _describe_inputs(inputs: list[str]) -> str:
 
 
 def _parse_inputs(text: str) -> list[str]:
-    """`--inputs`: comma-separated group names and/or features, in FEATURES
-    order.
+    """Reads `--inputs`: comma-separated group names and features.
 
-    Raises argparse.ArgumentTypeError for an unknown name.
+    Args:
+        text (str): The argument.
+
+    Returns:
+        list[str]: The features, in FEATURES order.
+
+    Raises:
+        argparse.ArgumentTypeError: A name is unknown, or none is given.
     """
     names = [n.strip() for n in text.split(",") if n.strip()]
     unknown = [n for n in names if n not in INPUT_GROUPS and n not in FEATURES]
@@ -117,7 +158,14 @@ def _parse_inputs(text: str) -> list[str]:
 
 
 def _format_metrics(metrics: dict[str, float]) -> list[tuple[str, str]]:
-    """The backtest's scores as (label, value) pairs, for the terminal and plot."""
+    """Formats the backtest's scores for the terminal.
+
+    Args:
+        metrics (dict[str, float]): mae, rmse, bias, mape and r2.
+
+    Returns:
+        list[tuple[str, str]]: Label and value pairs.
+    """
     bias = metrics["bias"]
     return [
         ("MAE", f"€{metrics['mae']:.2f}"),
@@ -131,7 +179,16 @@ def _format_metrics(metrics: dict[str, float]) -> list[tuple[str, str]]:
 def _baseline_table(
     scores: dict[str, backtest_service.BaselineScore], total: int
 ) -> str:
-    """The model's MAE next to each baseline's, on the nights the baseline covers."""
+    """Puts the model's MAE next to each baseline's, on the nights it covers.
+
+    Args:
+        scores (dict[str, backtest_service.BaselineScore]): Each baseline's
+            scores.
+        total (int): Test rows in all.
+
+    Returns:
+        str: The table.
+    """
     lines = [
         f"{'Compared with':<28} {'Nights':>9} {'Baseline MAE':>13} "
         f"{'Model MAE':>10} {'Skill':>7}"
@@ -152,6 +209,11 @@ def _baseline_table(
 
 
 async def _run(args: argparse.Namespace) -> None:
+    """Runs a command, then closes the database engine.
+
+    Args:
+        args (argparse.Namespace): The parsed command line.
+    """
     try:
         if args.command == "link-user":
             await link_user(args.email, args.hotel_id)
@@ -169,6 +231,14 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parses the command line and runs the command.
+
+    Args:
+        argv (list[str] | None): The arguments; None for `sys.argv`.
+
+    Returns:
+        int: The exit code: 0, or 1 after a DomainError.
+    """
     parser = argparse.ArgumentParser(prog="foresight.cli")
     commands = parser.add_subparsers(dest="command", required=True)
 
