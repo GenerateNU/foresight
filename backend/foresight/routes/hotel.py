@@ -187,16 +187,6 @@ class RecommendationResponse(ResponseSchema):
     )
 
 
-RecommendRoomType = Annotated[
-    int | None,
-    Query(
-        description="The room type to price; omit for the one the active "
-        "model prices. Any other is a 422",
-        examples=[1],
-    ),
-]
-
-
 #          ╭──────────────────────────────────────────────────────────╮
 #          │                        Endpoints                         │
 #          ╰──────────────────────────────────────────────────────────╯
@@ -336,7 +326,6 @@ async def get_recommendations(
             examples=["2025-01-31"],
         ),
     ] = None,
-    room_type_id: RecommendRoomType = None,
 ) -> list[RecommendationResponse]:
     """The active model's rate for each night, with its explanation and events.
 
@@ -358,8 +347,6 @@ async def get_recommendations(
             that name is taken by the type.
         start (date | None): First night, inclusive.
         end (date | None): Last night, inclusive; None for `start` alone.
-        room_type_id (RecommendRoomType): The room type; None for the one the
-            model prices.
 
     Returns:
         list[RecommendationResponse]: One per night.
@@ -375,6 +362,6 @@ async def get_recommendations(
     if first is None:
         raise InvalidRequestError("send `date`, or `start` and `end`")
     recommendations = await recommendation_service.get_recommendations(
-        session, hotel_id, start=first, end=end or first, room_type_id=room_type_id
+        session, hotel_id, start=first, end=end or first
     )
     return [RecommendationResponse.model_validate(r) for r in recommendations]

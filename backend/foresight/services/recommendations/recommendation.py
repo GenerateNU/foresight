@@ -110,7 +110,6 @@ async def get_recommendations(
     *,
     start: date,
     end: date,
-    room_type_id: int | None = None,
 ) -> list[Recommendation]:
     """Recommends a rate for each night in a range, from the active model.
 
@@ -127,16 +126,15 @@ async def get_recommendations(
         hotel_id (int): The hotel.
         start (date): First night, inclusive.
         end (date): Last night, inclusive.
-        room_type_id (int | None): The room type; None for the one the model
-            prices.
 
     Returns:
-        list[Recommendation]: One per night, oldest first.
+        list[Recommendation]: One per night, oldest first, for the room type
+            the active model prices.
 
     Raises:
         NotFoundError: Unknown hotel, or no active model.
         InvalidRequestError: `end` before `start`, more than `MAX_NIGHTS`
-            nights, or a room type the model doesn't price.
+            nights, or an active model that predates the main room type.
     """
     if end < start:
         raise InvalidRequestError("end must not be before start")
@@ -145,7 +143,7 @@ async def get_recommendations(
 
     hotel = await get_hotel(session, hotel_id)
     version_row = await get_active_model(session, hotel.id)
-    room_type = await _room_type(session, version_row, room_type_id)
+    room_type = await _room_type(session, version_row)
     today = local_today(hotel.city)
     nights = await _load_nights(session, hotel, version_row, today, start, end)
     latest = await recommendation_repo.latest_snapshots(
@@ -207,32 +205,23 @@ def _to_price(
 #          ╰──────────────────────────────────────────────────────────╯
 
 
-async def _room_type(
-    session: AsyncSession, version_row: PricingModel, room_type_id: int | None
-) -> RoomType:
+async def _room_type(session: AsyncSession, version_row: PricingModel) -> RoomType:
     """Gets the room type the active version prices.
 
     Args:
         session (AsyncSession): The database session.
         version_row (PricingModel): The active version.
-        room_type_id (int | None): The room type asked for, if any.
 
     Returns:
         RoomType: The room type.
 
     Raises:
-        InvalidRequestError: The version predates room types and prices
-            none, or `room_type_id` is another room type.
+        InvalidRequestError: The version predates room types and prices none.
     """
     if version_row.room_type_id is None:
         raise InvalidRequestError(
             f"model v{version_row.version} predates the main room type; "
             "train a new version"
-        )
-    if room_type_id is not None and room_type_id != version_row.room_type_id:
-        raise InvalidRequestError(
-            f"model v{version_row.version} prices only room type "
-            f"{version_row.room_type_id}"
         )
     room_type = await hotel_repo.get_room_type(session, version_row.room_type_id)
     assert room_type is not None

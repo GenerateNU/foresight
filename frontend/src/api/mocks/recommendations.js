@@ -1,4 +1,4 @@
-/** The real endpoint prices one room type, the hotel's first, unless `room_type_id` is given. */
+/** The real endpoint prices the one room type the active model prices. */
 const ROOM_TYPE = { id: 1, name: 'Double', base: 180 }
 
 /** Each runs for three nights, on the 1st-3rd, 10th-12th, 19th-21st and 28th-30th. */

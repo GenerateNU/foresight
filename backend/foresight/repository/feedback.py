@@ -76,7 +76,6 @@ async def list_feedback(
     *,
     start: date,
     end: date,
-    room_type_id: int | None,
     include_history: bool,
 ) -> Sequence[Feedback]:
     """Lists the hotel's feedback for nights in a window, oldest night first.
@@ -86,7 +85,6 @@ async def list_feedback(
         hotel_id (int): The hotel.
         start (date): First night, inclusive.
         end (date): Last night, inclusive.
-        room_type_id (int | None): Only this room type; None for all.
         include_history (bool): Also return earlier versions, oldest first;
             otherwise only each night's current version.
 
@@ -96,8 +94,6 @@ async def list_feedback(
     stmt = select(Feedback).where(
         Feedback.hotel_id == hotel_id, Feedback.stay_date.between(start, end)
     )
-    if room_type_id is not None:
-        stmt = stmt.where(Feedback.room_type_id == room_type_id)
     if include_history:
         stmt = stmt.order_by(
             Feedback.stay_date, Feedback.room_type_id, Feedback.version
