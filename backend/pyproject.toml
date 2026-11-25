@@ -61,7 +61,15 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "SIM", # flake8-simplify
+    "D",   # pydocstyle
+    "ANN", # flake8-annotations
 ]
+# Modules and packages don't need docstrings; `Any` is allowed where a value
+# really can be anything.
+ignore = ["D100", "D104", "ANN401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.isort]
 known-first-party = ["foresight"]

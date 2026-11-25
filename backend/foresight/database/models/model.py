@@ -1,5 +1,3 @@
-"""Trained pricing models, versioned per hotel."""
-
 from datetime import date, datetime
 from typing import Any
 
@@ -22,53 +20,57 @@ from foresight.database.base import Base
 
 
 class PricingModel(Base):
-    """One trained model version for a hotel.
+    """One trained model version for a hotel; at most one is active.
 
-    The fitted model is serialized to bytes in `artifact`. Only one version per
-    hotel is active at a time.
+    Attributes:
+        id (int): Primary key.
+        hotel_id (int): The hotel.
+        version (int): Counts up per hotel, from 1.
+        algorithm (str): `ebm`, or `ebm-tuned` for a tune-up.
+        room_type_id (int | None): The room type it prices; a tune-up has its
+            base's. Null for versions that predate the main room type, which
+            can't serve.
+        base_model_id (int | None): For a tune-up, the version it corrects;
+            its artifact holds only the correction. A base can't be deleted
+            while a tune-up points to it.
+        description (str | None): What this version tried.
+        artifact (bytes): The serialized model. Only load artifacts our own
+            training wrote: unpickling can run code.
+        features (list[str]): Its input columns, in order.
+        metrics (dict[str, Any]): What it trained on and what the fit cost.
+        lib_versions (dict[str, str]): Library versions, to load the artifact.
+        data_start (date): First night trained on.
+        data_end (date): Last night trained on.
+        is_active (bool): Whether it serves the hotel.
+        trained_at (datetime): When it was saved.
     """
 
     __tablename__ = "pricing_models"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
-    version: Mapped[int]  # increments per hotel
-    algorithm: Mapped[str] = mapped_column(String(60))  # e.g. "ebm"
-    # The room type this version prices (decision 0079); a tune-up has its
-    # base's. None for versions trained before it, which can't serve.
+    version: Mapped[int]
+    algorithm: Mapped[str] = mapped_column(String(60))
     room_type_id: Mapped[int | None] = mapped_column(
         ForeignKey("room_types.id", ondelete="CASCADE"), index=True
     )
-    # A tune-up's base version (decision 0078): its artifact holds only the
-    # correction, so it serves by loading this version's too. None for a base.
-    # RESTRICT: a base can't be deleted while a tune-up points to it.
     base_model_id: Mapped[int | None] = mapped_column(
         ForeignKey("pricing_models.id", ondelete="RESTRICT"), index=True
     )
-    # What this version tried, written by whoever trained it.
     description: Mapped[str | None] = mapped_column(Text)
-
-    # Serialized fitted model. Only load artifacts our own training wrote.
     artifact: Mapped[bytes] = mapped_column(LargeBinary)
-
-    features: Mapped[list[str]] = mapped_column(JSONB)  # input columns, in order
-    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)  # mae, rmse, r2, ...
-    lib_versions: Mapped[dict[str, str]] = mapped_column(JSONB)  # pickle compat
-
-    # Training window (stay dates).
+    features: Mapped[list[str]] = mapped_column(JSONB)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    lib_versions: Mapped[dict[str, str]] = mapped_column(JSONB)
     data_start: Mapped[date] = mapped_column(Date)
     data_end: Mapped[date] = mapped_column(Date)
-
     is_active: Mapped[bool] = mapped_column(default=False)
     trained_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
     __table_args__ = (
-        # Leads on hotel_id, so it also serves as the foreign key index.
         UniqueConstraint("hotel_id", "version"),
-        # At most one active model per hotel. Named explicitly: a partial index
-        # means something the column-derived convention name can't express.
         Index(
             "uq_pricing_models_active_per_hotel",
             "hotel_id",

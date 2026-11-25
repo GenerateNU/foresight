@@ -1,29 +1,30 @@
-"""Enumerations stored in database columns.
-
-They live in the database layer because the models depend on them; every
-other layer imports them from here. Columns store the member *name*
-(`ACTIVE`) as a VARCHAR, so adding a member needs no migration.
-"""
-
 from enum import StrEnum
 
 
 class Source(StrEnum):
+    """Where an event came from."""
+
     PREDICTHQ = "predicthq"
 
 
 class EventStatus(StrEnum):
+    """Whether an event is still on.
+
+    PROVISIONAL is predicted upstream but not yet confirmed; DELETED was
+    withdrawn upstream.
+    """
+
     ACTIVE = "active"
-    PROVISIONAL = "provisional"  # predicted upstream, not yet confirmed
+    PROVISIONAL = "provisional"
     CANCELLED = "cancelled"
-    DELETED = "deleted"  # withdrawn upstream
+    DELETED = "deleted"
 
 
 class DatePrecision(StrEnum):
-    """How precisely the source pinned the date.
+    """How precisely the source pinned an event's date.
 
-    Anything coarser than DAY is unusable for per-night pricing but still worth
-    keeping as early signal, so it is recorded rather than rounded away.
+    Anything coarser than DAY can't price a night, but is kept as an early
+    signal rather than rounded away.
     """
 
     DAY = "day"
@@ -32,11 +33,7 @@ class DatePrecision(StrEnum):
 
 
 class EventCategory(StrEnum):
-    """PredictHQ's taxonomy, adopted project-wide.
-
-    Text sources classify into these buckets instead of inventing a second
-    vocabulary.
-    """
+    """PredictHQ's event categories, used for every source."""
 
     ACADEMIC = "academic"
     AIRPORT_DELAYS = "airport-delays"
@@ -60,35 +57,43 @@ class EventCategory(StrEnum):
 
 
 class JobKind(StrEnum):
-    """What a background job does. Each has one handler in `services/job.py`."""
+    """What a background job does; each has a handler in `services/handlers.py`.
 
-    # No longer queued (decisions 0080, 0081); kept so old job rows still load.
+    WEATHER, ACTUAL_FORECAST and PRICE are no longer queued; they stay so old
+    job rows still load.
+    """
+
     WEATHER = "weather"
-    EVENTS = "events"  # PredictHQ events
-    # One per uploaded Guestline report (`services/ingest/files.py`)
+    EVENTS = "events"
     ACTUAL_FORECAST = "actual_forecast"
-    RESERVATIONS = "reservations"  # Daily New Reservations
-    CANCELLATIONS = "cancellations"  # Cancellations
-    TRAIN = "train"  # a new pricing model version
-    # No longer queued (decision 0084); kept so its old job rows still load.
+    RESERVATIONS = "reservations"
+    CANCELLATIONS = "cancellations"
+    TRAIN = "train"
     PRICE = "price"
-    TUNE = "tune"  # the active model corrected with the manager's rates
+    TUNE = "tune"
 
 
 class JobStatus(StrEnum):
+    """Where a job is in its life.
+
+    STOPPED means a source's quota or rate limit ended it; FAILED, any other
+    error. Both keep `resume_from`. CANCELLED was taken out of the queue before
+    it ran.
+    """
+
     QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
-    STOPPED = "stopped"  # a source's quota or rate limit; resume from `resume_from`
-    FAILED = "failed"  # any other error; `resume_from` says where to pick up
-    CANCELLED = "cancelled"  # removed from the queue before it ran
+    STOPPED = "stopped"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class FeedbackReasonTag(StrEnum):
-    """Why a manager disagrees with the rate, picked from a fixed list.
+    """Why the manager changed a rate, from a fixed list.
 
-    Several can apply to one piece of feedback. They sit beside the free-text
-    reason, which captures what no tag does.
+    ONE_OFF marks something that won't happen again (a buyout, a private
+    event), so the model learns nothing from that night.
     """
 
     GROUP_OR_WEDDING_BLOCK = "group_or_wedding_block"
@@ -96,7 +101,5 @@ class FeedbackReasonTag(StrEnum):
     COMPETITOR_PRICING = "competitor_pricing"
     LOCAL_KNOWLEDGE = "local_knowledge"
     GUT_FEEL = "gut_feel"
-    # Something that won't happen again (a buyout, a private event), so the
-    # model shouldn't learn a pattern from it.
     ONE_OFF = "one_off"
     OTHER = "other"

@@ -1,5 +1,3 @@
-"""Background jobs: ingests started through the API."""
-
 from datetime import date, datetime
 from typing import Any
 
@@ -13,10 +11,24 @@ from foresight.database.enums import JobKind, JobStatus
 
 
 class Job(Base):
-    """One run of a job for a hotel, and how far it got.
+    """One run of a background job for a hotel, and how far it got.
 
-    The runner commits after each chunk of work together with `progress`, so
-    the row always describes what is actually saved.
+    The worker commits `progress` with each chunk of work, so the row always
+    describes what is saved.
+
+    Attributes:
+        id (int): Primary key.
+        hotel_id (int): The hotel.
+        kind (JobKind): What it does.
+        status (JobStatus): Where it is in its life.
+        params (dict[str, Any]): Its inputs, as resolved when queued.
+        progress (dict[str, Any]): Counts so far.
+        error (str | None): Why it stopped or failed.
+        resume_from (date | None): Where to pick up if a backfill ended early:
+            the `end` to send again. Null once it succeeds.
+        created_at (datetime): When it was queued.
+        started_at (datetime | None): When it started running.
+        finished_at (datetime | None): When it ended.
     """
 
     __tablename__ = "jobs"
@@ -29,14 +41,10 @@ class Job(Base):
     status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus, native_enum=False, length=20), default=JobStatus.QUEUED
     )
-
-    params: Mapped[dict[str, Any]] = mapped_column(JSONB)  # resolved inputs
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB)
     progress: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
-    # Where to pick up if a backfill ends early: the `end` to send again, since
-    # backfills walk newest first (decision 0087). Null once it succeeds.
     resume_from: Mapped[date | None] = mapped_column(Date)
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
