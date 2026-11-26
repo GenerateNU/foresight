@@ -19,7 +19,7 @@ import DayPopover from './DayPopover.jsx'
 import { nightStyle } from './colorModes.js'
 
 /**
- * One night in the grid. `rec` is undefined for days outside the month or with no price.
+ * One night in the grid. `rec` is undefined for nights outside the priced window.
  * Hovering, or focusing it with the keyboard, opens the night's card wherever it fits
  * on screen (docs/decisions/0066), and never taller than the room it has there.
  */
@@ -52,10 +52,10 @@ export default function DayCell({ day, rec, mode, context }) {
     useRole(floatingContext, { role: 'tooltip' }),
   ])
 
-  if (!day.inMonth || !rec) {
+  if (!rec) {
     return (
       <div className="min-h-28 rounded-card border border-stone-100 bg-stone-25 p-3 text-stone-300">
-        {day.day}
+        {day.label}
       </div>
     )
   }
@@ -71,7 +71,7 @@ export default function DayCell({ day, rec, mode, context }) {
     >
       <div className="flex items-center justify-between text-sm">
         <span className="flex items-center gap-1.5">
-          {day.day}
+          {day.label}
           <span className={`size-1.5 rounded-full ${dot}`} />
         </span>
         <ChangeBadge change={rec.change} />

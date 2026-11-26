@@ -7,9 +7,15 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 /** Column headings for the grid, Monday first. */
 export const WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-/** "October 2026". `month` counts from 0, like Date. */
-export function monthLabel(year, month) {
-  return `${MONTHS[month]} ${year}`
+/** How many weeks the calendar shows, from Monday of this week. */
+export const WEEKS = 5
+
+/** "23 Nov to 27 Dec 2026", for the first and last night the grid shows. */
+export function rangeLabel(firstIso, lastIso) {
+  const short = (d) => `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`
+  const first = new Date(`${firstIso}T00:00:00`)
+  const last = new Date(`${lastIso}T00:00:00`)
+  return `${short(first)} to ${short(last)} ${last.getFullYear()}`
 }
 
 /** "2026-10-17". Built by hand because Date#toISOString converts to UTC and can shift the day. */
@@ -32,27 +38,27 @@ export function daysOut(isoDate, today = new Date()) {
 }
 
 /**
- * The weeks shown for a month, Monday first, padded with the neighbouring months' days.
- * Returns an array of weeks; each week is 7 `{ date, day, inMonth }`.
+ * `count` weeks from Monday of the week `today` is in, Monday first. Each week is 7
+ * `{ date, label }`; `label` is the day of the month, with the month added on the 1st and
+ * on the first day shown ("23 Nov", "24", ..., "1 Dec").
  */
-export function buildMonthGrid(year, month) {
-  const first = new Date(year, month, 1)
-  const mondayOffset = (first.getDay() + 6) % 7 // getDay(): Sunday = 0
-  const cursor = new Date(year, month, 1 - mondayOffset)
+export function buildWeeks(today, count = WEEKS) {
+  const mondayOffset = (today.getDay() + 6) % 7 // getDay(): Sunday = 0
+  const cursor = new Date(today.getFullYear(), today.getMonth(), today.getDate() - mondayOffset)
 
   const weeks = []
-  do {
+  for (let w = 0; w < count; w++) {
     const week = []
     for (let i = 0; i < 7; i++) {
+      const first = (w === 0 && i === 0) || cursor.getDate() === 1
       week.push({
         date: toISODate(cursor),
-        day: cursor.getDate(),
-        inMonth: cursor.getMonth() === month,
+        label: first ? `${cursor.getDate()} ${MONTHS[cursor.getMonth()].slice(0, 3)}` : String(cursor.getDate()),
       })
       cursor.setDate(cursor.getDate() + 1)
     }
     weeks.push(week)
-  } while (cursor.getMonth() === month)
+  }
   return weeks
 }
 
@@ -62,7 +68,7 @@ export function ratesByNight(recommendations) {
 }
 
 /**
- * Which of 5 price buckets (1 cheapest .. 5 dearest) a rate falls in, relative to the month.
+ * Which of 5 price buckets (1 cheapest .. 5 dearest) a rate falls in, relative to the nights shown.
  */
 export function priceLevel(rate, min, max) {
   if (max === min) return 3
