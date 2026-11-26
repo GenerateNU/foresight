@@ -14,9 +14,9 @@ export async function getRecommendations(hotelId, { start, end }) {
 
 /**
  * One API row in the shape the screens use: numbers for money, camelCase names.
- * `rateBasis` is "nett" (before VAT, every model since decision 0076) or "arr" (the night's
- * average rate, older models). `leadDays` is days from today: the rate is what the night
- * would sell for if booked today. `managerRate` is the manager's own rate, or null.
+ * Every amount is in euros, before VAT (decision 0076). `leadDays` is days from today: the
+ * rate is what the night would sell for if booked today. `managerRate` is the manager's own
+ * rate, or null.
  */
 function toRecommendation(row) {
   const rate = parseAmount(row.recommended_rate)
@@ -28,7 +28,6 @@ function toRecommendation(row) {
     date: row.stay_date,
     roomType: row.room_type,
     rate,
-    rateBasis: row.rate_basis,
     leadDays: row.lead_days,
     managerRate: parseAmount(row.manager_rate),
     change: previous == null ? null : rate - previous,

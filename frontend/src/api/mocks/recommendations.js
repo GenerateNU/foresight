@@ -10,7 +10,7 @@ const EVENTS = [
 
 /**
  * Made-up rates in the shape of RecommendationResponse (backend/foresight/routes/hotel.py),
- * one row per night for one room type, before VAT (`rate_basis` "nett", decision 0076). Stable: the same night always gets the same price.
+ * one row per night for one room type, in euros before VAT (decision 0076). Stable: the same night always gets the same price.
  */
 export function mockRecommendations(hotelId, { start, end }) {
   return [...eachNight(start, end)].map((date) => night(hotelId, ROOM_TYPE, date))
@@ -32,7 +32,7 @@ function night(hotelId, room, date) {
   // would sell for if booked today (docs/decisions/0056).
   const leadDays = Math.max(0, Math.round((day - startOfToday()) / 86_400_000))
 
-  // Shaped like backend/foresight/services/domain/recommendation.py: one factor per model
+  // Shaped like backend/foresight/services/recommendations/explanation.py: one factor per model
   // input, named by the night's value, largest first, with the rest summed as "Smaller
   // effects combined". Events are only a count, and add about €0 for now (issue #128).
   const factors = [
@@ -54,7 +54,6 @@ function night(hotelId, room, date) {
     room_type: room.name,
     room_type_id: room.id,
     lead_days: leadDays,
-    rate_basis: 'nett',
     recommended_rate: money(rate),
     explanation: {
       summary: `€${rate.toFixed(0)} from a typical €${room.base}; biggest factor: ${top.detail}: ${top.amount >= 0 ? '+' : '-'}€${Math.abs(top.amount).toFixed(2)}.`,

@@ -1,6 +1,6 @@
 import { formatEuro, formatSignedEuro } from '../../lib/format.js'
 import ChangeBadge from './ChangeBadge.jsx'
-import { daysOut, longDate, rateBasisLabel, roundForDisplay } from './calendarUtils.js'
+import { daysOut, longDate, roundForDisplay } from './calendarUtils.js'
 
 /**
  * The hover card: why this night costs what it does. DayCell decides when it shows and
@@ -24,7 +24,7 @@ export default function DayPopover({ rec, ref, style, ...props }) {
 
       <div className="mt-3 flex items-baseline gap-2">
         <span className="font-display text-3xl font-medium tracking-tight">{formatEuro(rec.rate)}</span>
-        <span className="text-xs whitespace-nowrap text-stone-500">{rateBasisLabel(rec.rateBasis)}</span>
+        <span className="text-xs whitespace-nowrap text-stone-500">before VAT</span>
         <ChangeBadge change={rec.change} />
         {rec.managerRate != null && (
           <span className="ml-auto text-sm whitespace-nowrap text-stone-600">
