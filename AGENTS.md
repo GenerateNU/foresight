@@ -56,8 +56,7 @@ API: http://localhost:8000 · docs: http://localhost:8000/docs
 
 ## Conventions
 
-- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/)
-  (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`…).
+- **Commits and PRs:** see [Git](#git) below.
 - **Lint/format:** ruff must pass before commit; pre-commit hooks are enforced.
 - **Docstrings and comments:** a Google docstring on every function
   (`Args`/`Returns`/`Raises`), `Attributes:` on classes, no module docstrings,
@@ -71,6 +70,24 @@ API: http://localhost:8000 · docs: http://localhost:8000/docs
 - **Decisions:** design decisions live in [`docs/decisions/`](docs/decisions/),
   one per file. Read the relevant record before changing that code; record new
   decisions there.
+
+## Git
+
+- **Commit messages** use [Conventional Commits](https://www.conventionalcommits.org/)
+  (`feat`, `fix`, `docs`, `chore`, `test`, `refactor`) with an optional scope,
+  like `feat(api): add sessions endpoint`. The subject is short and plain. The
+  body is one or two sentences on why, not a list of files.
+- No `Co-Authored-By` trailer on commits.
+- **PR descriptions** follow
+  [`.github/pull_request_template.md`](.github/pull_request_template.md) and
+  never include a "Generated with" line or any AI attribution.
+- A PR should be readable in 10 seconds: what changed and why. Notes explain
+  anything surprising. Skip exact counts and file lists unless they matter.
+- One topic per PR.
+- Never force push, rewrite history or push to `main` without asking first.
+- Ask before changing anything outside the repo, such as shell config or
+  global installs.
+- Plain language, no em dashes.
 
 ## Do / don't for agents
 
