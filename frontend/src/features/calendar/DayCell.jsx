@@ -4,6 +4,7 @@ import {
   flip,
   offset,
   shift,
+  size,
   useDismiss,
   useFloating,
   useFocus,
@@ -20,7 +21,7 @@ import { nightStyle } from './colorModes.js'
 /**
  * One night in the grid. `rec` is undefined for days outside the month or with no price.
  * Hovering, or focusing it with the keyboard, opens the night's card wherever it fits
- * on screen (docs/decisions/0066).
+ * on screen (docs/decisions/0066), and never taller than the room it has there.
  */
 export default function DayCell({ day, rec, mode, context }) {
   const [open, setOpen] = useState(false)
@@ -28,7 +29,17 @@ export default function DayCell({ day, rec, mode, context }) {
     open,
     onOpenChange: setOpen,
     placement: 'bottom',
-    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+    middleware: [
+      offset(8),
+      flip({ padding: 8 }),
+      shift({ padding: 8 }),
+      size({
+        padding: 8,
+        apply({ availableHeight, elements }) {
+          elements.floating.style.maxHeight = `${availableHeight}px`
+        },
+      }),
+    ],
     whileElementsMounted: autoUpdate,
   })
   const { setReference, setFloating } = refs
