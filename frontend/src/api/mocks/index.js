@@ -1,5 +1,5 @@
 import { ApiError } from '../client.js'
-import { mockHotel, mockMe } from './hotels.js'
+import { mockMe } from './hotels.js'
 import { mockRecommendations } from './recommendations.js'
 
 /**
@@ -9,7 +9,6 @@ import { mockRecommendations } from './recommendations.js'
  */
 const ROUTES = [
   [/^\/auth\/me$/, () => mockMe()],
-  [/^\/hotels\/(\d+)$/, ([id]) => mockHotel(Number(id))],
   [/^\/hotels\/(\d+)\/recommendations$/, ([id], query) => mockRecommendations(Number(id), query)],
 ]
 

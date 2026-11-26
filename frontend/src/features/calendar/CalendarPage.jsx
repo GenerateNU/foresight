@@ -5,8 +5,8 @@ import Button from '../../components/ui/Button.jsx'
 import EmptyState from '../../components/ui/EmptyState.jsx'
 import ErrorState from '../../components/ui/ErrorState.jsx'
 import LoadingState from '../../components/ui/LoadingState.jsx'
-import { HOTEL_ID } from '../../lib/config.js'
 import { useAsync } from '../../hooks/useAsync.js'
+import { useAuth } from '../auth/useAuth.js'
 import ColorByChips from './ColorByChips.jsx'
 import MonthGrid from './MonthGrid.jsx'
 import { buildMonthGrid, monthLabel, ratesByNight } from './calendarUtils.js'
@@ -19,13 +19,14 @@ export default function CalendarPage() {
   const today = new Date()
   const [{ year, month }, setMonth] = useState({ year: today.getFullYear(), month: today.getMonth() })
   const [mode, setMode] = useState('price-level')
+  const { hotel } = useAuth()
 
   const weeks = useMemo(() => buildMonthGrid(year, month), [year, month])
   const start = weeks[0][0].date
   const end = weeks.at(-1).at(-1).date
 
-  const { data, error, loading, reload } = useAsync(`${start}:${end}`, () =>
-    getRecommendations(HOTEL_ID, { start, end }),
+  const { data, error, loading, reload } = useAsync(`${hotel.id}:${start}:${end}`, () =>
+    getRecommendations(hotel.id, { start, end }),
   )
   const byDate = useMemo(() => ratesByNight(data ?? []), [data])
   const roomType = data?.[0]?.roomType
