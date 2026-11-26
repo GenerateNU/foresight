@@ -39,16 +39,12 @@ export default function CalendarPage() {
   const first = data?.[0]
 
   return (
-    <div className="space-y-6 px-8 py-8">
+    <div className="flex h-full flex-col gap-4 px-8 py-6">
       <PageHeader
         eyebrow={first ? `Next ${NIGHTS} nights · ${formatRoomType(first.roomType)} room · rates before VAT` : `Next ${NIGHTS} nights`}
         title={rangeLabel(gridStart, gridEnd)}
+        actions={<ColorByChips value={mode} onChange={setMode} />}
       />
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <ColorByChips value={mode} onChange={setMode} />
-        {first && <p className="text-xs text-stone-500">All rates before VAT</p>}
-      </div>
 
       {error ? (
         <ErrorState title="Couldn't load prices" error={error} onRetry={reload} />

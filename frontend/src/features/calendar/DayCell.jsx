@@ -54,7 +54,7 @@ export default function DayCell({ day, rec, mode, context }) {
 
   if (!rec) {
     return (
-      <div className="min-h-28 rounded-card border border-stone-100 bg-stone-25 p-3 text-stone-300">
+      <div className="min-h-0 rounded-card border border-stone-100 bg-stone-25 p-2.5 text-sm text-stone-300">
         {day.label}
       </div>
     )
@@ -66,7 +66,7 @@ export default function DayCell({ day, rec, mode, context }) {
     <div
       ref={setReference}
       tabIndex={0}
-      className={`min-h-28 rounded-card border border-stone-100 p-3 outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${bg}`}
+      className={`min-h-0 overflow-hidden rounded-card border border-stone-100 p-2.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${bg}`}
       {...getReferenceProps()}
     >
       <div className="flex items-center justify-between text-sm">
@@ -78,7 +78,7 @@ export default function DayCell({ day, rec, mode, context }) {
       </div>
       <p className="mt-1 text-xl font-medium">{formatEuro(rec.rate)}</p>
       {rec.events[0] && (
-        <p className="mt-2 truncate rounded-sm bg-white px-2 py-0.5 text-xs text-stone-700">
+        <p className="mt-1.5 truncate rounded-sm bg-white px-2 py-0.5 text-xs text-stone-700">
           {rec.events[0].title}
         </p>
       )}
