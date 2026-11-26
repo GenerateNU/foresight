@@ -9,7 +9,7 @@ import { useAsync } from '../../hooks/useAsync.js'
 import { useAuth } from '../auth/useAuth.js'
 import ColorByChips from './ColorByChips.jsx'
 import MonthGrid from './MonthGrid.jsx'
-import { buildMonthGrid, monthLabel, rateBasisLabel, ratesByNight, toISODate } from './calendarUtils.js'
+import { buildMonthGrid, monthLabel, ratesByNight, toISODate } from './calendarUtils.js'
 
 /** How many nights ahead the calendar prices, from tonight. The API allows up to 90. */
 const NIGHTS = 30
@@ -37,7 +37,6 @@ export default function CalendarPage() {
   )
   const byDate = useMemo(() => ratesByNight(data ?? []), [data])
   const first = data?.[0]
-  const basis = first ? rateBasisLabel(first.rateBasis) : null
 
   function shiftMonth(delta) {
     const next = new Date(year, month + delta, 1)
@@ -47,7 +46,7 @@ export default function CalendarPage() {
   return (
     <div className="space-y-6 px-8 py-8">
       <PageHeader
-        eyebrow={first ? `Next ${NIGHTS} nights · ${first.roomType} room · rates ${basis}` : `Next ${NIGHTS} nights`}
+        eyebrow={first ? `Next ${NIGHTS} nights · ${first.roomType} room · rates before VAT` : `Next ${NIGHTS} nights`}
         title={monthLabel(year, month)}
         actions={
           <>
@@ -66,7 +65,7 @@ export default function CalendarPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ColorByChips value={mode} onChange={setMode} />
-        {basis && <p className="text-xs text-stone-500">All rates {basis}</p>}
+        {first && <p className="text-xs text-stone-500">All rates before VAT</p>}
       </div>
 
       {error ? (
