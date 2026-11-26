@@ -16,7 +16,9 @@ export async function getRecommendations(hotelId, { start, end }) {
  * One API row in the shape the screens use: numbers for money, camelCase names.
  * Every amount is in euros, before VAT (decision 0076). `leadDays` is days from today: the
  * rate is what the night would sell for if booked today. `managerRate` is the manager's own
- * rate, or null.
+ * rate, or null. `snapshotId` is what feedback on this rate must send; null for a past
+ * night. `eventsSource` is "missing" when no events were loaded for the night, so its
+ * event list is unknown rather than empty.
  */
 function toRecommendation(row) {
   const rate = parseAmount(row.recommended_rate)
@@ -40,9 +42,12 @@ function toRecommendation(row) {
     events: row.events.map((e) => ({
       id: e.event_id,
       title: e.title,
+      venue: e.venue,
       dayNumber: e.day_number,
       dayCount: e.day_count,
     })),
+    eventsSource: row.events_source,
+    snapshotId: row.snapshot_id,
     pricedAt: row.priced_at,
   }
 }

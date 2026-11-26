@@ -38,7 +38,7 @@ function night(hotelId, room, date) {
   const factors = [
     { detail: DAYS[day.getDay()], amount: DAY_AMOUNTS[day.getDay()] },
     { detail: MONTHS[day.getMonth()], amount: 6.63 },
-    { detail: `lead days ${leadDays}`, amount: Math.round((4 - leadDays * 0.15) * 100) / 100 },
+    { detail: leadDays === 0 ? 'booking today' : `booking ${leadDays} days ahead`, amount: Math.round((4 - leadDays * 0.15) * 100) / 100 },
     event && { detail: 'event count 1', amount: 1.12 },
   ]
     .filter(Boolean)
@@ -65,7 +65,8 @@ function night(hotelId, room, date) {
     events_source: 'fetched',
     // The manager has set their own rate on about one night in seven.
     manager_rate: hash(date) % 7 === 0 ? money(Math.round(rate / 5) * 5 + 10) : null,
-    snapshot_id: null,
+    // Past nights aren't saved, so they have no snapshot to give feedback on.
+    snapshot_id: day >= startOfToday() ? hash(date) % 100_000 : null,
     priced_at: new Date().toISOString(),
   }
 }
