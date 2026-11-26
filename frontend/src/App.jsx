@@ -21,7 +21,7 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route index element={<ReturnAfterSignIn />} />
           <Route path="calendar" element={<CalendarPage />} />
-          <Route path="calendar/:date" element={<PlaceholderPage title="Night detail" />} />
+          <Route path="nights/:date" element={<PlaceholderPage title="Night detail" />} />
           <Route path="today" element={<PlaceholderPage title="Today" />} />
           <Route path="inbox" element={<PlaceholderPage title="Inbox" />} />
           <Route path="signals" element={<PlaceholderPage title="Signals" />} />

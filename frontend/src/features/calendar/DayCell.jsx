@@ -3,8 +3,8 @@ import {
   autoUpdate,
   flip,
   offset,
+  safePolygon,
   shift,
-  size,
   useDismiss,
   useFloating,
   useFocus,
@@ -21,7 +21,7 @@ import { nightStyle } from './colorModes.js'
 /**
  * One night in the grid. `rec` is undefined for nights outside the priced window.
  * Hovering, or focusing it with the keyboard, opens the night's card wherever it fits
- * on screen (docs/decisions/0066), and never taller than the room it has there.
+ * on screen (docs/decisions/0066). The pointer can move into the card to reach its link.
  */
 export default function DayCell({ day, rec, mode, context }) {
   const [open, setOpen] = useState(false)
@@ -33,12 +33,6 @@ export default function DayCell({ day, rec, mode, context }) {
       offset(8),
       flip({ padding: 8 }),
       shift({ padding: 8 }),
-      size({
-        padding: 8,
-        apply({ availableHeight, elements }) {
-          elements.floating.style.maxHeight = `${availableHeight}px`
-        },
-      }),
     ],
     whileElementsMounted: autoUpdate,
   })
@@ -46,10 +40,10 @@ export default function DayCell({ day, rec, mode, context }) {
   // useFocus only opens on keyboard focus: a mouse click also focuses the night, and
   // would otherwise keep its card open while hovering others.
   const { getReferenceProps, getFloatingProps } = useInteractions([
-    useHover(floatingContext),
+    useHover(floatingContext, { handleClose: safePolygon() }),
     useFocus(floatingContext),
     useDismiss(floatingContext),
-    useRole(floatingContext, { role: 'tooltip' }),
+    useRole(floatingContext, { role: 'dialog' }),
   ])
 
   if (!rec) {
