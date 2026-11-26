@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { getRecommendations } from '../../api/recommendations.js'
 import PageHeader from '../../components/layout/PageHeader.jsx'
-import Button from '../../components/ui/Button.jsx'
 import EmptyState from '../../components/ui/EmptyState.jsx'
 import ErrorState from '../../components/ui/ErrorState.jsx'
 import LoadingState from '../../components/ui/LoadingState.jsx'
@@ -9,29 +8,29 @@ import { useAsync } from '../../hooks/useAsync.js'
 import { formatRoomType } from '../../lib/format.js'
 import { useAuth } from '../auth/useAuth.js'
 import ColorByChips from './ColorByChips.jsx'
-import MonthGrid from './MonthGrid.jsx'
-import { buildMonthGrid, monthLabel, ratesByNight, toISODate } from './calendarUtils.js'
+import WeekGrid from './WeekGrid.jsx'
+import { buildWeeks, rangeLabel, ratesByNight, toISODate } from './calendarUtils.js'
 
 /** How many nights ahead the calendar prices, from tonight. The API allows up to 90. */
 const NIGHTS = 30
 
 /**
- * The Calendar screen: fetches the next NIGHTS nights once, owns "which month" and
- * "color by", and passes everything down. The pieces below it only draw what they are
- * given. Month navigation stays within the months those nights fall in.
+ * The Calendar screen: five weeks from Monday of this week, priced for the next NIGHTS
+ * nights in one call. Nights outside that window show grey. It owns "color by" and
+ * passes everything down; the pieces below it only draw what they are given.
  */
 export default function CalendarPage() {
   const today = new Date()
-  const [{ year, month }, setMonth] = useState({ year: today.getFullYear(), month: today.getMonth() })
   const [mode, setMode] = useState('price-level')
   const { hotel } = useAuth()
 
-  const weeks = useMemo(() => buildMonthGrid(year, month), [year, month])
   const start = toISODate(today)
-  const last = new Date(today.getFullYear(), today.getMonth(), today.getDate() + NIGHTS - 1)
-  const end = toISODate(last)
-  const isFirstMonth = year === today.getFullYear() && month === today.getMonth()
-  const isLastMonth = year === last.getFullYear() && month === last.getMonth()
+  const weeks = buildWeeks(today)
+  const gridStart = weeks[0][0].date
+  const gridEnd = weeks.at(-1).at(-1).date
+  // On a Sunday the grid ends before the 30th night, so stop the window there.
+  const windowEnd = toISODate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + NIGHTS - 1))
+  const end = windowEnd < gridEnd ? windowEnd : gridEnd
 
   const { data, error, loading, reload } = useAsync(`${hotel.id}:${start}:${end}`, () =>
     getRecommendations(hotel.id, { start, end }),
@@ -39,29 +38,11 @@ export default function CalendarPage() {
   const byDate = useMemo(() => ratesByNight(data ?? []), [data])
   const first = data?.[0]
 
-  function shiftMonth(delta) {
-    const next = new Date(year, month + delta, 1)
-    setMonth({ year: next.getFullYear(), month: next.getMonth() })
-  }
-
   return (
     <div className="space-y-6 px-8 py-8">
       <PageHeader
         eyebrow={first ? `Next ${NIGHTS} nights · ${formatRoomType(first.roomType)} room · rates before VAT` : `Next ${NIGHTS} nights`}
-        title={monthLabel(year, month)}
-        actions={
-          <>
-            <Button size="icon" aria-label="Previous month" disabled={isFirstMonth} onClick={() => shiftMonth(-1)}>
-              ‹
-            </Button>
-            <Button size="sm" onClick={() => setMonth({ year: today.getFullYear(), month: today.getMonth() })}>
-              This month
-            </Button>
-            <Button size="icon" aria-label="Next month" disabled={isLastMonth} onClick={() => shiftMonth(1)}>
-              ›
-            </Button>
-          </>
-        }
+        title={rangeLabel(gridStart, gridEnd)}
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -76,7 +57,7 @@ export default function CalendarPage() {
       ) : byDate.size === 0 ? (
         <EmptyState title={`No rates for the next ${NIGHTS} nights`} message="Rates appear once the model has priced these nights." />
       ) : (
-        <MonthGrid weeks={weeks} byDate={byDate} mode={mode} />
+        <WeekGrid weeks={weeks} byDate={byDate} mode={mode} />
       )}
     </div>
   )
