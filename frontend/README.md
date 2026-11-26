@@ -47,7 +47,7 @@ src/
     ui/                 shared building blocks: Button, Card, Input, Badge, Chip, states
   features/           one folder per built screen; everything for it lives together
     auth/               who's signed in (AuthProvider, useAuth, RequireAuth), sign-in and sign-out
-    calendar/           the calendar: page, five-week grid, hover card, colour modes
+    calendar/           the calendar: page, five-week grid, hover card, colour modes, night page
   pages/              placeholder, not-found and the dev component gallery
 ```
 

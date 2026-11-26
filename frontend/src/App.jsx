@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import AppShell from './components/layout/AppShell.jsx'
 import CalendarPage from './features/calendar/CalendarPage.jsx'
+import NightPage from './features/calendar/NightPage.jsx'
 import RequireAuth from './features/auth/RequireAuth.jsx'
 import ReturnAfterSignIn from './features/auth/ReturnAfterSignIn.jsx'
 import SignInPage from './features/auth/SignInPage.jsx'
@@ -21,7 +22,7 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route index element={<ReturnAfterSignIn />} />
           <Route path="calendar" element={<CalendarPage />} />
-          <Route path="nights/:date" element={<PlaceholderPage title="Night detail" />} />
+          <Route path="nights/:date" element={<NightPage />} />
           <Route path="today" element={<PlaceholderPage title="Today" />} />
           <Route path="inbox" element={<PlaceholderPage title="Inbox" />} />
           <Route path="signals" element={<PlaceholderPage title="Signals" />} />

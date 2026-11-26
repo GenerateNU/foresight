@@ -116,3 +116,58 @@ export function roundForDisplay(rate, baseline, factors) {
   if (target.shown !== 0) target.sign = Math.sign(target.shown)
   return lines
 }
+
+/** The night page's factor groups, in the order it shows them. */
+const FACTOR_GROUPS = ['Day and season', 'Booking timing', 'Events', 'Holidays', 'Combined effects', 'Other']
+
+/**
+ * Which group a factor belongs to, read from its words since the API sends no group. The
+ * words come from backend/foresight/services/recommendations/explanation.py: pairs are
+ * joined with " with ", days ahead start "booking", holidays mention "public holiday",
+ * and day of week and month are plain names.
+ */
+function factorGroup(detail) {
+  if (detail.includes(' with ')) return 'Combined effects'
+  if (detail.startsWith('booking ')) return 'Booking timing'
+  if (detail.includes('public holiday')) return 'Holidays'
+  if (WEEKDAYS.includes(detail) || MONTHS.includes(detail)) return 'Day and season'
+  if (detail.includes('event')) return 'Events'
+  return 'Other'
+}
+
+/**
+ * Display lines from roundForDisplay, grouped for the night page: `{ groups, leftover }`.
+ * `groups` is `[{ name, lines }]` in FACTOR_GROUPS order, empty ones left out, each
+ * group's lines largest first. `leftover` is the "Smaller effects combined" line, or null;
+ * it belongs to no group, so the page shows it last.
+ */
+export function groupFactors(lines) {
+  const leftover = lines.find((line) => line.detail === LEFTOVER_LINE) ?? null
+  const byGroup = Map.groupBy(
+    lines.filter((line) => line !== leftover),
+    (line) => factorGroup(line.detail),
+  )
+  const groups = FACTOR_GROUPS.filter((name) => byGroup.has(name)).map((name) => ({
+    name,
+    lines: byGroup.get(name).sort((a, b) => Math.abs(b.shown) - Math.abs(a.shown)),
+  }))
+  return { groups, leftover }
+}
+
+/** The ISO date `days` after `isoDate` (negative for before). */
+export function addDays(isoDate, days) {
+  const d = new Date(`${isoDate}T00:00:00`)
+  return toISODate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + days))
+}
+
+/** "Fri 4", for the previous and next night buttons. */
+export function shortDay(isoDate) {
+  const d = new Date(`${isoDate}T00:00:00`)
+  return `${WEEKDAYS[d.getDay()].slice(0, 3)} ${d.getDate()}`
+}
+
+/** "December 2026", for the night page's breadcrumb. */
+export function monthLabel(isoDate) {
+  const d = new Date(`${isoDate}T00:00:00`)
+  return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`
+}
