@@ -20,6 +20,10 @@ euros and rounded each line on its own, so a night could read €180 − €12 +
   when the API sent none, so the shown lines add up to the shown rate.
 - **Under €1 shows as "+<€1" or "−<€1"** and counts as €0 in the sum. The
   leftover line shows "<€1" too if it ends at 0.
+- **At most the 6 largest factors show** (amended 2026-11-26). Real nights
+  can have 15, since the model reports pairs like "Friday with December";
+  every factor past the sixth is added into "Smaller effects combined" before
+  rounding, so the card still adds up. The code is `capFactors`.
 - The code is `roundForDisplay` in `features/calendar/calendarUtils.js`.
 
 ## Consequences
