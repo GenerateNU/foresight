@@ -14,7 +14,7 @@ export default function DayPopover({ rec, ref, style, ...props }) {
     <div
       ref={ref}
       style={style}
-      className="z-20 w-80 rounded-card border border-stone-100 bg-white p-4 text-left shadow-xl"
+      className="z-20 w-80 overflow-y-auto rounded-card border border-stone-100 bg-white p-4 text-left shadow-xl"
       {...props}
     >
       <p className="text-base font-medium">{longDate(rec.date)}</p>
