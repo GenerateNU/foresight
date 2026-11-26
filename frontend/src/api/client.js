@@ -37,11 +37,18 @@ export async function apiGet(path, params = {}, { redirectOn401 = true } = {}) {
   return response.json()
 }
 
-/** POST to `path` with no body, for actions like signing out; returns nothing. */
-export async function apiPost(path) {
+/**
+ * POST to `path`, with `body` as JSON if given (none for actions like signing out).
+ * Returns nothing: callers that need fresh data fetch it again.
+ */
+export async function apiPost(path, body) {
   if (USE_MOCKS) return
 
-  const response = await fetch(new URL(path, API_URL), { method: 'POST', credentials: 'include' })
+  const response = await fetch(new URL(path, API_URL), {
+    method: 'POST',
+    credentials: 'include',
+    ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  })
   if (!response.ok) await throwApiError(response)
 }
 
