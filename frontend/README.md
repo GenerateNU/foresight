@@ -24,7 +24,6 @@ Or from `frontend/`: `npm run dev`, `npm run lint`, `npm run build`. To change a
 | Setting | What it does |
 | --- | --- |
 | `VITE_API_URL` | Where the backend lives. Default `http://localhost:8000` (`just dev` from the repo root). |
-| `VITE_HOTEL_ID` | The hotel to show until sign-in picks it. |
 | `VITE_USE_MOCKS` | `true` serves fake responses from `src/api/mocks`, so you don't need the backend running. |
 
 Open http://localhost:5173/components in dev to see every shared component.
@@ -39,7 +38,7 @@ src/
   api/                the ONLY code that talks to the backend
     client.js           fetch wrapper: base URL, cookies, errors, 401 -> sign in, mocks
     auth.js             the Google sign-in link, and the page to return to after it
-    hotels.js, recommendations.js   one function per endpoint, returns clean data
+    recommendations.js  one function per endpoint, returns clean data
     mocks/              fake responses, same shapes as the real API
   lib/                small helpers with no React in them (config, cx)
   hooks/              reusable React logic (useAsync: load data, track loading/error, retry)
