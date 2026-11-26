@@ -6,6 +6,11 @@ export function parseAmount(value) {
   return value == null ? null : Number(value)
 }
 
+/** A room type as the API names it, for display: "DOUBLE" becomes "Double". */
+export function formatRoomType(name) {
+  return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()
+}
+
 /** Whole euros for display: `formatEuro(279.4)` is "€279". */
 export function formatEuro(amount) {
   return `€${Math.round(amount).toLocaleString('en-IE')}`

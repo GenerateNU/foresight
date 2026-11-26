@@ -6,6 +6,7 @@ import EmptyState from '../../components/ui/EmptyState.jsx'
 import ErrorState from '../../components/ui/ErrorState.jsx'
 import LoadingState from '../../components/ui/LoadingState.jsx'
 import { useAsync } from '../../hooks/useAsync.js'
+import { formatRoomType } from '../../lib/format.js'
 import { useAuth } from '../auth/useAuth.js'
 import ColorByChips from './ColorByChips.jsx'
 import MonthGrid from './MonthGrid.jsx'
@@ -46,7 +47,7 @@ export default function CalendarPage() {
   return (
     <div className="space-y-6 px-8 py-8">
       <PageHeader
-        eyebrow={first ? `Next ${NIGHTS} nights · ${first.roomType} room · rates before VAT` : `Next ${NIGHTS} nights`}
+        eyebrow={first ? `Next ${NIGHTS} nights · ${formatRoomType(first.roomType)} room · rates before VAT` : `Next ${NIGHTS} nights`}
         title={monthLabel(year, month)}
         actions={
           <>
