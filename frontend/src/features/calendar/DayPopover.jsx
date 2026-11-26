@@ -43,7 +43,7 @@ export default function DayPopover({ rec, ref, style, ...props }) {
           {factors.map((f) => (
             <li key={f.detail} className="flex justify-between gap-4">
               <span className="truncate">{f.detail}</span>
-              <span className={f.sign > 0 ? 'text-price-up' : 'text-price-down'}>
+              <span className={`shrink-0 whitespace-nowrap ${f.sign > 0 ? 'text-price-up' : 'text-price-down'}`}>
                 {formatSignedEuro(f.shown, f.sign)}
               </span>
             </li>
