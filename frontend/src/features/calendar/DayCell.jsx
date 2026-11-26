@@ -28,7 +28,9 @@ export default function DayCell({ day, rec, mode, context }) {
   const { refs, floatingStyles, context: floatingContext } = useFloating({
     open,
     onOpenChange: setOpen,
-    placement: 'bottom',
+    // Beside the night, not below: the grid fills the screen, so above or below a row
+    // rarely has room for the card, while sideways it can slide up or down to fit.
+    placement: 'right',
     middleware: [
       offset(8),
       flip({ padding: 8 }),
