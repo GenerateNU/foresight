@@ -1,6 +1,6 @@
 import { formatEuro, formatSignedEuro } from '../../lib/format.js'
 import ChangeBadge from './ChangeBadge.jsx'
-import { daysOut, longDate, roundForDisplay } from './calendarUtils.js'
+import { capFactors, daysOut, longDate, roundForDisplay } from './calendarUtils.js'
 
 /**
  * The hover card: why this night costs what it does. DayCell decides when it shows and
@@ -8,7 +8,7 @@ import { daysOut, longDate, roundForDisplay } from './calendarUtils.js'
  */
 export default function DayPopover({ rec, ref, style, ...props }) {
   const out = daysOut(rec.date)
-  const factors = roundForDisplay(rec.rate, rec.baseline, rec.factors)
+  const factors = roundForDisplay(rec.rate, rec.baseline, capFactors(rec.factors))
 
   return (
     <div
