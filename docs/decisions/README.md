@@ -77,7 +77,7 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0055](0055-events-back-in-the-model.md) | Events are back in the model, counted from when PredictHQ first saw them | ML |
 | [0054](0054-hosted-on-render.md) | The backend is hosted on Render's free plan | operations |
 | [0064](0064-fonts-served-from-the-app.md) | Fonts are served from the app, not Google Fonts | frontend |
-| [0065](0065-breakdowns-rounded-to-add-up.md) | The calendar card rounds its breakdown so it adds up | frontend |
+| [0065](0065-breakdowns-rounded-to-add-up.md) | Breakdowns are rounded so they add up | frontend |
 | [0066](0066-popups-placed-by-floating-ui.md) | Popups are placed by Floating UI | frontend |
 | [0056](0056-lead-days-input.md) | Days booked ahead is a model input, trained on booked rooms | ML |
 | [0067](0067-night-before-holiday-input.md) | The night before a public holiday is a model input, worked out from the date | ML |

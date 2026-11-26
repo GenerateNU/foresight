@@ -1,17 +1,17 @@
 import { Link } from 'react-router-dom'
 import { formatEuro, formatSignedEuro } from '../../lib/format.js'
 import ChangeBadge from './ChangeBadge.jsx'
-import { capFactors, daysOut, longDate, roundForDisplay } from './calendarUtils.js'
+import { biggestFactors, daysOut, longDate } from './calendarUtils.js'
 
 /**
  * The hover card: the night's rate, the manager's if set, the three biggest reasons and
- * the three biggest events, with a link to the night's own page for the rest. Short
+ * the first three events, with a link to the night's own page for the full breakdown. Short
  * enough to never need scrolling. DayCell decides when it shows and where; `ref`, `style`
  * and the rest of `props` come from Floating UI.
  */
 export default function DayPopover({ rec, ref, style, ...props }) {
   const out = daysOut(rec.date)
-  const factors = roundForDisplay(rec.rate, rec.baseline, capFactors(rec.factors))
+  const factors = biggestFactors(rec.factors)
 
   return (
     <div
@@ -37,12 +37,8 @@ export default function DayPopover({ rec, ref, style, ...props }) {
       </div>
 
       <div className="mt-3 border-t border-stone-100 pt-3">
-        <p className="mb-1 text-xs font-medium text-stone-600">What moved the rate</p>
+        <p className="mb-1 text-xs font-medium text-stone-600">Biggest reasons</p>
         <ul className="space-y-1 text-sm">
-          <li className="flex justify-between text-stone-500">
-            <span>Starting point</span>
-            <span>{formatEuro(rec.baseline)}</span>
-          </li>
           {factors.map((f) => (
             <li key={f.detail} className="flex justify-between gap-4">
               <span className="truncate">{f.detail}</span>
@@ -77,7 +73,7 @@ export default function DayPopover({ rec, ref, style, ...props }) {
         to={`/nights/${rec.date}`}
         className="mt-3 block border-t border-stone-100 pt-3 text-sm font-medium text-stone-900 hover:underline"
       >
-        Open night →
+        See all reasons →
       </Link>
     </div>
   )

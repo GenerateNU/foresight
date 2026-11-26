@@ -76,22 +76,22 @@ export function priceLevel(rate, min, max) {
 }
 
 const LEFTOVER_LINE = 'Smaller effects combined'
-const MAX_FACTORS = 3
 
 /**
- * The `max` largest factors, by size, with every other one added into "Smaller effects
- * combined", which comes last. The amounts still add up to the same total, so
- * roundForDisplay can run on the result. A real night can have 15 factors; the hover card
- * shows the top three, and night detail will show them all.
+ * The `count` largest named factors by size, each in whole euros on its own, for the hover
+ * card's "Biggest reasons". They don't add up to the rate and aren't meant to; night detail
+ * shows the full breakdown. Returns `{ detail, shown, sign }` like roundForDisplay.
  */
-export function capFactors(factors, max = MAX_FACTORS) {
-  const named = factors
+export function biggestFactors(factors, count = 3) {
+  return factors
     .filter((f) => f.detail !== LEFTOVER_LINE)
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-  const rest = [...named.slice(max), ...factors.filter((f) => f.detail === LEFTOVER_LINE)]
-  if (rest.length === 0) return named
-  const leftover = rest.reduce((total, f) => total + f.amount, 0)
-  return [...named.slice(0, max), { detail: LEFTOVER_LINE, amount: leftover }]
+    .slice(0, count)
+    .map((f) => ({
+      detail: f.detail,
+      shown: Math.abs(f.amount) < 1 ? 0 : Math.round(f.amount),
+      sign: f.amount < 0 ? -1 : 1,
+    }))
 }
 
 /**
