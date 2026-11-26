@@ -1,5 +1,5 @@
 /** The real endpoint prices the one room type the active model prices. */
-const ROOM_TYPE = { id: 1, name: 'Double', base: 180 }
+const ROOM_TYPE = { id: 1, name: 'DOUBLE', base: 180 }
 
 /** Each runs for three nights, on the 1st-3rd, 10th-12th, 19th-21st and 28th-30th. */
 const EVENTS = [
