@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { saveManagerRate } from '../../api/feedback.js'
 import { getRecommendations } from '../../api/recommendations.js'
 import caretLeft from '../../assets/night/caret-left.svg'
 import caretRight from '../../assets/night/caret-right.svg'
@@ -11,11 +12,13 @@ import { formatEuro, formatRoomType } from '../../lib/format.js'
 import { useAuth } from '../auth/useAuth.js'
 import NightEvents from './NightEvents.jsx'
 import WhyThisPrice from './WhyThisPrice.jsx'
+import YourRate from './YourRate.jsx'
 import { addDays, daysOut, longDate, monthLabel, shortDay } from './calendarUtils.js'
 
 /**
  * One night's page, at /nights/:date: our rate, the manager's, every factor behind the
- * rate and the events. One recommendations call for that night.
+ * rate, the events, and a field to set the manager's own rate. One recommendations call
+ * for that night; saving a rate fetches it again so the manager's rate shows.
  */
 export default function NightPage() {
   const { date } = useParams()
@@ -24,6 +27,12 @@ export default function NightPage() {
     getRecommendations(hotel.id, { start: date, end: date }),
   )
   const rec = data?.[0]
+
+  // Feedback on the rate the manager saw; fetching again shows it as the manager's rate.
+  async function saveRate(rate) {
+    await saveManagerRate(hotel.id, { date, rate, snapshotId: rec.snapshotId })
+    reload()
+  }
   const out = daysOut(date)
 
   return (
@@ -66,6 +75,7 @@ export default function NightPage() {
           <div className="grid items-start gap-6 lg:grid-cols-2">
             <WhyThisPrice rec={rec} />
             <div className="flex flex-col gap-6">
+              <YourRate rec={rec} onSave={saveRate} />
               <NightEvents rec={rec} />
             </div>
           </div>
