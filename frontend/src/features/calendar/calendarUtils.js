@@ -76,12 +76,13 @@ export function priceLevel(rate, min, max) {
 }
 
 const LEFTOVER_LINE = 'Smaller effects combined'
-const MAX_FACTORS = 6
+const MAX_FACTORS = 3
 
 /**
  * The `max` largest factors, by size, with every other one added into "Smaller effects
  * combined", which comes last. The amounts still add up to the same total, so
- * roundForDisplay can run on the result. A real night can have 15 factors.
+ * roundForDisplay can run on the result. A real night can have 15 factors; the hover card
+ * shows the top three, and night detail will show them all.
  */
 export function capFactors(factors, max = MAX_FACTORS) {
   const named = factors

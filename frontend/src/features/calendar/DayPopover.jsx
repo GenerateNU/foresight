@@ -1,10 +1,13 @@
+import { Link } from 'react-router-dom'
 import { formatEuro, formatSignedEuro } from '../../lib/format.js'
 import ChangeBadge from './ChangeBadge.jsx'
 import { capFactors, daysOut, longDate, roundForDisplay } from './calendarUtils.js'
 
 /**
- * The hover card: why this night costs what it does. DayCell decides when it shows and
- * where; `ref`, `style` and the rest of `props` come from Floating UI.
+ * The hover card: the night's rate, the manager's if set, the three biggest reasons and
+ * the three biggest events, with a link to the night's own page for the rest. Short
+ * enough to never need scrolling. DayCell decides when it shows and where; `ref`, `style`
+ * and the rest of `props` come from Floating UI.
  */
 export default function DayPopover({ rec, ref, style, ...props }) {
   const out = daysOut(rec.date)
@@ -14,7 +17,7 @@ export default function DayPopover({ rec, ref, style, ...props }) {
     <div
       ref={ref}
       style={style}
-      className="z-20 w-80 overflow-y-auto rounded-card border border-stone-100 bg-white p-4 text-left shadow-xl"
+      className="z-20 w-80 rounded-card border border-stone-100 bg-white p-4 text-left shadow-xl"
       {...props}
     >
       <p className="text-base font-medium">{longDate(rec.date)}</p>
@@ -69,6 +72,13 @@ export default function DayPopover({ rec, ref, style, ...props }) {
           </ul>
         </div>
       )}
+
+      <Link
+        to={`/nights/${rec.date}`}
+        className="mt-3 block border-t border-stone-100 pt-3 text-sm font-medium text-stone-900 hover:underline"
+      >
+        Open night →
+      </Link>
     </div>
   )
 }
