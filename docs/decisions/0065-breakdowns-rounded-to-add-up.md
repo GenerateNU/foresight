@@ -1,4 +1,4 @@
-# 0065. The calendar card rounds its breakdown so it adds up
+# 0065. Breakdowns are rounded so they add up
 
 **Status:** Accepted · **Date:** 2026-11-19
 
@@ -20,11 +20,17 @@ euros and rounded each line on its own, so a night could read €180 − €12 +
   when the API sent none, so the shown lines add up to the shown rate.
 - **Under €1 shows as "+<€1" or "−<€1"** and counts as €0 in the sum. The
   leftover line shows "<€1" too if it ends at 0.
-- **The card shows the 3 largest factors** (amended 2026-11-26). Real nights
-  can have 15, since the model reports pairs like "Friday with December";
-  every other factor is added into "Smaller effects combined" before
-  rounding, so the card still adds up. The night's own page will list them
-  all. The code is `capFactors`.
+- **The full breakdown lives on the night's own page** (amended
+  2026-11-26). Real nights can have 15 factors, since the model reports
+  pairs like "Friday with December", which is too many for a hover card.
+  The night page shows the starting point and every factor, rounded as
+  above so it adds up.
+- **The hover card shows only the "Biggest reasons":** the 3 largest
+  factors, each rounded on its own, with no starting point and no total,
+  and a "See all reasons" link to the night page. Folding the rest into
+  "Smaller effects combined" was tried first; on real nights that line was
+  bigger than any factor shown (+€67 on 25 December), which explained
+  nothing. The code is `biggestFactors`.
 - The code is `roundForDisplay` in `features/calendar/calendarUtils.js`.
 
 ## Consequences
