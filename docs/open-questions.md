@@ -87,6 +87,77 @@ our app, or if training uses only the bookings on the plan the manager prices
 To settle: where the manager sets prices (Guestline, our app, or both), and
 whether training should keep only the manager's plan.
 
+### Who starts retrains and tune-ups?
+
+A manager rate saved on the night page shows on the calendar straight away,
+but the model only learns from it when a retrain or tune-up runs, and nothing
+starts either one today:
+
+- `SCHEDULED_TRAINING` is off, so the daily routine only refreshes events.
+- Decision 0069's daily tune-up was to come from a cron outside the app.
+  Nothing in `render.yaml` or the repo calls `POST /hotels/{id}/tune`.
+- A tune-up skips itself below 5 manager rates.
+
+Options:
+
+- **Manual** (as now): someone calls `POST /hotels/{id}/train` or `/tune`.
+- **Turn on `SCHEDULED_TRAINING`**: a full retrain every day, which adds
+  manager rates as training rows (decision 0076).
+- **Add the tune-up to the scheduler**, so it runs daily inside the app
+  rather than from an outside cron.
+- **Both**: a tune-up every day, a full retrain less often.
+
+Not settled; nothing retrains on its own for now.
+
+### Does saving the rate we showed count as feedback?
+
+The night page's "Your rate" field starts at our rate. A manager who presses
+Save without changing it records a manager rate equal to the recommendation,
+and the next retrain and tune-up learn from it. That trains the model on its
+own output, the risk decision 0044 named. It may also be a real signal ("I
+checked, this is right"), close to what the question on untouched nights
+above is after.
+
+Options:
+
+- **Keep it** (as now): an unchanged save means the manager agreed.
+- **Start the field empty, or disable Save until the rate changes.**
+- **Store an unchanged save as "accepted"**, not as a rate, so it can be
+  weighed separately.
+
+Not settled; an unchanged save counts as a manager rate for now.
+
+## Serving
+
+### How fast does the calendar need to load?
+
+Measured on hotel 1 from a laptop against Neon: a month that needs pricing
+took 11 to 20 s, and one already priced that day took about 4 s. The time
+goes to:
+
+- **Loading the model.** Every request that prices any night fetches the
+  7.7 MB artifact from Postgres (about 3.7 s); turning it into a model takes
+  0.01 s. Nothing keeps it in memory between requests.
+- **Building the inputs.** 1 to 5 s, done before checking which snapshots can
+  be reused, so it's paid even when nothing is priced.
+- **Prices reused only within a day.** Days booked ahead is an input, so a
+  future night is priced again the first time it's shown each day (decision
+  0084). A past night with no snapshot is priced on every request.
+
+Decision 0084's "0.1 s to price 90 nights" counts scoring only. A server next
+to Neon would fetch the model faster, but would still fetch it every time.
+
+Options:
+
+- **Keep loaded models in memory, by id.** A version never changes, so the
+  copy can't go stale. A small change in `services/pricing/model.py`.
+- **Speed up building the inputs**, or check snapshots before building them.
+- **Save prices ahead, or save past nights**, which reverses parts of 0038
+  and 0084.
+
+Not settled; the calendar loads the model on every request that prices a
+night for now.
+
 ## Testing
 
 ### What should the testing setup measure?
@@ -107,3 +178,22 @@ version is comes from here. What's known it should cover:
 - **Open settings to test**: the manager weight (`MANAGER_SHARE`, 25%), whether
   the correction sees `month` (decision 0075), and the backtest's options
   (`--event-days`, `--start`), which may not all survive the rework.
+
+## Process
+
+### Should the PR template ask about migrations?
+
+The PR template in #159 (What, Why, How to check, Notes) drops the old
+checklist, including "includes an Alembic migration" and "migration applies
+and rolls back". `AGENTS.md` still requires both for any model change, but
+once #159 merges nothing in a PR reminds the author or the reviewer.
+
+Options:
+
+- **Add one line under "How to check"**: "Migrations: none, or applies and
+  rolls back".
+- **Rely on `AGENTS.md` and review** (as #159 has it).
+- **Check it in CI**: run `alembic upgrade head` and `downgrade -1` on every
+  PR that touches `database/`.
+
+Not settled; the new template doesn't mention migrations.
