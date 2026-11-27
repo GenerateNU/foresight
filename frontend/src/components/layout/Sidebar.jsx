@@ -2,10 +2,13 @@ import { NavLink, useLocation } from 'react-router-dom'
 import SignOutButton from '../../features/auth/SignOutButton.jsx'
 import { cx } from '../../lib/cx.js'
 
-// Only built screens. The rest (Today, Inbox, Signals, Reports, Upload data, Pricing rules,
-// Settings) keep their placeholder routes in App.jsx and come back here as they're built.
+// Only built screens. The rest (Today, Inbox, Signals, Reports, Pricing rules, Settings)
+// keep their placeholder routes in App.jsx and come back here as they're built.
 // `also` lists other paths that belong to the item, like a night's page under Calendar.
-const NAV = [{ to: '/calendar', label: 'Calendar', also: ['/nights/'] }]
+const NAV = [
+  { to: '/calendar', label: 'Calendar', also: ['/nights/'] },
+  { to: '/upload', label: 'Upload data' },
+]
 
 /** The main navigation down the left of every signed-in page, with sign out at the bottom. Hidden on small screens. */
 export default function Sidebar() {

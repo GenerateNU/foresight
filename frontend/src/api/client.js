@@ -52,6 +52,24 @@ export async function apiPost(path, body) {
   if (!response.ok) await throwApiError(response)
 }
 
+/**
+ * POST `files` to `path` as multipart form data, each under the field `field`, and return
+ * the JSON body. The browser sets the multipart Content-Type itself.
+ */
+export async function apiUpload(path, files, field = 'files') {
+  if (USE_MOCKS) {
+    const { mockUpload } = await import('./mocks/index.js')
+    return mockUpload(path, files)
+  }
+
+  const form = new FormData()
+  for (const file of files) form.append(field, file)
+  const response = await fetch(new URL(path, API_URL), { method: 'POST', credentials: 'include', body: form })
+  if (response.status === 401) redirectToSignIn()
+  if (!response.ok) await throwApiError(response)
+  return response.json()
+}
+
 async function throwApiError(response) {
   const body = await response.json().catch(() => ({}))
   throw new ApiError(response.status, readableDetail(body.detail) ?? response.statusText)
