@@ -1,5 +1,6 @@
 import { ApiError } from '../client.js'
 import { mockMe } from './hotels.js'
+import { mockJob, mockUploadJobs } from './jobs.js'
 import { mockRecommendations } from './recommendations.js'
 
 /**
@@ -10,7 +11,11 @@ import { mockRecommendations } from './recommendations.js'
 const ROUTES = [
   [/^\/auth\/me$/, () => mockMe()],
   [/^\/hotels\/(\d+)\/recommendations$/, ([id], query) => mockRecommendations(Number(id), query)],
+  [/^\/jobs\/(\d+)$/, ([id]) => mockJob(Number(id))],
 ]
+
+/** The same, for uploads: `[path pattern, (path params, files) => response body]`. */
+const UPLOADS = [[/^\/hotels\/(\d+)\/ingest\/files$/, ([id], files) => mockUploadJobs(Number(id), files)]]
 
 /** The fake `apiGet` behind VITE_USE_MOCKS=true, so screens work before the backend does. */
 export async function mockGet(path, params) {
@@ -22,6 +27,18 @@ export async function mockGet(path, params) {
     }
   }
   throw new ApiError(404, `No mock for GET ${path}. Add one in src/api/mocks/index.js.`)
+}
+
+/** The fake `apiUpload` behind VITE_USE_MOCKS=true. */
+export async function mockUpload(path, files) {
+  for (const [pattern, respond] of UPLOADS) {
+    const match = path.match(pattern)
+    if (match) {
+      await delay(600)
+      return respond(match.slice(1), files)
+    }
+  }
+  throw new ApiError(404, `No mock for upload to ${path}. Add one in src/api/mocks/index.js.`)
 }
 
 function delay(ms) {
