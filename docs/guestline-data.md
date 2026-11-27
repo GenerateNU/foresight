@@ -1,6 +1,7 @@
 # Guestline export data
 
 > Actual & Forecast is no longer imported ([0080](decisions/0080-actual-and-forecast-removed.md)); what this page says about it is kept as a record.
+> Cancellations is no longer imported either, and both tables are dropped ([0091](decisions/0091-cancellations-removed.md)); the same goes for it.
 
 Beresford Hotel exports from Rezlynx, checked on 25 Oct 2026. [0037](decisions/0037-three-guestline-reports.md) lists the reports and why each one matters. This page records what the exports actually contain.
 

@@ -59,8 +59,8 @@ class EventCategory(StrEnum):
 class JobKind(StrEnum):
     """What a background job does; each has a handler in `services/handlers.py`.
 
-    WEATHER, ACTUAL_FORECAST and PRICE are no longer queued; they stay so old
-    job rows still load.
+    WEATHER, ACTUAL_FORECAST, CANCELLATIONS and PRICE are no longer queued;
+    they stay so old job rows still load.
     """
 
     WEATHER = "weather"

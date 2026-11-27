@@ -103,7 +103,7 @@ backend/foresight/
     events/                predicthq, normalize, window, ingest, event
     bookings/              uploads (report kinds, header recognition, saving),
                            rows (booked rooms for training)
-      guestline/           one per CSV report: reservations, cancellations;
+      guestline/           reservations (the one CSV report);
                            common (shared reading)
     pricing/               model, training_data, inputs, tuning, backtest
     recommendations/       recommendation, explanation, feedback
@@ -202,7 +202,6 @@ Every write from an outside source or a file is an upsert on a natural key
 | Table | Natural key |
 |---|---|
 | `bookings` | hotel_id, book_ref |
-| `booking_cancellations` | hotel_id, cancel_ref |
 | `room_types` (CSV import) | hotel_id, name |
 | `events` | dedupe_key (normalized title + city + local start date) |
 | `event_observations` | source, source_ref |
@@ -256,8 +255,7 @@ turns its source's quota responses into a named error:
 
 ```
 cities ─┬─< hotels ─┬─< room_types                       (DOUBLE, the one the model prices; 0079)
-        │           ├─< bookings                          (rooms booked, still live; 0047)
-        │           ├─< booking_cancellations             (rooms cancelled; linked by book_ref)
+        │           ├─< bookings                          (rooms booked; 0047, 0091)
         │           ├─< pricing_models                    (trained models; one active;
         │           │                                      a tune-up points to its base, 0078)
         │           ├─< recommendation_snapshots          (every rate recommended; 0038)
@@ -346,7 +344,7 @@ uploaded report, through one queue per hotel
 | `POST /hotels/{id}/ingest/…` | Kind | No dates | With dates | Chunk |
 |---|---|---|---|---|
 | `events` | `EVENTS` | events PredictHQ revised since the last refresh (7 days the first time) | every event active in the window | one month |
-| `files` (multipart) | one per file: `RESERVATIONS`, `CANCELLATIONS` | — (takes CSV files only) | — | 5,000 rows |
+| `files` (multipart) | one per file: `RESERVATIONS` | — (takes CSV files only) | — | 5,000 rows |
 
 Training (`POST /hotels/{id}/train`, kind `TRAIN`) is a job too, in the same
 queue. Prices aren't saved ahead: the calendar prices on request
@@ -462,24 +460,25 @@ routes/event.list_events
 ### 6.2 A hotel file upload
 
 ```
-POST /hotels/7/ingest/files  files=DailyNewReservations.csv, Cancellation.csv
+POST /hotels/7/ingest/files  files=DailyNewReservations.csv
   → too many files, or one too big?                      → 413
   → job_service.start_file_jobs
       → bookings/uploads.parse_files, per file:
           recognise by header (no or several matches)    → 422
           the report's parse; any failure                → 422
-      → one job per file (RESERVATIONS, CANCELLATIONS), in upload order
+      → one job per file (RESERVATIONS), in upload order
   ← 202 [job, job]; each joins the hotel's queue with its parsed rows
   worker, per job, 5,000 rows at a time:
-      reservations / cancellations: upsert_bookings / upsert_cancellations
+      reservations: upsert_bookings
                                                          → commit
 ```
 
 Actual & Forecast is no longer read
 ([0080](decisions/0080-actual-and-forecast-removed.md)): an upload of it is a
-422, as an unknown report. Its `daily_performance` table and rows are kept
-until the team decides to drop them; Alembic ignores the table
-(`RETIRED_TABLES` in `migrations/env.py`).
+422, as an unknown report. Cancellations aren't read either
+([0091](decisions/0091-cancellations-removed.md)): an upload of one is a 422,
+and training reads every booking. Their tables, `daily_performance` and
+`booking_cancellations`, are dropped, as is `weather` (0081, 0091).
 
 
 ### 6.3 An events backfill

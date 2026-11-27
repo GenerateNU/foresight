@@ -125,9 +125,8 @@ async def ingest_files(
     files: Annotated[
         list[UploadFile],
         File(
-            description="Guestline CSV exports: Daily New Reservations or "
-            "Cancellations, in any mix. Each file's report is recognised from "
-            "its header"
+            description="Guestline CSV exports of Daily New Reservations. "
+            "Each file's report is recognised from its header"
         ),
     ],
 ) -> list[JobResponse]:

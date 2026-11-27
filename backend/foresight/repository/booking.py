@@ -2,10 +2,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Select, exists, func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from foresight.database.models.booking import Booking, BookingCancellation
+from foresight.database.models.booking import Booking
 from foresight.repository.upsert import Outcome, upsert_rows
 
 
@@ -46,38 +46,7 @@ async def upsert_bookings(
     )
 
 
-async def upsert_cancellations(
-    session: AsyncSession, rows: Iterable[Mapping[str, Any]]
-) -> dict[Outcome, int]:
-    """Saves cancellations keyed on the hotel and Guestline's reference.
-
-    Args:
-        session (AsyncSession): The database session.
-        rows (Iterable[Mapping[str, Any]]): One cancellation per row, with
-            every column but `id`.
-
-    Returns:
-        dict[Outcome, int]: How many rows were new, updated and unchanged.
-    """
-    return await upsert_rows(
-        session,
-        BookingCancellation,
-        constraint="uq_booking_cancellations_hotel_id_cancel_ref",
-        key=("hotel_id", "cancel_ref"),
-        mutable=(
-            "book_ref",
-            "booked_at",
-            "cancelled_at",
-            "reason_code",
-            "arrival",
-            "departure",
-            "lost_revenue",
-        ),
-        rows=rows,
-    )
-
-
-async def list_live_bookings(
+async def list_bookings(
     session: AsyncSession,
     hotel_id: int,
     *,
@@ -86,10 +55,7 @@ async def list_live_bookings(
     room_type_code: str | None = None,
     rate_plan: str | None = None,
 ) -> Sequence[Booking]:
-    """Lists bookings with a night in a window and no cancellation.
-
-    A cancellation matches on the booking's reference alone, since it can
-    carry amended stay dates.
+    """Lists bookings with a night in a window.
 
     Args:
         session (AsyncSession): The database session.
@@ -100,17 +66,9 @@ async def list_live_bookings(
         rate_plan (str | None): Only this rate plan; None for any.
 
     Returns:
-        Sequence[Booking]: The live bookings.
+        Sequence[Booking]: The bookings.
     """
-    cancelled = exists().where(
-        BookingCancellation.hotel_id == Booking.hotel_id,
-        BookingCancellation.book_ref == Booking.book_ref,
-    )
-    stmt = _product(
-        _stays_touching(Booking, hotel_id, start, end).where(~cancelled),
-        room_type_code,
-        rate_plan,
-    )
+    stmt = _product(_stays_touching(hotel_id, start, end), room_type_code, rate_plan)
     return (await session.scalars(stmt)).all()
 
 
@@ -164,20 +122,17 @@ def _product[S: Select[Any]](
     return stmt
 
 
-def _stays_touching[T: (Booking, BookingCancellation)](
-    model: type[T], hotel_id: int, start: date, end: date
-) -> Select[tuple[T]]:
-    """Selects the hotel's stays with at least one night in a window.
+def _stays_touching(hotel_id: int, start: date, end: date) -> Select[tuple[Booking]]:
+    """Selects the hotel's bookings with at least one night in a window.
 
     Args:
-        model (type[T]): Booking or BookingCancellation.
         hotel_id (int): The hotel.
         start (date): First night, inclusive.
         end (date): Last night, inclusive.
 
     Returns:
-        Select[tuple[T]]: The query.
+        Select[tuple[Booking]]: The query.
     """
-    return select(model).where(
-        model.hotel_id == hotel_id, model.arrival <= end, model.departure > start
+    return select(Booking).where(
+        Booking.hotel_id == hotel_id, Booking.arrival <= end, Booking.departure > start
     )

@@ -11,7 +11,7 @@ from foresight.database.enums import JobKind
 from foresight.database.models.hotel import Hotel
 from foresight.repository import booking as booking_repo
 from foresight.repository.upsert import Outcome
-from foresight.services.bookings.guestline import cancellations, reservations
+from foresight.services.bookings.guestline import reservations
 from foresight.services.bookings.guestline.common import PARSE_ERRORS, Parsed
 from foresight.services.errors import InvalidRequestError
 
@@ -70,24 +70,6 @@ async def _save_reservations(
     )
 
 
-async def _save_cancellations(
-    session: AsyncSession, hotel: Hotel, rows: Sequence[Mapping[str, Any]]
-) -> dict[Outcome, int]:
-    """Saves a chunk of cancellations for a hotel; does not commit.
-
-    Args:
-        session (AsyncSession): The database session.
-        hotel (Hotel): The hotel.
-        rows (Sequence[Mapping[str, Any]]): Parsed cancellations.
-
-    Returns:
-        dict[Outcome, int]: How many rows were new, updated and unchanged.
-    """
-    return await booking_repo.upsert_cancellations(
-        session, [{**row, "hotel_id": hotel.id} for row in rows]
-    )
-
-
 REPORTS: tuple[Report, ...] = (
     Report(
         JobKind.RESERVATIONS,
@@ -96,14 +78,6 @@ REPORTS: tuple[Report, ...] = (
         "booked_at",
         reservations.parse,
         _save_reservations,
-    ),
-    Report(
-        JobKind.CANCELLATIONS,
-        cancellations.REPORT,
-        cancellations.COLUMNS,
-        "cancelled_at",
-        cancellations.parse,
-        _save_cancellations,
     ),
 )
 FILE_KINDS = frozenset(report.kind for report in REPORTS)

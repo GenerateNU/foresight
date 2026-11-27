@@ -1,6 +1,6 @@
 # 0037. Three Guestline reports, uploaded daily
 
-**Status:** Accepted, amended by [0080](0080-actual-and-forecast-removed.md) (Actual & Forecast no longer read) · **Date:** 2026-10-25
+**Status:** Accepted, amended by [0080](0080-actual-and-forecast-removed.md) (Actual & Forecast no longer read), [0091](0091-cancellations-removed.md) (Cancellations no longer read) · **Date:** 2026-10-25
 
 Supersedes [0031](0031-pms-reports-for-training.md).
 

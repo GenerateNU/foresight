@@ -215,7 +215,6 @@ async def _tune(
 HANDLERS: dict[JobKind, Handler] = {
     JobKind.EVENTS: _events,
     JobKind.RESERVATIONS: _file,
-    JobKind.CANCELLATIONS: _file,
     JobKind.TRAIN: _train,
     JobKind.TUNE: _tune,
 }

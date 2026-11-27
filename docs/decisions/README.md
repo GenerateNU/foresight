@@ -93,8 +93,8 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0077](0077-scheduled-jobs.md) | Routine jobs are scheduled inside the API process | jobs / operations |
 | [0078](0078-tune-up-keeps-what-was-shown-and-points-to-its-base.md) | Untouched nights keep the rate the manager was shown; a tune-up points to its base | ML / database |
 | [0079](0079-one-main-room-type-double-room-only.md) | The model prices one product: DOUBLE, room only | ML / database |
-| [0080](0080-actual-and-forecast-removed.md) | Actual & Forecast is no longer read; its table is kept for now | ingest / database |
-| [0081](0081-weather-removed.md) | Weather is removed; its table is kept for now | ingest / database |
+| [0080](0080-actual-and-forecast-removed.md) | Actual & Forecast is no longer read; its table is kept for now (dropped by 0091) | ingest / database |
+| [0081](0081-weather-removed.md) | Weather is removed; its table is kept for now (dropped by 0091) | ingest / database |
 | [0082](0082-dead-code-removed.md) | Unused pieces are removed: uncertainty, rate basis, booking curves, feedback flags, total rooms | ML / API / database |
 | [0083](0083-holidays-from-the-library-only.md) | Every holiday input comes from the `holidays` library; school holidays are dropped | ML |
 | [0084](0084-no-fingerprint-no-price-job.md) | Snapshots are matched on their stored inputs; prices aren't saved ahead | ML / jobs |
@@ -104,3 +104,4 @@ Number files sequentially (`0027-short-title.md`) and add them to the index.
 | [0088](0088-one-docstring-style.md) | One Google docstring style, no module docstrings, box banners, no decision numbers in comments | conventions |
 | [0089](0089-services-grouped-by-feature.md) | Services are grouped into one folder per feature; `domain/`, `ingest/`, `adapters/` and `signals/` are gone | structure |
 | [0090](0090-no-room-type-in-requests.md) | Requests no longer name a room type; feedback takes it from the snapshot | API |
+| [0091](0091-cancellations-removed.md) | Cancellations are no longer read; the retired tables are dropped | ingest / database |
