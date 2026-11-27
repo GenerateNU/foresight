@@ -26,6 +26,7 @@ export default function YourRate({ rec, onSave }) {
       await onSave(rate)
     } catch (err) {
       setError(err)
+    } finally {
       setSaving(false)
     }
   }
