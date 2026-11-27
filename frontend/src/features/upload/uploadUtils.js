@@ -36,6 +36,16 @@ function sameFile(a, b) {
   return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified
 }
 
+/**
+ * "1 Jan 2024 to 21 Oct 2026", or "26 Nov 2026" for one day: the booking dates a file
+ * covered, so a manager can see a backfill reached as far back as they meant.
+ */
+export function dateRange(firstIso, lastIso) {
+  const label = (iso) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })
+  return firstIso === lastIso ? label(firstIso) : `${label(firstIso)} to ${label(lastIso)}`
+}
+
 /** "640 B", "18.7 KB" or "2.4 MB". */
 export function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`

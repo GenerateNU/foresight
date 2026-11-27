@@ -14,7 +14,7 @@ import { FINISHED, addFiles, formatSize } from './uploadUtils.js'
 const POLL_MS = 1500
 
 /**
- * The daily upload: pick the Guestline exports, check them in the browser, send them, then
+ * The Guestline upload, daily or a backfill of past bookings: pick the exports, check them in the browser, send them, then
  * poll each file's job until it finishes. It never starts training; new rates come from
  * the next scheduled retrain.
  */
@@ -77,7 +77,7 @@ export default function UploadPage() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-6 px-8 py-8">
-      <PageHeader eyebrow="Daily" title="Upload data" />
+      <PageHeader title="Upload data" />
 
       {jobs ? (
         <Card className="flex flex-col gap-4 shadow-sm">

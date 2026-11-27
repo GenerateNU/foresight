@@ -1,4 +1,5 @@
 import Badge from '../../components/ui/Badge.jsx'
+import { dateRange } from './uploadUtils.js'
 
 const TONES = { queued: 'neutral', running: 'info', succeeded: 'success', stopped: 'warning', failed: 'error', cancelled: 'neutral' }
 const REPORT_NAMES = { reservations: 'Daily New Reservations' }
@@ -30,7 +31,8 @@ function detail(job) {
       return `Saving rows: ${n(job.rowsDone)} of ${n(job.rowsTotal)}`
     case 'succeeded': {
       const { new: added = 0, updated = 0 } = job.outcomes
-      return `${n(job.rows)} rows loaded: ${n(added)} new, ${n(updated)} updated`
+      const booked = job.firstDate ? `, booked ${dateRange(job.firstDate, job.lastDate)}` : ''
+      return `${n(job.rows)} rows${booked}: ${n(added)} new, ${n(updated)} updated`
     }
     case 'cancelled':
       return 'Taken out of the queue'

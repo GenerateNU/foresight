@@ -31,8 +31,11 @@ export default function DropZone({ onFiles, disabled = false }) {
         disabled && 'cursor-not-allowed opacity-40',
       )}
     >
-      <p className="text-base font-medium">Drop the day's Guestline exports here</p>
+      <p className="text-base font-medium">Drop your Guestline exports here</p>
       <p className="text-sm text-stone-500">or click to choose files</p>
+      <p className="text-sm text-stone-500">
+        The last few days for a daily upload, or a longer export to fill in past bookings.
+      </p>
       <p className="text-xs text-stone-500">
         {REPORTS.join(' and ')}, as CSV. Up to {MAX_FILES} files, {MAX_FILE_MB} MB each.
       </p>

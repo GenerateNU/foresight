@@ -20,7 +20,7 @@ export function mockUploadJobs(hotelId, files) {
       hotel_id: hotelId,
       kind: 'reservations',
       status: 'queued',
-      params: { file: file.name, rows, skipped: 0, first_date: '2026-11-26', last_date: '2026-11-26' },
+      params: { file: file.name, rows, skipped: 0, first_date: '2026-11-20', last_date: '2026-11-26' },
       progress: {},
       error: null,
       resume_from: null,
