@@ -39,6 +39,7 @@ src/
     client.js           fetch wrapper: base URL, cookies, errors, 401 -> sign in, mocks
     auth.js             the Google sign-in link, and the page to return to after it
     recommendations.js  one function per endpoint, returns clean data
+    uploads.js          the Guestline upload and its jobs
     mocks/              fake responses, same shapes as the real API
   lib/                small helpers with no React in them (config, cx)
   hooks/              reusable React logic (useAsync: load data, track loading/error, retry)
@@ -48,6 +49,7 @@ src/
   features/           one folder per built screen; everything for it lives together
     auth/               who's signed in (AuthProvider, useAuth, RequireAuth), sign-in and sign-out
     calendar/           the calendar: page, five-week grid, hover card, colour modes, night page
+    upload/             the daily Guestline upload and each file's job status
   pages/              placeholder, not-found and the dev component gallery
 ```
 

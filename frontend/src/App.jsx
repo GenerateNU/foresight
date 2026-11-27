@@ -5,6 +5,7 @@ import NightPage from './features/calendar/NightPage.jsx'
 import RequireAuth from './features/auth/RequireAuth.jsx'
 import ReturnAfterSignIn from './features/auth/ReturnAfterSignIn.jsx'
 import SignInPage from './features/auth/SignInPage.jsx'
+import UploadPage from './features/upload/UploadPage.jsx'
 import ComponentsPage from './pages/ComponentsPage.jsx'
 import NotFoundPage from './pages/NotFoundPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
@@ -27,7 +28,7 @@ export default function App() {
           <Route path="inbox" element={<PlaceholderPage title="Inbox" />} />
           <Route path="signals" element={<PlaceholderPage title="Signals" />} />
           <Route path="reports" element={<PlaceholderPage title="Reports" />} />
-          <Route path="upload" element={<PlaceholderPage title="Upload data" />} />
+          <Route path="upload" element={<UploadPage />} />
           <Route path="upload/export-guide" element={<PlaceholderPage title="Export guide" />} />
           <Route path="pricing-rules" element={<PlaceholderPage title="Pricing rules" />} />
           <Route path="settings" element={<PlaceholderPage title="Settings" />} />
