@@ -1,6 +1,6 @@
 # 0047. Bookings and cancellations are stored as Guestline gives them
 
-**Status:** Accepted · **Date:** 2026-11-01
+**Status:** Accepted, amended by [0091](0091-cancellations-removed.md) (cancellations no longer read) · **Date:** 2026-11-01
 
 ## Context
 [0037](0037-three-guestline-reports.md) chose Daily New Reservations and

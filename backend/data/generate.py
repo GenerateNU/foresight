@@ -11,6 +11,7 @@ import random
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Any
 
 OUT = Path(__file__).parent
 ROOMS = {"DOUBLE": 5, "DBZ": 2, "TWIN": 2, "SINGLE": 1}
@@ -28,23 +29,42 @@ DNR_HEADER = [
     "CancelledRevenueNett", "CancelledRevenueGross", "RatePlan",
     "MarketSegment", "RoomType",
 ]  # fmt: skip
-CN_HEADER = [
-    "CancelRef", "CancelDate", "CancelReasonCode", "Surname", "Company",
-    "Agent", "Ref", "ArrivalDate", "DepartureDate", "ProfileRef", "Operator",
-    "EstimatedRevenue", "CancelReason", "BookingCreatedDate",
-]  # fmt: skip
 
 
-def money(x):
+def money(x: float) -> str:
+    """Formats an amount as Guestline does.
+
+    Args:
+        x (float): The amount.
+
+    Returns:
+        str: It, to two decimals.
+    """
     return f"{x:.2f}"
 
 
-def stay(arrival, departure):
+def stay(arrival: date, departure: date) -> list[date]:
+    """Lists the nights of a stay.
+
+    Args:
+        arrival (date): First night.
+        departure (date): The morning after the last night.
+
+    Returns:
+        list[date]: Each night.
+    """
     return [arrival + timedelta(n) for n in range((departure - arrival).days)]
 
 
-def make_bookings(rng):
-    """Bookings that fit the rooms; about 30% are later cancelled."""
+def make_bookings(rng: random.Random) -> list[dict[str, Any]]:
+    """Makes bookings that fit the rooms; about 30% are cancelled and left out.
+
+    Args:
+        rng (random.Random): The seeded generator.
+
+    Returns:
+        list[dict[str, Any]]: Each booking's stay, rooms and rates.
+    """
     live = Counter()
     bookings = []
     for _ in range(400):
@@ -71,29 +91,25 @@ def make_bookings(rng):
     return bookings
 
 
-def cancel_time(rng, booking):
-    arrival = datetime.combine(booking["arrival"], time())
-    if rng.random() < 0.1:
-        return "NO_SHOW", arrival + timedelta(days=1, hours=10)
-    return "GDE", booking["booked_at"] + (arrival - booking["booked_at"]) * rng.random()
+def write(name: str, header: list[str], rows: list[list[str]]) -> None:
+    """Writes a CSV as Guestline exports it: quoted, with a byte-order mark.
 
-
-def write(name, header, rows):
+    Args:
+        name (str): The file name, in this folder.
+        header (list[str]): The column names.
+        rows (list[list[str]]): The rows.
+    """
     with open(OUT / name, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f, quoting=csv.QUOTE_ALL)
         w.writerow(header)
         w.writerows(rows)
 
 
-def read(name):
-    with open(OUT / name, encoding="utf-8-sig") as f:
-        return list(csv.DictReader(f))
-
-
-def main():
+def main() -> None:
+    """Writes the synthetic Daily New Reservations export."""
     rng = random.Random(0)
     bookings = make_bookings(rng)
-    dnr, cn = [], []
+    dnr = []
     total = Counter()
     for i, b in enumerate(bookings, start=1):
         nights = stay(b["arrival"], b["departure"])
@@ -103,12 +119,10 @@ def main():
             ref = f"BK{100000 + i}/{n}"
             value = rate * len(nights)
             if b["cancelled"]:
-                code, at = cancel_time(rng, b)
-                cn.append([
-                    f"CN{50000 + i}/{n}", at.strftime(STAMP), code, f"Guest{i}",
-                    "", "", ref, arrival, departure, f"PF{i:06d}", "SYSTEM",
-                    money(value), "", booked_at,
-                ])  # fmt: skip
+                # Cancellations aren't written any more; draw as their times
+                # did, so the bookings file stays as it was.
+                if rng.random() >= 0.1:
+                    rng.random()
                 continue
             single = room_type == "SINGLE"
             plan = "BAR_RO_SGL" if single else rng.choice(["BAR_RO", "BAR_RO_DB"])
@@ -121,18 +135,10 @@ def main():
             for night in nights:
                 total[night] += 1
     dnr.sort(key=lambda r: datetime.strptime(r[10], STAMP))
-    cn.sort(key=lambda r: datetime.strptime(r[1], STAMP))
 
     write("DailyNewReservations.csv", DNR_HEADER, dnr)
-    write("Cancellation.csv", CN_HEADER, cn)
-
-    for r in read("Cancellation.csv"):
-        created, cancelled = (
-            datetime.strptime(r[k], STAMP) for k in ("BookingCreatedDate", "CancelDate")
-        )
-        assert created <= cancelled, f"{r['CancelRef']}: cancelled before booked"
     occupancy = sum(total.values()) / (IN_STOCK * len(NIGHTS))
-    print(f"{len(dnr)} live rooms, {len(cn)} cancelled, {occupancy:.0%} occupancy")
+    print(f"{len(dnr)} live rooms, {occupancy:.0%} occupancy")
 
 
 if __name__ == "__main__":

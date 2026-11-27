@@ -24,19 +24,6 @@ config.set_main_option(
 
 target_metadata = Base.metadata
 
-# Tables whose code is gone but whose data is kept until the team decides to
-# drop it (decisions 0080, 0081). Autogenerate and `alembic check` leave them alone.
-RETIRED_TABLES = {"daily_performance", "weather"}
-
-
-def include_object(object, name, type_, reflected, compare_to):
-    """Skip retired tables, so their missing models aren't read as a drop."""
-    if type_ == "table" and name in RETIRED_TABLES:
-        return False
-    table = getattr(object, "table", None)
-    return not (table is not None and table.name in RETIRED_TABLES)
-
-
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     # Offline mode emits SQL without connecting, so drop the async driver.
@@ -44,7 +31,6 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
-        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -57,7 +43,6 @@ def do_run_migrations(connection):
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        include_object=include_object,
     )
 
     with context.begin_transaction():

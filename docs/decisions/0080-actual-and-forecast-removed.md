@@ -1,6 +1,6 @@
 # 0080. Actual & Forecast is no longer read; its table is kept for now
 
-**Status:** Accepted · **Date:** 2026-11-20 · Amends [0037](0037-three-guestline-reports.md),
+**Status:** Accepted, amended by [0091](0091-cancellations-removed.md) (table dropped) · **Date:** 2026-11-20 · Amends [0037](0037-three-guestline-reports.md),
 [0048](0048-rooms-booked-rebuilt-when-asked.md),
 [0052](0052-one-upload-route-and-a-queue-per-hotel.md)
 

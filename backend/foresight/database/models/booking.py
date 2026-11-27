@@ -8,12 +8,12 @@ from foresight.database.base import Base
 
 
 class Booking(Base):
-    """One room on a live booking, from Guestline's Daily New Reservations.
+    """One booked room, from Guestline's Daily New Reservations.
 
-    BK100014/2 is the second room of BK100014. A booking is live only if no
-    cancellation has its `book_ref`: uploads overlap, so one can arrive as
-    live and later appear as cancelled. Times are the hotel's local time;
-    money is before VAT.
+    BK100014/2 is the second room of BK100014. The report lists only bookings
+    still live when it's exported, and a later cancellation isn't read, so a
+    row stays once loaded. Times are the hotel's local time; money is before
+    VAT.
 
     Attributes:
         id (int): Primary key.
@@ -50,35 +50,3 @@ class Booking(Base):
     market_segment: Mapped[str | None] = mapped_column(String(64))
 
     __table_args__ = (UniqueConstraint("hotel_id", "book_ref"),)
-
-
-class BookingCancellation(Base):
-    """One cancelled room, from Guestline's Cancellations report.
-
-    Attributes:
-        id (int): Primary key.
-        hotel_id (int): The hotel.
-        cancel_ref (str): Guestline's reference for the cancellation.
-        book_ref (str): The booking it cancelled.
-        booked_at (datetime): When the booking was made.
-        cancelled_at (datetime): When it was cancelled.
-        reason_code (str | None): Guestline's reason code.
-        arrival (date): First night it would have stayed.
-        departure (date): The morning after its last night.
-        lost_revenue (Decimal): Revenue lost, before VAT.
-    """
-
-    __tablename__ = "booking_cancellations"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"))
-    cancel_ref: Mapped[str] = mapped_column(String(32))
-    book_ref: Mapped[str] = mapped_column(String(32), index=True)
-    booked_at: Mapped[datetime] = mapped_column(DateTime)
-    cancelled_at: Mapped[datetime] = mapped_column(DateTime)
-    reason_code: Mapped[str | None] = mapped_column(String(32))
-    arrival: Mapped[date] = mapped_column(Date)
-    departure: Mapped[date] = mapped_column(Date)
-    lost_revenue: Mapped[Decimal] = mapped_column(Numeric(10, 2))
-
-    __table_args__ = (UniqueConstraint("hotel_id", "cancel_ref"),)

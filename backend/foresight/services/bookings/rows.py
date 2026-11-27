@@ -26,8 +26,8 @@ async def booking_rows(
     per night, so the model sees each night a room was sold, when it was
     booked, and at what price. Only bookings of the one room code and rate
     plan the model prices count. A stay crossing either edge of the window
-    contributes only its nights inside it. Cancelled bookings, and free or
-    unpriced rooms, are left out.
+    contributes only its nights inside it. Free or unpriced rooms are left
+    out.
 
     Args:
         session (AsyncSession): The database session.
@@ -45,7 +45,7 @@ async def booking_rows(
             gets the stay's average, so a weekend night in a longer stay is
             blurred with its weekdays). Empty without bookings.
     """
-    bookings = await booking_repo.list_live_bookings(
+    bookings = await booking_repo.list_bookings(
         session,
         hotel_id,
         start=start,

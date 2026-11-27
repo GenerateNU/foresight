@@ -1,6 +1,6 @@
 # 0081. Weather is removed; its table is kept for now
 
-**Status:** Accepted · **Date:** 2026-11-20 · Amends [0051](0051-calendar-only-model.md),
+**Status:** Accepted, amended by [0091](0091-cancellations-removed.md) (table dropped) · **Date:** 2026-11-20 · Amends [0051](0051-calendar-only-model.md),
 [0055](0055-events-back-in-the-model.md)
 
 ## Context

@@ -28,7 +28,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `alembic.ini` | Alembic config |
 | `.env.example` | Optional backend-only overrides |
 | `.python-version`, `.dockerignore` | Python version; Docker build excludes |
-| `data/*.csv` | Synthetic Guestline exports (bookings, cancellations) used by tests |
+| `data/*.csv` | Synthetic Guestline export (bookings) used by tests |
 | `data/generate.py` | Writes those synthetic CSVs |
 
 ## backend/foresight/ (app entry points)
@@ -92,7 +92,6 @@ One line per file: what it's for. For how the pieces fit together, see
 | File | What it does |
 |---|---|
 | `guestline/reservations.py` | Parses the Guestline Daily New Reservations export |
-| `guestline/cancellations.py` | Parses the Guestline Cancellations export |
 | `guestline/common.py` | Shared row-by-row CSV reading and value checks |
 | `uploads.py` | The uploadable reports; recognises each file by its header, parses it, saves it in chunks |
 | `rows.py` | Booked rooms, one row per room per night, for training |
@@ -141,7 +140,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `upsert.py` | Shared bulk upsert with new/updated/unchanged counts |
 | `pagination.py` | Shared limit/offset paging |
 | `city.py`, `hotel.py`, `user.py`, `job.py` | Queries for those tables |
-| `booking.py` | Bookings and cancellations |
+| `booking.py` | Bookings |
 | `model.py` | Model versions, artifacts, activation |
 | `recommendation.py` | Recommendation snapshots |
 | `feedback.py` | Feedback rows, incl. what training uses |
@@ -158,7 +157,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `models/hotel.py` | `hotels`, `room_types` |
 | `models/user.py` | `users`, `user_hotels` |
 | `models/job.py` | `jobs` |
-| `models/booking.py` | `bookings`, `booking_cancellations` |
+| `models/booking.py` | `bookings` |
 | `models/model.py` | `pricing_models` |
 | `models/recommendation.py` | `recommendation_snapshots` |
 | `models/feedback.py` | `feedback` |
@@ -175,7 +174,7 @@ One line per file: what it's for. For how the pieces fit together, see
 | `test_auth.py` | Google sign-in and session cookie |
 | `test_user.py` | Users and hotel links |
 | `test_access.py` | Every route needs login; other hotels' data is 404 |
-| `test_bookings.py` | Bookings/cancellations import |
+| `test_bookings.py` | Bookings import |
 | `test_freshness.py` | Freshness report |
 | `test_feedback.py` | Adding and listing feedback |
 | `test_feedback_training.py` | How feedback changes training |
