@@ -39,7 +39,8 @@ export async function apiGet(path, params = {}, { redirectOn401 = true } = {}) {
 
 /**
  * POST to `path`, with `body` as JSON if given (none for actions like signing out).
- * Returns nothing: callers that need fresh data fetch it again.
+ * Returns nothing: callers that need fresh data fetch it again. A 401 sends the browser
+ * to sign in, as with apiGet.
  */
 export async function apiPost(path, body) {
   if (USE_MOCKS) return
@@ -49,6 +50,7 @@ export async function apiPost(path, body) {
     credentials: 'include',
     ...(body && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   })
+  if (response.status === 401) redirectToSignIn()
   if (!response.ok) await throwApiError(response)
 }
 
